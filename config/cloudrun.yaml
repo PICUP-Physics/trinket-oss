@@ -1,0 +1,27 @@
+# Cloud Run deployment configuration
+# Used with NODE_ENV=cloudrun
+#
+# Secrets (MONGODB_URI, SESSION_PASSWORD) should be passed via
+# environment variables or Google Secret Manager, not stored here.
+
+app:
+  url:
+    protocol: https
+    hostname: ''   # Set to your Cloud Run URL after first deploy
+    port:
+  hostname: 0.0.0.0
+  plugins:
+    session:
+      cookieOptions:
+        # Injected at runtime via NODE_CONFIG or SESSION_PASSWORD env var
+        password: ''
+        domain: ''
+        isSecure: true
+        isSameSite: 'None'
+
+db:
+  mongo:
+    # Injected at runtime via MONGODB_URI env var
+    uri: ''
+  redis:
+    enabled: false

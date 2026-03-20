@@ -46,8 +46,11 @@ const cache_control = 'private, s-maxage=0, max-age=0, no-cache, no-store, must-
 
 // Main async initialization
 const init = async () => {
-  // Validate required configuration
-  const sessionPassword = config.app.plugins.session.cookieOptions.password;
+  // Validate required configuration — allow env var override for Cloud Run
+  const sessionPassword = process.env.SESSION_PASSWORD || config.app.plugins.session.cookieOptions.password;
+  if (process.env.SESSION_PASSWORD) {
+    config.app.plugins.session.cookieOptions.password = process.env.SESSION_PASSWORD;
+  }
   if (!sessionPassword || sessionPassword.length < 32) {
     console.error('\n' + '='.repeat(70));
     console.error('ERROR: Session cookie password not configured!');
@@ -67,7 +70,7 @@ const init = async () => {
   // Create server with Hapi 20+ configuration
   const server = Hapi.server({
     host: config.app.hostname || 'localhost',
-    port: config.app.port || 3000,
+    port: process.env.PORT || config.app.port || 3000,
     routes: {
       cors: config.app.cors || false,
       state: {

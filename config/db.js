@@ -4,28 +4,35 @@ var mongoose = require('mongoose'),
     extend   = require('mongoose-schema-extend'),
     dbconfig = require('config').db;
 
-var mongo_creds = dbconfig.mongo.user && dbconfig.mongo.pass
-  ? dbconfig.mongo.user + ':' + dbconfig.mongo.pass + '@' : '';
-
-var read_creds = dbconfig.mongoread.user && dbconfig.mongoread.pass
-  ? dbconfig.mongoread.user + ':' + dbconfig.mongoread.pass + '@' : '';
-
 function connect() {
-  var connectStr = 'mongodb://'
-    + mongo_creds
-    + dbconfig.mongo.host + ':'
-    + dbconfig.mongo.port + '/'
-    + dbconfig.mongo.database;
+  // Support a full connection URI (e.g. MongoDB Atlas mongodb+srv://...)
+  // via config, env var MONGODB_URI, or fall back to host/port construction
+  var connectStr = dbconfig.mongo.uri
+    || process.env.MONGODB_URI;
 
-  if (dbconfig.mongoread.host) {
-    connectStr += ','
-    + read_creds
-    + dbconfig.mongoread.host + ':'
-    + dbconfig.mongoread.port + '/'
-    + dbconfig.mongoread.database;
+  if (!connectStr) {
+    var mongo_creds = dbconfig.mongo.user && dbconfig.mongo.pass
+      ? dbconfig.mongo.user + ':' + dbconfig.mongo.pass + '@' : '';
 
-    if (dbconfig.mongoread.opts) {
-      connectStr += '?' + dbconfig.mongoread.opts;
+    var read_creds = dbconfig.mongoread.user && dbconfig.mongoread.pass
+      ? dbconfig.mongoread.user + ':' + dbconfig.mongoread.pass + '@' : '';
+
+    connectStr = 'mongodb://'
+      + mongo_creds
+      + dbconfig.mongo.host + ':'
+      + dbconfig.mongo.port + '/'
+      + dbconfig.mongo.database;
+
+    if (dbconfig.mongoread.host) {
+      connectStr += ','
+      + read_creds
+      + dbconfig.mongoread.host + ':'
+      + dbconfig.mongoread.port + '/'
+      + dbconfig.mongoread.database;
+
+      if (dbconfig.mongoread.opts) {
+        connectStr += '?' + dbconfig.mongoread.opts;
+      }
     }
   }
 
