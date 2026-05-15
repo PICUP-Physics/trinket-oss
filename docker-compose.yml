@@ -1,40 +1,20 @@
 services:
   app:
     build: .
+    platform: linux/arm64
     image: trinket/app:latest
     ports:
       - 3000:3000
     container_name: trinket
-    volumes:
-      - .:/usr/local/node/trinket
-      - node_modules:/usr/local/node/trinket/node_modules
-      - public_components:/usr/local/node/trinket/public/components
-    networks:
-      - trinket
-    links:
-      - redis
-      - mongodb
-  redis:
-    image: redis:latest
-    ports:
-      - 16379:6379
-    container_name: redis
-    networks:
-      - trinket
-  mongodb:
-    image: mongo:5
-    ports:
-      - 17017:27017
-    container_name: mongodb
-    volumes:
-      - mongodb_data:/data/db
+    environment:
+      NODE_ENV: development
+      GOOGLE_CLOUD_PROJECT: demo-trinket
+      FIRESTORE_EMULATOR_HOST: host.docker.internal:8080
+      SESSION_PASSWORD: ${SESSION_PASSWORD}
+      NODE_CONFIG: >-
+        {"app":{"url":{"hostname":"localhost:3000","protocol":"http"}},"db":{"backend":"firestore","firestore":{"projectId":"demo-trinket"},"redis":{"enabled":false}}}
     networks:
       - trinket
 networks:
   trinket:
     driver: bridge
-volumes:
-  shared-cache:
-  node_modules:
-  public_components:
-  mongodb_data:
