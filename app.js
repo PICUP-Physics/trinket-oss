@@ -43,7 +43,6 @@ const CatboxEngine = dbBackend === 'firestore'
 const fs             = require('fs');
 const path           = require('path');
 
-config.viewEngine = viewEngine;
 
 const cache_control = 'private, s-maxage=0, max-age=0, no-cache, no-store, must-revalidate, proxy-revalidate';
 

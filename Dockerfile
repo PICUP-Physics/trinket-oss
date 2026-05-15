@@ -18,17 +18,20 @@ RUN mkdir -p /usr/local/node/trinket && chown trinket:trinket /usr/local/node/tr
 
 USER trinket
 
-COPY --chown=trinket:trinket . /usr/local/node/trinket
-
 WORKDIR /usr/local/node/trinket
 
-# Download frontend components from GitHub release
+# Install dependencies first — cached unless package.json changes
+COPY --chown=trinket:trinket package.json package-lock.json ./
+RUN npm install --legacy-peer-deps
+
+# Download frontend components — cached unless the release URL changes
 RUN curl -L --silent -o ./public-components.tgz \
     https://github.com/trinketapp/trinket-oss/releases/download/v1.0.0/public-components.tgz \
     && tar xzf public-components.tgz \
     && rm public-components.tgz
 
-RUN npm install --legacy-peer-deps
+# Copy source last so code changes don't bust the layers above
+COPY --chown=trinket:trinket . .
 
 ARG COMMIT_ID
 ARG NODE_ENV
