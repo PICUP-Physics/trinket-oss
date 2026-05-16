@@ -1534,9 +1534,8 @@ module.exports = [
     config : {
       auth: 'session',
       payload : {
-        maxBytes : 50 * (1024 * 1024), // 50MB
-        output   : 'file',
-        parse    : true
+        maxBytes   : 50 * (1024 * 1024), // 50MB
+        multipart  : { output: 'file' }
       },
       validate : {
         payload : {
@@ -1550,9 +1549,8 @@ module.exports = [
     config : {
       auth: 'session',
       payload : {
-        maxBytes : 50 * (1024 * 1024), // 50MB
-        output   : 'file',
-        parse    : true
+        maxBytes   : 50 * (1024 * 1024), // 50MB
+        multipart  : { output: 'file' }
       },
       validate : {
         payload : {
