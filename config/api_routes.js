@@ -1557,6 +1557,7 @@ module.exports = [
       validate : {
         payload : {
           file  : Joi.binary().required(),
+          name  : Joi.string().max(140).optional(),
           force : Joi.boolean().optional()
         }
       }
