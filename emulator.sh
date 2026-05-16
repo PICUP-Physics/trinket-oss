@@ -3,4 +3,4 @@
 # Requires: firebase-tools (npm install -g firebase-tools)
 #           Java 11+ on PATH
 
-exec firebase emulators:start --only firestore --project "${GOOGLE_CLOUD_PROJECT:-demo-trinket}"
+exec firebase emulators:start --only firestore,storage --project "${GOOGLE_CLOUD_PROJECT:-demo-trinket}"

@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@google-cloud/firestore": "^8.6.0",
+    "@google-cloud/storage": "^7.19.0",
     "@hapi/boom": "^10.0.0",
     "@hapi/catbox-redis": "^7.0.0",
     "@hapi/hapi": "^20.0.0",

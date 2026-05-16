@@ -387,6 +387,12 @@ db:
     sandbox:
       host: localhost
       port: 6379
+gcs:
+  buckets:
+    snapshots:
+      name: 'trinket-snapshots'
+      host: 'https://storage.googleapis.com/trinket-snapshots'
+
 aws:
   key: ''
   keyId: ''
