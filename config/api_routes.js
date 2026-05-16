@@ -1539,7 +1539,8 @@ module.exports = [
       },
       validate : {
         payload : {
-          file : Joi.any().required()
+          file    : Joi.any().required(),
+          replace : Joi.boolean().optional()
         }
       }
     }
