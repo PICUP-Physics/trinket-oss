@@ -25,15 +25,9 @@ RUN npm install --legacy-peer-deps
 
 # Download frontend components — cached unless the release URL changes
 RUN curl -L --silent -o ./public-components.tgz \
-    https://github.com/trinketapp/trinket-oss/releases/download/v1.0.0/public-components.tgz \
+    https://github.com/trinketapp/trinket-oss/releases/download/v1.1.0/public-components.tgz \
     && tar xzf public-components.tgz \
     && rm public-components.tgz
-
-# Download Ace editor mode/theme files missing from the release tarball
-RUN curl -L --silent -o ./public/components/src-min-noconflict/mode-markdown.js \
-    https://cdn.jsdelivr.net/npm/ace-builds@1.2.6/src-min-noconflict/mode-markdown.js \
-    && curl -L --silent -o ./public/components/src-min-noconflict/theme-github.js \
-    https://cdn.jsdelivr.net/npm/ace-builds@1.2.6/src-min-noconflict/theme-github.js
 
 # Copy source last so code changes don't bust the layers above
 COPY --chown=trinket:trinket . .

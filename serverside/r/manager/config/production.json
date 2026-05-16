@@ -1,8 +1,0 @@
-{
-  "manager": {
-    "generatedUrl": "http://localhost:8080/r-generated"
-  },
-  "shells": [
-    "http://r-shell:8010"
-  ]
-}

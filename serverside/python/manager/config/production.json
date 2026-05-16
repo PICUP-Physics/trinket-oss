@@ -1,8 +1,0 @@
-{
-  "manager": {
-    "generatedUrl": "http://localhost:8080/python3-generated"
-  },
-  "shells": [
-    "http://python3-shell:8010"
-  ]
-}
