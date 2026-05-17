@@ -30,6 +30,8 @@ RUN curl -L --silent -o ./public-components.tgz \
 
 RUN npm install --legacy-peer-deps
 
+RUN npm run build
+
 ARG COMMIT_ID
 ARG NODE_ENV
 ENV NODE_ENV=$NODE_ENV

@@ -27,7 +27,7 @@ export default defineConfig({
   css: {
     preprocessorOptions: {
       scss: {
-        // Add any global SCSS options here if needed
+        loadPaths: ['.'],
       },
     },
   },

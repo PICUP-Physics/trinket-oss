@@ -85,6 +85,21 @@ db:
 #     secretkey: 'your-secret-key'
 
 # =============================================================================
+# OPTIONAL: Enable Additional Trinket Languages
+# =============================================================================
+# Python is enabled by default. Other client-side languages can be turned on here.
+# Note: glowscript requires vpython-glowscript files in public/components (included
+# in public-components.tgz). Server-side languages (python3, java, R, pygame)
+# require additional backend services — see the README.
+
+# features:
+#   trinkets:
+#     glowscript: true       # Web VPython 3D graphics
+#     html: true             # HTML/CSS/JS
+#     blocks: true           # Block-based coding
+#     console: true          # Python console/REPL
+
+# =============================================================================
 # OPTIONAL: Branding
 # =============================================================================
 
