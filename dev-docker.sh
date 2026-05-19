@@ -55,6 +55,7 @@ exec docker run --rm -it --init \
   --platform linux/amd64 \
   --add-host=host.docker.internal:host-gateway \
   -p "${PORT}:3000" \
+  -e "SESSION_PASSWORD=${SESSION_PASSWORD:-}" \
   -e "FIRESTORE_EMULATOR_HOST=${DOCKER_EMULATOR_HOST}" \
   -e "STORAGE_EMULATOR_HOST=${DOCKER_STORAGE_HOST}" \
   -e "STORAGE_PUBLIC_HOST=http://localhost:9199" \
