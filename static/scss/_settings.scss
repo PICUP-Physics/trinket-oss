@@ -12,10 +12,17 @@ $blue: #008AFF;
 $yellow: #FFDA00;
 $blue-40: lighten($blue, 40%);
 
-$body-font-family: "Merriweather", Times, Georgia, serif;
-$primary-color: $blue;
-$secondary-color: $green;
-$success-color: $green;
+// PICUP-inspired palette
+$picup-green:      #75BF48;
+$picup-dark-green: #006400;
+$picup-header-bg:  #535151;
+$picup-nav-item:   #E0E6C6;
+$picup-page-bg:    #F4F3F3;
+
+$body-font-family: Arial, Verdana, Helvetica, sans-serif;
+$primary-color: $picup-green;
+$secondary-color: $picup-dark-green;
+$success-color: $picup-green;
 
 $success-message-color: #d9edf7;
 $error-message-color: #FFCCCC;
@@ -30,16 +37,16 @@ $input-error-message-padding: rem-calc(9);
 
 $off-canvas-width: 350px;
 
-$topbar-bg-color: #EEE;
+$topbar-bg-color: $picup-header-bg;
 $topbar-bg: $topbar-bg-color;
 
-$topbar-dropdown-bg: #EEE;
+$topbar-dropdown-bg: $picup-nav-item;
 $topbar-dropdown-link-color: #333;
 $topbar-dropdown-toggle-color: #333;
 
-$topbar-link-color: #333;
-$topbar-link-color-active: #333;
-$topbar-link-bg-hover: $primary-color;
+$topbar-link-color: #FFF;
+$topbar-link-color-active: #FFF;
+$topbar-link-bg-hover: darken($picup-header-bg, 10%);
 
 $topbar-menu-link-color: #333;
 $topbar-menu-icon-color: #333;
@@ -51,7 +58,7 @@ $topbar-divider-border-top: solid 1px #CCC;
 
 $tab-border-radius: 8px;
 
-$header-font-family: join("Lato", $body-font-family);
+$header-font-family: Verdana, Geneva, Arial, Helvetica, sans-serif;
 $header-font-weight: 900;
 
 $h3-font-size: rem-calc(22);

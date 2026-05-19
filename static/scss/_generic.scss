@@ -2,6 +2,14 @@ html, body {
   height: 100%;
 }
 
+body {
+  background-color: $picup-page-bg;
+}
+
+h1, h2, h3 {
+  color: $picup-dark-green;
+}
+
 .site-message {
   margin-bottom: 0;
 }

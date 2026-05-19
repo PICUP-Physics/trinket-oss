@@ -2,10 +2,12 @@
 	border-bottom: 1px solid #d4d4d4; 
 	@media #{$small-only} { border: none; }
 }
-.top-bar-section .dropdown li:not(.has-form) a:not(.button) {  
-	background: #EEE; 
-	&:hover { 
+.top-bar-section .dropdown li:not(.has-form) a:not(.button) {
+	background: $picup-nav-item;
+	color: #333;
+	&:hover {
 		background: $primary-color;
+		color: #FFF;
 	}
 }
 .nav-wrapper nav.top-bar {
@@ -43,9 +45,11 @@ nav.top-bar {
 			border-left: 1px solid #d4d4d4;
 			border-bottom: 1px solid #d4d4d4;
 			li:not(.has-form) a:not(.button) {
-				background: #EEE;
+				background: $picup-nav-item;
+				color: #333;
 				&:hover {
 					background: $primary-color;
+					color: #FFF;
 				}
 			}
 			@media #{$small-only} { border-top: 1px #d4d4d4 solid; }
