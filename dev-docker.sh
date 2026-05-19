@@ -20,7 +20,7 @@ fi
 
 IMAGE="trinket-oss:local"
 PORT="${PORT:-3000}"
-PROJECT="${GOOGLE_CLOUD_PROJECT:-demo-trinket}"
+PROJECT="demo-trinket"
 EMULATOR_HOST="${FIRESTORE_EMULATOR_HOST:-localhost:8080}"
 STORAGE_HOST="${STORAGE_EMULATOR_HOST:-http://localhost:9199}"
 

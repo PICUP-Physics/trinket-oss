@@ -105,10 +105,10 @@ elif [[ "${FIRESTORE_DB_TYPE}" != "FIRESTORE_NATIVE" ]]; then
   exit 1
 fi
 
-# Deploy Firestore indexes via Firebase CLI
-echo "--- Deploying Firestore indexes ---"
+# Deploy Firestore indexes and rules via Firebase CLI
+echo "--- Deploying Firestore indexes and rules ---"
 if command -v firebase &>/dev/null && [[ -f "${SCRIPT_DIR}/firestore.indexes.json" ]]; then
-  firebase deploy --only firestore:indexes \
+  firebase deploy --only firestore:indexes,firestore:rules \
     --project="${GOOGLE_CLOUD_PROJECT}" \
     --account "$(gcloud config get-value account)" \
     --non-interactive
