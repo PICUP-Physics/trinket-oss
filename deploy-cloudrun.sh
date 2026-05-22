@@ -253,12 +253,18 @@ NODE_CONFIG: '{"app":{"url":{"hostname":"${HOSTNAME}"}}}'
 GOOGLE_CALLBACK_URL: https://${HOSTNAME}/auth/google/callback
 YAML
 
-# Set FIREBASE_CLIENT_CONFIG via --update-env-vars using a custom delimiter to
-# avoid YAML parser issues with JSON values containing colons and quotes.
 gcloud run services update "${SERVICE_NAME}" \
   --region="${GOOGLE_CLOUD_REGION}" \
   --project="${GOOGLE_CLOUD_PROJECT}" \
   --env-vars-file="${PATCH_ENV_VARS_FILE}" \
+  --quiet
+
+# Set FIREBASE_CLIENT_CONFIG separately — can't mix --env-vars-file and
+# --update-env-vars in the same call. Use ^|^ delimiter so JSON commas
+# aren't treated as env var separators.
+gcloud run services update "${SERVICE_NAME}" \
+  --region="${GOOGLE_CLOUD_REGION}" \
+  --project="${GOOGLE_CLOUD_PROJECT}" \
   --update-env-vars "^|^FIREBASE_CLIENT_CONFIG=${FIREBASE_CLIENT_CONFIG}" \
   --quiet
 
