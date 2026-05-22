@@ -19,8 +19,8 @@ routes = [
     enable : true
   },
   {
-    route    : 'GET /signup pages.redirect',
-    redirect : '/login'
+    route : 'GET /signup auth.loginPage',
+    html  : 'login.html'
   },
   {
     route : 'GET /login auth.loginPage',
