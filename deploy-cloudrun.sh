@@ -73,13 +73,7 @@ GOOGLE_CLIENT_ID_SECRET="trinket-google-client-id"
 GOOGLE_CLIENT_SECRET_SECRET="trinket-google-client-secret"
 IMAGE="${GOOGLE_CLOUD_REGION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${REPO_NAME}/${SERVICE_NAME}"
 ENV_VARS_FILE=$(mktemp "${TMPDIR:-/tmp}/trinket-cloudrun-env.XXXXXX")
-PATCH_ENV_VARS_FILE=""
-cleanup() {
-  rm -f "${ENV_VARS_FILE}"
-  if [[ -n "${PATCH_ENV_VARS_FILE}" ]]; then
-    rm -f "${PATCH_ENV_VARS_FILE}"
-  fi
-}
+cleanup() { rm -f "${ENV_VARS_FILE}"; }
 trap cleanup EXIT
 
 echo "=== Deploying Trinket to Cloud Run ==="
@@ -244,28 +238,13 @@ SERVICE_URL=$(gcloud run services describe "${SERVICE_NAME}" \
 # Patch NODE_CONFIG with the service hostname
 echo "--- Patching NODE_CONFIG with service hostname ---"
 HOSTNAME=$(echo "${SERVICE_URL}" | sed 's|https://||')
-PATCH_ENV_VARS_FILE=$(mktemp "${TMPDIR:-/tmp}/trinket-cloudrun-env.XXXXXX")
-cat > "${PATCH_ENV_VARS_FILE}" <<YAML
-NODE_ENV: production
-NODE_APP_INSTANCE: cloudrun
-GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT}
-NODE_CONFIG: '{"app":{"url":{"hostname":"${HOSTNAME}"}}}'
-GOOGLE_CALLBACK_URL: https://${HOSTNAME}/auth/google/callback
-YAML
-
+# Use --update-env-vars (not --env-vars-file) so only the named vars are
+# touched and console-managed vars like ADMIN_EMAILS are preserved.
+# ^|^ makes | the delimiter so JSON commas/colons in values are safe.
 gcloud run services update "${SERVICE_NAME}" \
   --region="${GOOGLE_CLOUD_REGION}" \
   --project="${GOOGLE_CLOUD_PROJECT}" \
-  --env-vars-file="${PATCH_ENV_VARS_FILE}" \
-  --quiet
-
-# Set FIREBASE_CLIENT_CONFIG separately — can't mix --env-vars-file and
-# --update-env-vars in the same call. Use ^|^ delimiter so JSON commas
-# aren't treated as env var separators.
-gcloud run services update "${SERVICE_NAME}" \
-  --region="${GOOGLE_CLOUD_REGION}" \
-  --project="${GOOGLE_CLOUD_PROJECT}" \
-  --update-env-vars "^|^FIREBASE_CLIENT_CONFIG=${FIREBASE_CLIENT_CONFIG}" \
+  --update-env-vars "^|^NODE_ENV=production|NODE_APP_INSTANCE=cloudrun|GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}|NODE_CONFIG={\"app\":{\"url\":{\"hostname\":\"${HOSTNAME}\"}}}|GOOGLE_CALLBACK_URL=https://${HOSTNAME}/auth/google/callback|FIREBASE_CLIENT_CONFIG=${FIREBASE_CLIENT_CONFIG}" \
   --quiet
 
 echo ""
