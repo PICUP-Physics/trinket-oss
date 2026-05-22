@@ -165,6 +165,7 @@
       }
 
       $scope.updateUserRole = function(user, role) {
+        $('#user-role-' + user.userId).foundation('dropdown', 'closeall');
         $scope.course.customPOST({ user : user.userId, role : role }, "roles")
           .then(
             function(result) {
