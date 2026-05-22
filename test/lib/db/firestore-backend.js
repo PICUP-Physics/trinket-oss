@@ -2,9 +2,11 @@
 
 var should = require('chai').should();
 var backend = require('../../../lib/db/firestore-backend');
-var FirestoreDocument    = backend._test.FirestoreDocument;
-var extractDefaults      = backend._test.extractDefaults;
-var extractSubdocDefaults = backend._test.extractSubdocDefaults;
+var FirestoreDocument         = backend._test.FirestoreDocument;
+var extractDefaults           = backend._test.extractDefaults;
+var extractSubdocDefaults     = backend._test.extractSubdocDefaults;
+var resolvePositionalUpdates  = backend._test.resolvePositionalUpdates;
+var resolvePositionalArrayOp  = backend._test.resolvePositionalArrayOp;
 
 // Minimal fake collectionRef — just needs to exist; no methods called in constructor
 var fakeRef = {};
@@ -250,6 +252,128 @@ describe('FirestoreDocument subdocument defaults', function() {
     );
     doc.name.should.equal('untitled');
     doc.users[0].hideFrom.should.deep.equal([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolvePositionalUpdates
+// ---------------------------------------------------------------------------
+
+describe('resolvePositionalUpdates', function() {
+  var users = [
+    { userId: 'u1', roles: ['course-student'] },
+    { userId: 'u2', roles: ['course-student'] }
+  ];
+  var doc = { users: users };
+
+  it('replaces the matched element sub-field via positional path', function() {
+    var filter = { _id: 'c1', users: { $elemMatch: { userId: 'u2' } } };
+    var setFields = { 'users.$.roles': ['course-associate'] };
+    var patch = resolvePositionalUpdates(setFields, filter, doc);
+    patch.should.have.property('users');
+    patch.users[0].roles.should.deep.equal(['course-student']);
+    patch.users[1].roles.should.deep.equal(['course-associate']);
+  });
+
+  it('does not mutate the original array', function() {
+    var filter = { _id: 'c1', users: { $elemMatch: { userId: 'u1' } } };
+    var setFields = { 'users.$.roles': ['course-owner'] };
+    var original = [{ userId: 'u1', roles: ['course-student'] }];
+    var docCopy = { users: original };
+    resolvePositionalUpdates(setFields, filter, docCopy);
+    original[0].roles.should.deep.equal(['course-student']);
+  });
+
+  it('returns empty patch when no $elemMatch in filter', function() {
+    var filter = { _id: 'c1' };
+    var setFields = { 'users.$.roles': ['course-associate'] };
+    var patch = resolvePositionalUpdates(setFields, filter, doc);
+    patch.should.deep.equal({});
+  });
+
+  it('returns empty patch when no matching element found', function() {
+    var filter = { _id: 'c1', users: { $elemMatch: { userId: 'u999' } } };
+    var setFields = { 'users.$.roles': ['course-associate'] };
+    var patch = resolvePositionalUpdates(setFields, filter, doc);
+    patch.should.deep.equal({});
+  });
+
+  it('passes through non-positional fields unchanged', function() {
+    var filter = { _id: 'c1', users: { $elemMatch: { userId: 'u1' } } };
+    var setFields = { name: 'CS 101', 'users.$.roles': ['course-owner'] };
+    var patch = resolvePositionalUpdates(setFields, filter, doc);
+    patch.should.have.property('name', 'CS 101');
+    patch.should.have.property('users');
+  });
+
+  it('handles multiple positional fields targeting the same array', function() {
+    var filter = { _id: 'c1', users: { $elemMatch: { userId: 'u1' } } };
+    var docTwo = { users: [{ userId: 'u1', roles: ['course-student'], displayName: 'Alice' }] };
+    var setFields = { 'users.$.roles': ['course-owner'], 'users.$.displayName': 'Alice Admin' };
+    var patch = resolvePositionalUpdates(setFields, filter, docTwo);
+    patch.should.have.property('users');
+    patch.users[0].roles.should.deep.equal(['course-owner']);
+    patch.users[0].displayName.should.equal('Alice Admin');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolvePositionalArrayOp
+// ---------------------------------------------------------------------------
+
+describe('resolvePositionalArrayOp', function() {
+  function makeDoc(hideFrom) {
+    return {
+      users: [
+        { userId: 'u1', hideFrom: hideFrom ? hideFrom.slice() : [] },
+        { userId: 'u2', hideFrom: [] }
+      ]
+    };
+  }
+
+  it('$push: adds value to the matched element sub-array', function() {
+    var filter = { _id: 'c1', users: { $elemMatch: { userId: 'u1' } } };
+    var doc = makeDoc([]);
+    var patch = resolvePositionalArrayOp({ 'users.$.hideFrom': 'dashboard' }, filter, doc, '$push');
+    patch.should.have.property('users');
+    patch.users[0].hideFrom.should.deep.equal(['dashboard']);
+    patch.users[1].hideFrom.should.deep.equal([]);
+  });
+
+  it('$push: does not add duplicate value', function() {
+    var filter = { _id: 'c1', users: { $elemMatch: { userId: 'u1' } } };
+    var doc = makeDoc(['dashboard']);
+    var patch = resolvePositionalArrayOp({ 'users.$.hideFrom': 'dashboard' }, filter, doc, '$push');
+    patch.users[0].hideFrom.should.deep.equal(['dashboard']);
+  });
+
+  it('$pull: removes value from the matched element sub-array', function() {
+    var filter = { _id: 'c1', users: { $elemMatch: { userId: 'u1' } } };
+    var doc = makeDoc(['dashboard', 'all']);
+    var patch = resolvePositionalArrayOp({ 'users.$.hideFrom': 'dashboard' }, filter, doc, '$pull');
+    patch.users[0].hideFrom.should.deep.equal(['all']);
+  });
+
+  it('$pull: is a no-op when value not present', function() {
+    var filter = { _id: 'c1', users: { $elemMatch: { userId: 'u1' } } };
+    var doc = makeDoc(['all']);
+    var patch = resolvePositionalArrayOp({ 'users.$.hideFrom': 'dashboard' }, filter, doc, '$pull');
+    patch.users[0].hideFrom.should.deep.equal(['all']);
+  });
+
+  it('returns empty patch when no matching element found', function() {
+    var filter = { _id: 'c1', users: { $elemMatch: { userId: 'u999' } } };
+    var doc = makeDoc([]);
+    var patch = resolvePositionalArrayOp({ 'users.$.hideFrom': 'dashboard' }, filter, doc, '$push');
+    patch.should.deep.equal({});
+  });
+
+  it('does not mutate the original doc array', function() {
+    var filter = { _id: 'c1', users: { $elemMatch: { userId: 'u1' } } };
+    var original = [{ userId: 'u1', hideFrom: ['dashboard'] }];
+    var doc = { users: original };
+    resolvePositionalArrayOp({ 'users.$.hideFrom': 'all' }, filter, doc, '$push');
+    original[0].hideFrom.should.deep.equal(['dashboard']);
   });
 });
 
