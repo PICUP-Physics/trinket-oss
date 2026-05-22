@@ -5,7 +5,7 @@
 {% block body_class %}course{% endblock %}
 
 {% block content %}
-  <div ng-view ng-cloak ng-init="courseId='{{courseId}}';userSlug='{{userSlug}}';courseSlug='{{courseSlug}}';canEdit={{'true' if canEdit else 'false'}}"></div>
+  <div ng-view ng-cloak ng-init="courseId='{{courseId}}';userSlug='{{userSlug}}';courseSlug='{{courseSlug}}';canEdit={{'true' if canEdit else 'false'}};isAdmin={{'true' if isAdmin else 'false'}}"></div>
   {% if user and user.roles %}
     <input id="roles" type='hidden' value='{{ user.roles | encrypt }}'>
   {% endif %}

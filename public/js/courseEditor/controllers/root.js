@@ -63,7 +63,7 @@
       && this.$scope.canManageAssignments;
 
     this.$scope.canAssignAssocRole
-      =  trinketRoles.hasRole("trinket-connect")
+      =  this.$scope.isAdmin
       && this.$scope.canManageAccess;
 
     this.$scope.canViewSubmissions = trinketRoles.hasPermission("view-assignment-submissions", "course", { id : this.$scope.courseId });
