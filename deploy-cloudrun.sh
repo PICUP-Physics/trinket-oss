@@ -73,7 +73,8 @@ GOOGLE_CLIENT_ID_SECRET="trinket-google-client-id"
 GOOGLE_CLIENT_SECRET_SECRET="trinket-google-client-secret"
 IMAGE="${GOOGLE_CLOUD_REGION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${REPO_NAME}/${SERVICE_NAME}"
 ENV_VARS_FILE=$(mktemp "${TMPDIR:-/tmp}/trinket-cloudrun-env.XXXXXX")
-cleanup() { rm -f "${ENV_VARS_FILE}"; }
+_LIVE_ENV_FILE=$(mktemp "${TMPDIR:-/tmp}/trinket-live-env.XXXXXX")
+cleanup() { rm -f "${ENV_VARS_FILE}" "${_LIVE_ENV_FILE}"; }
 trap cleanup EXIT
 
 echo "=== Deploying Trinket to Cloud Run ==="
@@ -201,6 +202,27 @@ else
     --quiet
 fi
 
+# Preserve ADMIN_EMAILS across redeployment.
+# gcloud run deploy --env-vars-file replaces all env vars, wiping anything set
+# only in the console.  Fetch the live value first so we can re-apply it in
+# the --update-env-vars patch step below.  We ignore any locally-set
+# ADMIN_EMAILS (e.g. from .env) intentionally — console is the source of truth.
+echo "--- Fetching ADMIN_EMAILS from live service ---"
+gcloud run services describe "${SERVICE_NAME}" \
+  --region="${GOOGLE_CLOUD_REGION}" \
+  --project="${GOOGLE_CLOUD_PROJECT}" \
+  --format=json > "${_LIVE_ENV_FILE}" 2>/dev/null || echo '{}' > "${_LIVE_ENV_FILE}"
+_LIVE_ADMIN_EMAILS=$(node -e "
+  var fs = require('fs');
+  var d; try { d = JSON.parse(fs.readFileSync('${_LIVE_ENV_FILE}', 'utf8')); } catch(e) { d = {}; }
+  var c = d && d.spec && d.spec.template && d.spec.template.spec &&
+          d.spec.template.spec.containers && d.spec.template.spec.containers[0];
+  var envs = (c && c.env) || [];
+  var e = envs.find(function(x){ return x.name === 'ADMIN_EMAILS'; });
+  process.stdout.write(e ? e.value : '');
+" 2>/dev/null || true)
+[[ -n "${_LIVE_ADMIN_EMAILS}" ]] && echo "    Preserved ADMIN_EMAILS from live service"
+
 # Deploy to Cloud Run
 echo "--- Deploying to Cloud Run ---"
 cat > "${ENV_VARS_FILE}" <<YAML
@@ -238,13 +260,13 @@ SERVICE_URL=$(gcloud run services describe "${SERVICE_NAME}" \
 # Patch NODE_CONFIG with the service hostname
 echo "--- Patching NODE_CONFIG with service hostname ---"
 HOSTNAME=$(echo "${SERVICE_URL}" | sed 's|https://||')
-# Use --update-env-vars (not --env-vars-file) so only the named vars are
-# touched and console-managed vars like ADMIN_EMAILS are preserved.
 # ^|^ makes | the delimiter so JSON commas/colons in values are safe.
+_PATCH_VARS="NODE_ENV=production|NODE_APP_INSTANCE=cloudrun|GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}|NODE_CONFIG={\"app\":{\"url\":{\"hostname\":\"${HOSTNAME}\"}}}|GOOGLE_CALLBACK_URL=https://${HOSTNAME}/auth/google/callback|FIREBASE_CLIENT_CONFIG=${FIREBASE_CLIENT_CONFIG}"
+[[ -n "${_LIVE_ADMIN_EMAILS:-}" ]] && _PATCH_VARS="${_PATCH_VARS}|ADMIN_EMAILS=${_LIVE_ADMIN_EMAILS}"
 gcloud run services update "${SERVICE_NAME}" \
   --region="${GOOGLE_CLOUD_REGION}" \
   --project="${GOOGLE_CLOUD_PROJECT}" \
-  --update-env-vars "^|^NODE_ENV=production|NODE_APP_INSTANCE=cloudrun|GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}|NODE_CONFIG={\"app\":{\"url\":{\"hostname\":\"${HOSTNAME}\"}}}|GOOGLE_CALLBACK_URL=https://${HOSTNAME}/auth/google/callback|FIREBASE_CLIENT_CONFIG=${FIREBASE_CLIENT_CONFIG}" \
+  --update-env-vars "^|^${_PATCH_VARS}" \
   --quiet
 
 echo ""
