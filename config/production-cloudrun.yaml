@@ -27,3 +27,17 @@ db:
     enabled: false
   # db.firestore.projectId is not set here; the Firestore SDK reads
   # GOOGLE_CLOUD_PROJECT automatically on Cloud Run.
+
+# Firebase client config is public (embedded in browser JS).
+# adminEmails is injected via NODE_CONFIG env var at deploy time.
+auth:
+  adminEmails: []
+  firebase:
+    projectId: trinket-gcr-test
+    clientConfig:
+      apiKey: "AIzaSyAzyO72dC3a1UEA5neCo-Vhxw_60qpO_vE"
+      authDomain: "trinket-gcr-test.firebaseapp.com"
+      projectId: "trinket-gcr-test"
+      storageBucket: "trinket-gcr-test.firebasestorage.app"
+      messagingSenderId: "661552644165"
+      appId: "1:661552644165:web:9777bab79ffa707457232c"

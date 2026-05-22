@@ -21,6 +21,7 @@ set -euo pipefail
 #   export MEMORY=512Mi                    # default: 512Mi
 #   export MAX_INSTANCES=10                # default: 10
 #   export SKIP_BUILD=1                    # reuse the existing image tag
+#   export ADMIN_EMAILS='["you@example.com"]'  # JSON array of admin emails
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -f "${SCRIPT_DIR}/.env" ]]; then
@@ -234,7 +235,7 @@ cat > "${PATCH_ENV_VARS_FILE}" <<YAML
 NODE_ENV: production
 NODE_APP_INSTANCE: cloudrun
 GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT}
-NODE_CONFIG: '{"app":{"url":{"hostname":"${HOSTNAME}"}}}'
+NODE_CONFIG: '{"app":{"url":{"hostname":"${HOSTNAME}"}},"auth":{"adminEmails":${ADMIN_EMAILS:-[]}}}'
 GOOGLE_CALLBACK_URL: https://${HOSTNAME}/auth/google/callback
 YAML
 
