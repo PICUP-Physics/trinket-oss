@@ -301,19 +301,18 @@
 
   <div class="row">
     <div class="small-12 columns">
-      <p ng-if="emailEnabled">There are 3 ways to add students to your class:</p>
-      <p ng-if="!emailEnabled">There are 2 ways to add students to your class:</p>
+      <p>There are 2 ways to add students to your class:</p>
     </div>
   </div>
 
-  <div ng-if="emailEnabled">
+  <div>
     <div id="invitations-sent-messages"></div>
 
     <div class="row">
       <div class="small-12 columns">
         <form name="invite-users-form" ng-submit="inviteUsersToCourse()">
           <fieldset ng-class="{'border-on':formToggles.email}" class="border">
-            <legend class="clickable-legend" ng-click="toggleForm('email')"><i ng-class="{'hide':formToggles.email}" class="fa fa-chevron-right"></i> Email Invitations</legend>
+            <legend class="clickable-legend" ng-click="toggleForm('email')"><i ng-class="{'hide':formToggles.email}" class="fa fa-chevron-right"></i> Add Students</legend>
             <div ng-class="{'show-fields':formToggles.email}" class="collapsed-form">
 
               <div class="row">
@@ -327,13 +326,13 @@
                 </div>
                 <div class="medium-12 large-6 columns" data-equalizer-watch>
                   <button type="submit" class="button small secondary bottom" ng-class="{'disabled':sendingInvitations}">
-                    <i ng-class="sendingInvitations ? 'fa fa-circle-o-notch fa-spin' : 'fa fa-envelope'"></i> Send Invitations
+                    <i ng-class="sendingInvitations ? 'fa fa-circle-o-notch fa-spin' : 'fa fa-add'"></i> Add Students
                   </button>
                 </div>
               </div>
               <div class="row">
                 <div class="small-12 columns">
-                  We'll send an email with a unique link to each address. You'll see a list of pending invitations below.
+                  Students will be able to sign up with their email address. You'll see a list of pending students below.
                 </div>
               </div>
 
@@ -375,7 +374,7 @@
 
   </section> <!-- end add users -->
 
-  <div ng-if="emailEnabled">
+  <div>
     <div id="invitations-update-messages"></div>
 
     <div class="row" ng-show="haveInvitations()">
