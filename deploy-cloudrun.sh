@@ -37,10 +37,11 @@ if [[ -z "${FIREBASE_CLIENT_CONFIG:-}" ]]; then
   exit 1
 fi
 if ! node -e "
-  var cfg = JSON.parse(process.env.FIREBASE_CLIENT_CONFIG);
+  var cfg;
+  try { cfg = JSON.parse(process.argv[1]); } catch(e) { console.error('FIREBASE_CLIENT_CONFIG is not valid JSON: ' + e.message); process.exit(1); }
   var missing = ['apiKey','authDomain','projectId','appId'].filter(function(k){return !cfg[k];});
   if (missing.length) { console.error('FIREBASE_CLIENT_CONFIG missing fields: ' + missing.join(', ')); process.exit(1); }
-" 2>&1; then
+" -- "${FIREBASE_CLIENT_CONFIG}" 2>&1; then
   exit 1
 fi
 
