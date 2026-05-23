@@ -117,8 +117,10 @@ const init = async () => {
           isSecure: config.app.plugins.session.cookieOptions.isSecure !== false,
           isSameSite: 'Lax'
         },
-        // Store sessions server-side in MongoDB
-        maxCookieSize: 0,
+        // Store sessions in the cookie when they fit (most cases), fall
+        // back to the server-side cache for anything that exceeds the
+        // cookie size limit.
+        maxCookieSize: 3500,
         name: config.app.plugins.session.name || 'session',
         cache: {
           cache: 'sessions',
