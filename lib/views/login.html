@@ -37,8 +37,8 @@
 <script src="https://www.gstatic.com/firebasejs/ui/6.1.0/firebase-ui-auth__en.js"></script>
 <script>
 (function() {
-  var firebaseConfig  = {{ firebaseConfig | json | safe }};
-  var authEmulatorUrl = {{ authEmulatorUrl | json | safe }};
+  var firebaseConfig  = {% if firebaseConfig %}{{ firebaseConfig | json | safe }}{% else %}{}{% endif %};
+  var authEmulatorUrl = {% if authEmulatorUrl %}{{ authEmulatorUrl | json | safe }}{% else %}null{% endif %};
 
   firebase.initializeApp(firebaseConfig);
 

@@ -41,6 +41,10 @@ Optional:
   MEMORY                   Container memory (default: 512Mi)
   MAX_INSTANCES            Max instances (default: 10)
   SKIP_BUILD               Set to 1 to reuse the existing image tag
+  NO_TRAFFIC               Set to 1 to deploy without routing traffic; the new
+                           revision is reachable only via its tagged URL until
+                           you promote it with `gcloud run services update-traffic`
+  TAG                      Tag name for no-traffic deploys (default: candidate)
   GOOGLE_CLIENT_ID         Google OAuth 2.0 client ID (prompted if unset)
   GOOGLE_CLIENT_SECRET     Google OAuth 2.0 client secret
 
@@ -99,6 +103,8 @@ REPO_NAME="${REPO_NAME:-trinket}"
 MEMORY="${MEMORY:-512Mi}"
 MAX_INSTANCES="${MAX_INSTANCES:-10}"
 SKIP_BUILD="${SKIP_BUILD:-false}"
+NO_TRAFFIC="${NO_TRAFFIC:-false}"
+TAG="${TAG:-candidate}"
 SECRET_NAME="trinket-session-password"
 GOOGLE_CLIENT_ID_SECRET="trinket-google-client-id"
 GOOGLE_CLIENT_SECRET_SECRET="trinket-google-client-secret"
@@ -114,6 +120,7 @@ echo "Region:   ${GOOGLE_CLOUD_REGION}"
 echo "Service:  ${SERVICE_NAME}"
 echo "Image:    ${IMAGE}"
 echo "Build:    $([[ "${SKIP_BUILD}" =~ ^(1|true|yes)$ ]] && echo "skip" || echo "run")"
+echo "Traffic:  $([[ "${NO_TRAFFIC}" =~ ^(1|true|yes)$ ]] && echo "0% (tag=${TAG})" || echo "100%")"
 echo ""
 
 # Ensure required APIs are enabled
@@ -238,7 +245,7 @@ fi
 # only in the console.  Fetch the live value first so we can re-apply it in
 # the --update-env-vars patch step below.  We ignore any locally-set
 # ADMIN_EMAILS (e.g. from .env) intentionally — console is the source of truth.
-echo "--- Fetching ADMIN_EMAILS from live service ---"
+echo "--- Fetching live service state ---"
 gcloud run services describe "${SERVICE_NAME}" \
   --region="${GOOGLE_CLOUD_REGION}" \
   --project="${GOOGLE_CLOUD_PROJECT}" \
@@ -254,6 +261,24 @@ _LIVE_ADMIN_EMAILS=$(node -e "
 " 2>/dev/null || true)
 [[ -n "${_LIVE_ADMIN_EMAILS}" ]] && echo "    Preserved ADMIN_EMAILS from live service"
 
+_LIVE_SERVICE_URL=$(node -e "
+  var fs = require('fs');
+  var d; try { d = JSON.parse(fs.readFileSync('${_LIVE_ENV_FILE}', 'utf8')); } catch(e) { d = {}; }
+  process.stdout.write((d && d.status && d.status.url) || '');
+" 2>/dev/null || true)
+
+# No-traffic mode requires the service to already exist so we can derive the
+# hostname (needed for NODE_CONFIG/GOOGLE_CALLBACK_URL) before deploying.
+# This lets us put every env var in the deploy call, avoiding the second
+# "patch" revision that would otherwise undo --no-traffic / --tag.
+if [[ "${NO_TRAFFIC}" =~ ^(1|true|yes)$ ]]; then
+  if [[ -z "${_LIVE_SERVICE_URL}" ]]; then
+    echo "Error: NO_TRAFFIC requires the service to already exist (no prior revision to keep serving)." >&2
+    exit 1
+  fi
+  HOSTNAME=$(echo "${_LIVE_SERVICE_URL}" | sed 's|https://||')
+fi
+
 # Deploy to Cloud Run
 echo "--- Deploying to Cloud Run ---"
 cat > "${ENV_VARS_FILE}" <<YAML
@@ -262,9 +287,33 @@ NODE_APP_INSTANCE: cloudrun
 GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT}
 YAML
 
+# In no-traffic mode, include every env var up front so the single deploy
+# produces the final revision. JSON.stringify quotes values safely for YAML.
+if [[ "${NO_TRAFFIC}" =~ ^(1|true|yes)$ ]]; then
+  HOSTNAME="${HOSTNAME}" \
+  FIREBASE_CLIENT_CONFIG="${FIREBASE_CLIENT_CONFIG}" \
+  _LIVE_ADMIN_EMAILS="${_LIVE_ADMIN_EMAILS}" \
+  node -e "
+    var h = process.env.HOSTNAME;
+    var lines = [];
+    lines.push('NODE_CONFIG: ' + JSON.stringify(JSON.stringify({app:{url:{hostname:h}}})));
+    lines.push('GOOGLE_CALLBACK_URL: ' + JSON.stringify('https://' + h + '/auth/google/callback'));
+    lines.push('FIREBASE_CLIENT_CONFIG: ' + JSON.stringify(process.env.FIREBASE_CLIENT_CONFIG));
+    if (process.env._LIVE_ADMIN_EMAILS) {
+      lines.push('ADMIN_EMAILS: ' + JSON.stringify(process.env._LIVE_ADMIN_EMAILS));
+    }
+    process.stdout.write(lines.join('\n') + '\n');
+  " >> "${ENV_VARS_FILE}"
+fi
+
 SECRETS_ARG="SESSION_PASSWORD=${SECRET_NAME}:latest"
 if [[ -n "${GOOGLE_CLIENT_ID:-}" ]]; then
   SECRETS_ARG="${SECRETS_ARG},GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID_SECRET}:latest,GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET_SECRET}:latest"
+fi
+
+DEPLOY_TRAFFIC_ARGS=()
+if [[ "${NO_TRAFFIC}" =~ ^(1|true|yes)$ ]]; then
+  DEPLOY_TRAFFIC_ARGS=(--no-traffic --tag="${TAG}")
 fi
 
 gcloud run deploy "${SERVICE_NAME}" \
@@ -280,13 +329,38 @@ gcloud run deploy "${SERVICE_NAME}" \
   --max-instances="${MAX_INSTANCES}" \
   --env-vars-file="${ENV_VARS_FILE}" \
   --set-secrets="${SECRETS_ARG}" \
+  "${DEPLOY_TRAFFIC_ARGS[@]}" \
   --quiet
 
-# Get the service URL
+# Get the service URL (stable across revisions)
 SERVICE_URL=$(gcloud run services describe "${SERVICE_NAME}" \
   --region="${GOOGLE_CLOUD_REGION}" \
   --project="${GOOGLE_CLOUD_PROJECT}" \
   --format='value(status.url)')
+
+if [[ "${NO_TRAFFIC}" =~ ^(1|true|yes)$ ]]; then
+  TAGGED_URL=$(gcloud run services describe "${SERVICE_NAME}" \
+    --region="${GOOGLE_CLOUD_REGION}" \
+    --project="${GOOGLE_CLOUD_PROJECT}" \
+    --flatten=status.traffic \
+    --filter="status.traffic.tag=${TAG}" \
+    --format='value(status.traffic.url)' | head -1)
+  echo ""
+  echo "=== No-traffic deploy complete ==="
+  echo "Tagged URL (test here):  ${TAGGED_URL}"
+  echo "Prod URL (unchanged):    ${SERVICE_URL}"
+  echo ""
+  echo "Note: the tagged URL is a *.run.app host. Firebase Auth popup sign-in"
+  echo "      will be rejected unless you add this hostname to Firebase's"
+  echo "      authorized domains (Console > Authentication > Settings)."
+  echo ""
+  echo "To promote 100% traffic to this revision:"
+  echo "  gcloud run services update-traffic ${SERVICE_NAME} \\"
+  echo "    --to-tags ${TAG}=100 \\"
+  echo "    --region ${GOOGLE_CLOUD_REGION} \\"
+  echo "    --project ${GOOGLE_CLOUD_PROJECT}"
+  exit 0
+fi
 
 # Patch NODE_CONFIG with the service hostname
 echo "--- Patching NODE_CONFIG with service hostname ---"
