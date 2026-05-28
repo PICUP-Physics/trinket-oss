@@ -31,7 +31,7 @@ auth:
       appId: ''
 
 app:
-  siteName: 'Trinket'
+  siteName: 'M&I-Trinket'
   siteUrl: ''
   supportEmail: ''
   adminEmail: ''
