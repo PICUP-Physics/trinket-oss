@@ -249,3 +249,133 @@ beats simulated.
 - If beta: which class(es), which term, what's the rollback plan if
   something breaks mid-session?
 - Budget for Firestore ops during testing — what's acceptable?
+
+
+❯ OK, I need to investigate costs for various deployment options. Imagine we have 100s of instructors, and (probably) thousands of students. Compare: 1) using the gcr/firebase       
+  deployment we've been testing vs. 2) A well configured VPS (maybe 32G RAM, 500G HD space) running MongoDB/Redis. How would the costs compare? How would the user experience         
+  compare? What happens if we get 10x users? Can you write up some pros/cons for these two situations?                                                                                
+  
+⏺ Here's a grounded comparison based on what this stack actually does:
+  
+  ---
+  GCR + Firestore vs. VPS (MongoDB/Redis)
+  
+  Baseline assumptions
+
+  - Hundreds of instructors = ~500 MAU instructors
+  - Thousands of students = ~3,000 MAU students
+  - Average student: 15 page loads/day on active days, ~10 active days/month
+  - Average instructor: 20 page loads/day on active days, ~20 active days/month
+  - Firestore reads per page load: ~10 (course, lesson, material, user, enrollment checks)
+  - Writes: ~5/student submission
+
+  ---
+  Cost estimates — current load
+
+  GCR + Firestore
+
+  ┌────────────────────────────────────┬───────────────┐
+  │                Item                │    $/month    │
+  ├────────────────────────────────────┼───────────────┤
+  │ Firestore reads: ~4.5M/month       │ $2.70         │
+  ├────────────────────────────────────┼───────────────┤
+  │ Firestore writes: ~450k/month      │ $0.81         │
+  ├────────────────────────────────────┼───────────────┤
+  │ Firestore storage (grows slowly)   │ $1–5          │
+  ├────────────────────────────────────┼───────────────┤
+  │ Cloud Run CPU+memory               │ $5–15         │
+  ├────────────────────────────────────┼───────────────┤
+  │ Firebase Auth (free tier: 10k MAU) │ $0            │
+  ├────────────────────────────────────┼───────────────┤
+  │ Total                              │ ~$10–25/month │
+  └────────────────────────────────────┴───────────────┘
+
+  VPS (Hetzner CX52: 16 vCPU, 32GB RAM, 500GB NVMe)
+
+  ┌────────────────────────────────────────────────────────┬───────────────┐
+  │                          Item                          │    $/month    │
+  ├────────────────────────────────────────────────────────┼───────────────┤
+  │ Server (Hetzner CPX51)                                 │ ~$55          │
+  ├────────────────────────────────────────────────────────┼───────────────┤
+  │ Backups                                                │ ~$10          │
+  ├────────────────────────────────────────────────────────┼───────────────┤
+  │ Monitoring (e.g. UptimeRobot free / Better Uptime $20) │ $0–20         │
+  ├────────────────────────────────────────────────────────┼───────────────┤
+  │ Total                                                  │ ~$65–85/month │
+  └────────────────────────────────────────────────────────┴───────────────┘
+
+  At baseline, GCR + Firestore is cheaper — but only if the Firestore access patterns are disciplined (the CLAUDE.md warning is real: one bad N+1 loop in a hot path can 10× read
+  costs overnight).
+
+  ---
+  Cost estimates — 10× users (~30,000 students)
+  
+  GCR + Firestore
+
+  Firestore reads scale linearly. At 10×:
+  - Reads: ~45M/month → $27/month
+  - Writes: ~4.5M/month → $8/month
+  - Cloud Run scales automatically → ~$50–100/month at peak
+  - Total: ~$85–135/month
+  
+  ...assuming no N+1 regressions. A single dashboard page that reads each student's submission individually (N+1) at 30 students/assignment → 30× the expected read cost for that
+  page. One careless query in a hot path could easily push you to $300–500/month.
+
+  VPS — same hardware
+  
+  A 32GB/16-core machine running Node.js (PM2 cluster), MongoDB with adequate RAM for working set, and Redis for sessions will handle 30,000 students comfortably. The codebase is
+  Hapi — stateless request handlers, fast. You'd want to check MongoDB indexes but otherwise:
+  - Total: ~$65–85/month (same server, maybe add $20 for bigger backup storage)
+  
+  At 10×, the VPS wins on cost and becomes more predictable.
+
+  ---
+  User experience
+
+  ┌────────────────┬──────────────────────────────────────────────────────────────────────────────┬───────────────────────────────────────────────────────────────────────────────┐
+  │   Dimension    │                               GCR + Firestore                                │                                      VPS                                      │
+  ├────────────────┼──────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────┤
+  │ Cold starts    │ 2–5 sec latency after idle period (configurable min-instances=1 fixes this,  │ None — process always running                                                 │
+  │                │ ~$20/month)                                                                  │                                                                               │
+  ├────────────────┼──────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────┤
+  │ Latency at     │ Scales out automatically; no degradation under traffic spikes                │ Fixed capacity; needs PM2 workers tuned; could degrade under surprise traffic │
+  │ load           │                                                                              │  spike                                                                        │
+  ├────────────────┼──────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────┤
+  │ Availability   │ Google's 99.95% SLA                                                          │ Whatever you configure; single machine = single point of failure unless you   │
+  │                │                                                                              │ add a replica                                                                 │
+  ├────────────────┼──────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────┤
+  │ Ops burden     │ Near-zero: no patching, no backups, no disk management                       │ Real: OS patches, MongoDB backups, disk monitoring, log rotation              │
+  └────────────────┴──────────────────────────────────────────────────────────────────────────────┴───────────────────────────────────────────────────────────────────────────────┘
+
+  ---
+  What happens at 10× users?
+
+  GCR + Firestore:
+  - Scales transparently — no intervention needed
+  - Costs climb predictably if code is clean; unpredictably if there are read hotspots
+  - Firestore has no "slow query" visibility — you need to instrument reads manually to catch regressions
+  
+  VPS:
+  - 32GB / 500GB handles it easily (MongoDB working set for thousands of courses/submissions fits in RAM)
+  - If you eventually hit 100k+ students you'd upgrade the machine or add a read replica — straightforward
+  - MongoDB slow query log gives you instant visibility into problems 
+
+  ---
+  Recommendation
+
+  ┌────────────────────────────────────────────────────────────────────────┬────────────────────────────────────────────────────────────────────┐
+  │                                Scenario                                │                           Recommendation                           │
+  ├────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────┤
+  │ Small team, no dedicated sysadmin, want to stay focused on product     │ GCR + Firestore — the ops savings pay for the cost premium         │
+  ├────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────┤
+  │ You have someone comfortable with Linux/MongoDB, cost matters at scale │ VPS — cheaper at 10×, more predictable, better query observability │
+  ├────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────┤
+  │ Regulatory / data residency requirements                               │ VPS — you control where data lives                                 │
+  ├────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────┤
+  │ You expect sudden viral traffic spikes                                 │ GCR — auto-scaling is genuinely valuable here                      │
+  └────────────────────────────────────────────────────────────────────────┴────────────────────────────────────────────────────────────────────┘
+
+  The codebase already has the MongoDB backend wired up (db.backend: mongoose in config), so switching from Firestore back to MongoDB on a VPS is a config change + migration script,
+  not a rewrite. That's a meaningful hedge — you're not locked in to either choice permanently.
+
+
