@@ -12,9 +12,95 @@ services:
       - public_css:/usr/local/node/trinket/public/css
     networks:
       - trinket
+    environment:
+      NODE_CONFIG: |
+        {
+          "features": {
+            "assets": true
+          },
+          "aws": {
+            "keyId": "trinket-dev-key",
+            "key": "trinket-dev-secret-key",
+            "region": "garage",
+            "endpoint": "http://garage:3900",
+            "s3ForcePathStyle": true,
+            "signatureVersion": "v4",
+            "buckets": {
+              "userassets": {
+                "name": "trinket-userassets",
+                "host": "http://trinket-userassets.localhost:3902",
+                "thumbnail": "thumb-%{s}",
+                "thumbnailHost": "http://trinket-userassets.localhost:3902",
+                "thumbnailBucket": "trinket-userassets"
+              },
+              "snapshots": {
+                "name": "trinket-snapshots",
+                "host": "http://trinket-snapshots.localhost:3902"
+              },
+              "materials": {
+                "name": "trinket-materials",
+                "host": "http://trinket-materials.localhost:3902"
+              },
+              "useravatars": {
+                "name": "trinket-useravatars",
+                "host": "http://trinket-useravatars.localhost:3902"
+              },
+              "exports": {
+                "name": "trinket-exports",
+                "host": "http://trinket-exports.localhost:3902"
+              }
+            }
+          }
+        }
     links:
       - redis
       - mongodb
+    depends_on:
+      redis:
+        condition: service_started
+      mongodb:
+        condition: service_started
+      garage-init:
+        condition: service_completed_successfully
+  garage:
+    build:
+      context: ../garage
+      dockerfile: Dockerfile.trinket
+    image: trinket/garage:latest
+    container_name: garage
+    command: ["-c", "/etc/garage.toml", "server"]
+    ports:
+      - 3900:3900
+      - 3902:3902
+      - 3903:3903
+    volumes:
+      - ./docker/garage/garage.toml:/etc/garage.toml:ro
+      - garage_data:/var/lib/garage
+    networks:
+      - trinket
+    healthcheck:
+      test: ["CMD", "/garage", "-c", "/etc/garage.toml", "status"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+  garage-init:
+    image: trinket/garage:latest
+    container_name: garage-init
+    entrypoint: ["/bin/sh", "/docker/garage/init.sh"]
+    depends_on:
+      garage:
+        condition: service_started
+    environment:
+      GARAGE_CONFIG: /etc/garage.toml
+      GARAGE_ACCESS_KEY_ID: trinket-dev-key
+      GARAGE_SECRET_ACCESS_KEY: trinket-dev-secret-key
+    volumes:
+      - ./docker/garage:/docker/garage:ro
+      - ./docker/garage/garage.toml:/etc/garage.toml:ro
+      - garage_data:/var/lib/garage
+    networks:
+      - trinket
+    restart: "no"
   redis:
     image: redis:latest
     ports:
@@ -40,3 +126,4 @@ volumes:
   public_components:
   public_css:
   mongodb_data:
+  garage_data:

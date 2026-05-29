@@ -59,10 +59,48 @@ db:
 #   keyId: 'your-access-key-id'
 #   key: 'your-secret-key'
 #   region: 'us-east-1'
+#   # For S3-compatible storage such as Garage:
+#   # endpoint: 'http://garage:3900'
+#   # s3ForcePathStyle: true
+#   # signatureVersion: 'v4'
 #   buckets:
 #     userassets:
 #       name: 'your-bucket-name'
 #       host: 'https://your-bucket.s3.amazonaws.com'
+
+# Docker Compose includes a local Garage service for S3-compatible storage.
+# The app container is configured with NODE_CONFIG in docker-compose.yml. If you
+# run Trinket outside Docker and still want to use that Garage service, use:
+#
+# features:
+#   assets: true
+#
+# aws:
+#   keyId: 'trinket-dev-key'
+#   key: 'trinket-dev-secret-key'
+#   region: 'garage'
+#   endpoint: 'http://localhost:3900'
+#   s3ForcePathStyle: true
+#   signatureVersion: 'v4'
+#   buckets:
+#     userassets:
+#       name: 'trinket-userassets'
+#       host: 'http://trinket-userassets.localhost:3902'
+#       thumbnail: 'thumb-%{s}'
+#       thumbnailHost: 'http://trinket-userassets.localhost:3902'
+#       thumbnailBucket: 'trinket-userassets'
+#     snapshots:
+#       name: 'trinket-snapshots'
+#       host: 'http://trinket-snapshots.localhost:3902'
+#     materials:
+#       name: 'trinket-materials'
+#       host: 'http://trinket-materials.localhost:3902'
+#     useravatars:
+#       name: 'trinket-useravatars'
+#       host: 'http://trinket-useravatars.localhost:3902'
+#     exports:
+#       name: 'trinket-exports'
+#       host: 'http://trinket-exports.localhost:3902'
 
 # =============================================================================
 # OPTIONAL: Google OAuth
