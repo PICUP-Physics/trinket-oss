@@ -7,10 +7,10 @@ features:
     python: true       # Skulpt-based Python 2/3 (enabled by default)
     html: false        # HTML/CSS/JS
     blocks: false      # Block-based coding
-    glowscript: false  # 3D graphics with GlowScript/VPython
+    glowscript: true  # 3D graphics with GlowScript/VPython
     glowscript-blocks: false
     console: false     # Python console/REPL
-    music: false       # EarSketch music coding
+    music: true       # EarSketch music coding
     # Server-side languages - require additional backend services
     python3: false     # Requires Python 3 backend
     java: false        # Requires Java backend
@@ -391,6 +391,9 @@ aws:
   key: ''
   keyId: ''
   region: us-east-1
+  endpoint:
+  s3ForcePathStyle:
+  signatureVersion:
   buckets:
     userassets:
       name: your-user-assets-bucket

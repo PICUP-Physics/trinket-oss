@@ -74,6 +74,11 @@
   {% for script in config.app.assets.jshead %}
     <script src="{{ script | cachePrefix }}"></script>
   {% endfor %}
+  <script>
+    if (window._ && !_.contains && _.includes) {
+      _.contains = _.includes;
+    }
+  </script>
   {% include "includes/recaptcha.html" %}
   {% block extra_head %}{% endblock %}
 </head>
