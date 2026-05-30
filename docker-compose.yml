@@ -19,8 +19,8 @@ services:
             "assets": true
           },
           "aws": {
-            "keyId": "trinket-dev-key",
-            "key": "trinket-dev-secret-key",
+            "keyId": "GK00112233445566778899aabb",
+            "key": "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
             "region": "garage",
             "endpoint": "http://garage:3900",
             "s3ForcePathStyle": true,
@@ -64,8 +64,8 @@ services:
         condition: service_completed_successfully
   garage:
     build:
-      context: ../garage
-      dockerfile: Dockerfile.trinket
+      context: ./docker/garage
+      dockerfile: Dockerfile
     image: trinket/garage:latest
     container_name: garage
     command: ["-c", "/etc/garage.toml", "server"]
@@ -92,8 +92,8 @@ services:
         condition: service_started
     environment:
       GARAGE_CONFIG: /etc/garage.toml
-      GARAGE_ACCESS_KEY_ID: trinket-dev-key
-      GARAGE_SECRET_ACCESS_KEY: trinket-dev-secret-key
+      GARAGE_ACCESS_KEY_ID: GK00112233445566778899aabb
+      GARAGE_SECRET_ACCESS_KEY: "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
     volumes:
       - ./docker/garage:/docker/garage:ro
       - ./docker/garage/garage.toml:/etc/garage.toml:ro

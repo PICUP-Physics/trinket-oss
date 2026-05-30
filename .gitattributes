@@ -1,0 +1,4 @@
+# Shell scripts must use LF so they run inside Linux containers,
+# even when the repo is checked out on Windows.
+*.sh text eol=lf
+docker/garage/init.sh text eol=lf
