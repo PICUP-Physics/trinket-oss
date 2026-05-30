@@ -10,6 +10,9 @@ public/maintenance.html
 *.sublime-project
 *.sublime-workspace
 
+# Local environment secrets (Garage/S3 credentials, etc.)
+.env
+
 Vagrantfile
 .vagrant
 
