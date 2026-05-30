@@ -1,7 +1,7 @@
 # Trinket-OSS: GCR Deployment & Firestore Adapter Plan
 
 **Original:** 2026-04-06
-**Last revised:** 2026-05-26
+**Last revised:** 2026-05-29
 **Codebase:** trinket-oss (Hapi.js + Firestore + Firebase Auth + GCS)
 
 ---
@@ -55,7 +55,27 @@ opening to real classroom traffic.
    `container_name: trinket-gcr` and host port `3001`, so this repo can run
    alongside the main `trinket-oss` clone. (Done in this revision.)
 
-5. **Production readiness pre-launch checklist** (not yet written):
+5. **Enable GCS file upload (materials bucket).** `features.assets` is
+   currently `false` everywhere — file uploads are disabled. The
+   `trinket-snapshots` bucket exists but no materials bucket does yet.
+   Steps:
+   - Create bucket: `gsutil mb -l US-CENTRAL1 -p trinket-gcr-test gs://trinket-materials`
+   - Make publicly readable: `gsutil iam ch allUsers:objectViewer gs://trinket-materials`
+   - Create HMAC keys for the Cloud Run service account:
+     `gcloud storage hmac create <sa>@trinket-gcr-test.iam.gserviceaccount.com`
+   - Store in Secret Manager (`trinket-aws-key-id`, `trinket-aws-key`) and
+     wire into `deploy-cloudrun.sh` following the `SESSION_PASSWORD` pattern
+   - Add GCS endpoint override to `config/aws.js`:
+     `endpoint: 'https://storage.googleapis.com'`
+   - Add to `production-cloudrun.yaml`: `features.assets: true`,
+     `aws.keyId/key/region`, `aws.buckets.materials.name/host`
+   - After enabling, run `node scripts/fix-imported-file-urls.js` to
+     re-host existing imported course assets from trinket.io onto GCS
+
+   Note: `aws-sdk` (item 2 above) cannot be dropped until this is resolved
+   — the file upload path still uses it via `lib/util/file.js`.
+
+6. **Production readiness pre-launch checklist** (not yet written):
    - Real Firebase Auth authorized-domains list (no `*.run.app` tagged URLs)
    - Cloud Run min-instances tuning
    - Firestore composite indexes for the queries that need them (verify via

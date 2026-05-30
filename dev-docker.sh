@@ -72,10 +72,15 @@ exec docker run --rm -it --init \
   -p "${PORT}:3000" \
   -e "SESSION_PASSWORD=${SESSION_PASSWORD:-}" \
   -e "FIRESTORE_EMULATOR_HOST=${DOCKER_EMULATOR_HOST}" \
+  -e "FIREBASE_AUTH_EMULATOR_HOST=host.docker.internal:9099" \
+  -e "FIREBASE_AUTH_EMULATOR_URL=http://localhost:9099" \
+  -e "FIREBASE_CLIENT_CONFIG=${FIREBASE_CLIENT_CONFIG:-}" \
+  -e "GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}" \
+  -e "GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}" \
   -e "STORAGE_EMULATOR_HOST=${DOCKER_STORAGE_HOST}" \
   -e "STORAGE_PUBLIC_HOST=http://localhost:9199" \
   -e "GOOGLE_CLOUD_PROJECT=${PROJECT}" \
   -e "NODE_ENV=development" \
-  -e "NODE_CONFIG={\"app\":{\"url\":{\"protocol\":\"http\",\"hostname\":\"localhost\",\"port\":${PORT}},\"auth\":{\"google\":{\"clientID\":\"${GOOGLE_CLIENT_ID:-}\",\"clientSecret\":\"${GOOGLE_CLIENT_SECRET:-}\",\"callbackURL\":\"http://localhost:${PORT}/auth/google/callback\"}}},\"db\":{\"backend\":\"firestore\",\"firestore\":{\"projectId\":\"${PROJECT}\"},\"redis\":{\"enabled\":false}},\"features\":{\"trinkets\":{\"python\":false,\"html\":false,\"glowscript\":true}}}" \
+  -e "NODE_CONFIG={\"app\":{\"url\":{\"protocol\":\"http\",\"hostname\":\"localhost\",\"port\":${PORT}},\"auth\":{\"google\":{\"clientID\":\"${GOOGLE_CLIENT_ID:-}\",\"clientSecret\":\"${GOOGLE_CLIENT_SECRET:-}\",\"callbackURL\":\"http://localhost:${PORT}/auth/google/callback\"},\"adminEmails\":${ADMIN_EMAILS:-[]}}},\"db\":{\"backend\":\"firestore\",\"firestore\":{\"projectId\":\"${PROJECT}\"},\"redis\":{\"enabled\":false}},\"features\":{\"trinkets\":{\"python\":false,\"html\":false,\"glowscript\":true}}}" \
   "$IMAGE" \
   node app.js

@@ -16,6 +16,8 @@ services:
       NODE_ENV: development
       GOOGLE_CLOUD_PROJECT: demo-trinket
       FIRESTORE_EMULATOR_HOST: host.docker.internal:8080
+      STORAGE_EMULATOR_HOST: http://host.docker.internal:9199
+      STORAGE_PUBLIC_HOST: http://localhost:9199
       # Auth emulator: server (admin SDK) talks to it via host.docker.internal;
       # browser is told via FIREBASE_AUTH_EMULATOR_URL (uses localhost).
       FIREBASE_AUTH_EMULATOR_HOST: host.docker.internal:9099
@@ -23,7 +25,7 @@ services:
       SESSION_PASSWORD: ${SESSION_PASSWORD}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
-      GOOGLE_CALLBACK_URL: http://localhost:3000/auth/google/callback
+      GOOGLE_CALLBACK_URL: http://localhost:3001/auth/google/callback
       FIREBASE_CLIENT_CONFIG: ${FIREBASE_CLIENT_CONFIG}
       NODE_CONFIG: >-
-        {"app":{"url":{"hostname":"localhost","protocol":"http","port":3000},"plugins":{"session":{"cache":{"backend":"memory"}}},"auth":{"google":{"callbackURL":"http://localhost:3000/auth/google/callback"}}},"db":{"backend":"firestore","firestore":{"projectId":"demo-trinket"},"redis":{"enabled":false}}}
+        {"app":{"url":{"hostname":"localhost","protocol":"http","port":3001},"plugins":{"session":{"cache":{"backend":"memory"}}},"auth":{"google":{"callbackURL":"http://localhost:3001/auth/google/callback"}}},"db":{"backend":"firestore","firestore":{"projectId":"demo-trinket"},"redis":{"enabled":false}}}
