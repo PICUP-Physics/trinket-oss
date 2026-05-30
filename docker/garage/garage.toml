@@ -8,7 +8,7 @@ compression_level = 1
 
 rpc_bind_addr = "0.0.0.0:3901"
 rpc_public_addr = "garage:3901"
-rpc_secret = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+# rpc_secret is provided via the GARAGE_RPC_SECRET environment variable (see .env)
 
 [s3_api]
 api_bind_addr = "0.0.0.0:3900"
@@ -22,4 +22,4 @@ index = "index.html"
 
 [admin]
 api_bind_addr = "0.0.0.0:3903"
-admin_token = "trinket-garage-admin-token"
+# admin_token is provided via the GARAGE_ADMIN_TOKEN environment variable (see .env)

@@ -69,6 +69,9 @@ services:
     image: trinket/garage:latest
     container_name: garage
     command: ["-c", "/etc/garage.toml", "server"]
+    environment:
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET}
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN}
     ports:
       - 3900:3900
       - 3902:3902
@@ -92,6 +95,7 @@ services:
         condition: service_started
     environment:
       GARAGE_CONFIG: /etc/garage.toml
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET}
       GARAGE_ACCESS_KEY_ID: ${GARAGE_KEY_ID}
       GARAGE_SECRET_ACCESS_KEY: ${GARAGE_SECRET}
     volumes:
