@@ -1,3 +1,6 @@
+storage:
+  backend: s3   # s3 (aws-sdk) or gcs (@google-cloud/storage)
+
 features:
   courses: true   # Enable/disable courses feature entirely
   assets: false   # Enable/disable asset uploads (requires S3 or compatible storage)

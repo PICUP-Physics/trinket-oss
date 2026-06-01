@@ -28,6 +28,29 @@ db:
   # db.firestore.projectId is not set here; the Firestore SDK reads
   # GOOGLE_CLOUD_PROJECT automatically on Cloud Run.
 
+storage:
+  backend: gcs
+
+# features.assets requires gs://trinket-materials to exist with the Cloud Run
+# service account having roles/storage.objectAdmin on that bucket.
+features:
+  assets: true
+
+aws:
+  buckets:
+    materials:
+      name: trinket-materials
+      host: https://storage.googleapis.com/trinket-materials
+    userassets:
+      name: trinket-user-assets
+      host: https://storage.googleapis.com/trinket-user-assets
+    useravatars:
+      name: trinket-user-assets
+      host: https://storage.googleapis.com/trinket-user-assets
+    snapshots:
+      name: trinket-snapshots
+      host: https://storage.googleapis.com/trinket-snapshots
+
 # adminEmails and firebase.clientConfig are injected via NODE_CONFIG env var at deploy time.
 # See deploy-cloudrun.sh and .env (ADMIN_EMAILS, FIREBASE_CLIENT_CONFIG).
 auth:

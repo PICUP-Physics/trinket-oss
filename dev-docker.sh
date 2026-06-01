@@ -81,6 +81,6 @@ exec docker run --rm -it --init \
   -e "STORAGE_PUBLIC_HOST=http://localhost:9199" \
   -e "GOOGLE_CLOUD_PROJECT=${PROJECT}" \
   -e "NODE_ENV=development" \
-  -e "NODE_CONFIG={\"app\":{\"url\":{\"protocol\":\"http\",\"hostname\":\"localhost\",\"port\":${PORT}},\"auth\":{\"google\":{\"clientID\":\"${GOOGLE_CLIENT_ID:-}\",\"clientSecret\":\"${GOOGLE_CLIENT_SECRET:-}\",\"callbackURL\":\"http://localhost:${PORT}/auth/google/callback\"},\"adminEmails\":${ADMIN_EMAILS:-[]}}},\"db\":{\"backend\":\"firestore\",\"firestore\":{\"projectId\":\"${PROJECT}\"},\"redis\":{\"enabled\":false}},\"features\":{\"trinkets\":{\"python\":false,\"html\":false,\"glowscript\":true}}}" \
+  -e "NODE_CONFIG={\"app\":{\"url\":{\"protocol\":\"http\",\"hostname\":\"localhost\",\"port\":${PORT}},\"auth\":{\"google\":{\"clientID\":\"${GOOGLE_CLIENT_ID:-}\",\"clientSecret\":\"${GOOGLE_CLIENT_SECRET:-}\",\"callbackURL\":\"http://localhost:${PORT}/auth/google/callback\"},\"adminEmails\":${ADMIN_EMAILS:-[]}}},\"db\":{\"backend\":\"firestore\",\"firestore\":{\"projectId\":\"${PROJECT}\"},\"redis\":{\"enabled\":false}},\"storage\":{\"backend\":\"gcs\"},\"features\":{\"assets\":true,\"trinkets\":{\"python\":false,\"html\":false,\"glowscript\":true}}}" \
   "$IMAGE" \
   node app.js
