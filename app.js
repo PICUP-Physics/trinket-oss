@@ -92,8 +92,8 @@ const init = async () => {
         failAction: 'log'
       }
     },
-    // Hapi 20+ debug config format
-    debug: config.isDev ? { request: ['error'] } : false,
+    // Disable built-in debug logging; we install our own listener below (includes path)
+    debug: false,
     // Configure server-side session cache
     cache: [{
       name: 'sessions',
@@ -103,6 +103,15 @@ const init = async () => {
       }
     }]
   });
+
+  // Log request errors with path so we can identify the source
+  if (config.isDev) {
+    server.events.on({ name: 'request', filter: ['error'] }, function(request, event) {
+      var data = event.error || event.data;
+      var msg  = data ? '\n    ' + (data.stack || (typeof data === 'object' ? JSON.stringify(data) : data)) : '';
+      console.error('Debug:', event.tags.join(', '), request.method.toUpperCase(), request.path + msg);
+    });
+  }
 
   // Register plugins
   await server.register([

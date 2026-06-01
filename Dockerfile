@@ -29,6 +29,12 @@ RUN curl -L --silent -o ./public-components.tgz \
     && tar xzf public-components.tgz \
     && rm public-components.tgz
 
+# Add ACE editor files missing from the components tarball (needed by course editor)
+RUN curl -L --silent -o public/components/src-min-noconflict/theme-github.js \
+    https://cdnjs.cloudflare.com/ajax/libs/ace/1.2.6/theme-github.min.js \
+    && curl -L --silent -o public/components/src-min-noconflict/mode-markdown.js \
+    https://cdnjs.cloudflare.com/ajax/libs/ace/1.2.6/mode-markdown.min.js
+
 # Copy source last so code changes don't bust the layers above
 COPY --chown=trinket:trinket . .
 
