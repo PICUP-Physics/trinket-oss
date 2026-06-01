@@ -8,25 +8,33 @@
 // This is a one-off migration for materials imported before the fix in
 // lib/controllers/imports.js that now handles this automatically on import.
 //
-// Usage (with the Firestore emulator):
+// Usage against local emulator:
 //   FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 \
+//   STORAGE_EMULATOR_HOST=http://localhost:9199 \
+//   GOOGLE_CLOUD_PROJECT=demo-trinket \
 //   FIRESTORE_PROJECT_ID=demo-trinket \
-//   node scripts/fix-imported-file-urls.js
+//   NODE_ENV=development \
+//   node scripts/fix-imported-file-urls.js [--dry-run]
 //
-// Against production (Google Cloud Firestore):
-//   FIRESTORE_PROJECT_ID=your-project-id \
-//   GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json \
-//   node scripts/fix-imported-file-urls.js
+// Usage against production (run from repo root, do NOT source .env first):
+//   GOOGLE_CLOUD_PROJECT=trinket-gcr-test \
+//   FIRESTORE_PROJECT_ID=trinket-gcr-test \
+//   NODE_ENV=production \
+//   NODE_APP_INSTANCE=cloudrun \
+//   node scripts/fix-imported-file-urls.js --dry-run
 //
 // Pass --dry-run to preview which materials would change without writing.
-// Pass --fallback-only to skip S3 and just rewrite to absolute trinket.io URLs
-//   (useful if S3 is not configured yet).
+// Pass --fallback-only to skip GCS and just rewrite to absolute trinket.io URLs.
+//
+// IMPORTANT: do not have STORAGE_EMULATOR_HOST set when targeting production —
+// it will redirect GCS uploads to the local emulator.
 
 'use strict';
 
-process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8080';
-
-var projectId = process.env.FIRESTORE_PROJECT_ID || 'demo-trinket';
+// Inject projectId into NODE_CONFIG so models can find Firestore.
+// storage.backend, features.assets, and bucket names come from the
+// config files selected by NODE_ENV / NODE_APP_INSTANCE above.
+var projectId = process.env.FIRESTORE_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT || 'demo-trinket';
 process.env.NODE_CONFIG = process.env.NODE_CONFIG ||
   JSON.stringify({ db: { backend: 'firestore', firestore: { projectId: projectId } } });
 
