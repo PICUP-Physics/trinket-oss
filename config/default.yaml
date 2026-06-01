@@ -378,6 +378,8 @@ workers:
     templateUrl: 'http://127.0.0.1/tmp/' # should be an nginx alias pointing to outputDir
 db:
   backend: firestore
+  firestore:
+    projectId: ''   # Override in local.yaml or via GOOGLE_CLOUD_PROJECT env var
   mongo:
     host: localhost
     port: 27017
