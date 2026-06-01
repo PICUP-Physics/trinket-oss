@@ -107,6 +107,8 @@ const init = async () => {
   // Log request errors with path so we can identify the source
   if (config.isDev) {
     server.events.on({ name: 'request', filter: ['error'] }, function(request, event) {
+      // Suppress browser devtools source-map probes — harmless 404s
+      if (/\.map$/.test(request.path)) return;
       var data = event.error || event.data;
       var msg  = data ? '\n    ' + (data.stack || (typeof data === 'object' ? JSON.stringify(data) : data)) : '';
       console.error('Debug:', event.tags.join(', '), request.method.toUpperCase(), request.path + msg);

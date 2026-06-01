@@ -574,11 +574,18 @@ window.TrinketAPI = {
       doneCalled = true;
     }
 
+    // If the output iframe doesn't exist yet (trinket not yet run), skip snapshot
+    var frame = $('#glowscriptOutput')[0];
+    if (!frame) {
+      window.removeEventListener('message', snapshotHandler);
+      return done();
+    }
+
     // setup event listener
     window.addEventListener('message', snapshotHandler);
 
     // post message to iframe to take snapshot
-    $('#glowscriptOutput')[0].contentWindow.postMessage('glowscript.snapshot', '*');
+    frame.contentWindow.postMessage('glowscript.snapshot', '*');
 
     // ensure done is called
     setTimeout(function() {
