@@ -14,6 +14,13 @@ services:
     links:
       - redis
       - mongodb
+      - minio
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      NODE_CONFIG: >-
+        {"aws":{"keyId":"minioadmin","key":"minioadmin","endpoint":"http://minio:9000","buckets":{"materials":{"name":"trinket-materials","host":"http://localhost:9000/trinket-materials"}}},"features":{"assets":true}}
   redis:
     image: redis:latest
     ports:
@@ -30,6 +37,38 @@ services:
       - mongodb_data:/data/db
     networks:
       - trinket
+  minio:
+    image: minio/minio
+    ports:
+      - 9000:9000
+      - 9001:9001
+    container_name: minio
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - trinket
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  minio-init:
+    image: minio/mc
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - trinket
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin;
+      mc mb --ignore-existing local/trinket-materials;
+      mc anonymous set public local/trinket-materials;
+      "
 networks:
   trinket:
     driver: bridge
@@ -38,3 +77,4 @@ volumes:
   node_modules:
   public_components:
   mongodb_data:
+  minio_data:

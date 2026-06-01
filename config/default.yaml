@@ -391,6 +391,7 @@ aws:
   key: ''
   keyId: ''
   region: us-east-1
+  endpoint: ''   # S3-compatible endpoint override (e.g. http://localhost:9000 for MinIO)
   buckets:
     userassets:
       name: your-user-assets-bucket
