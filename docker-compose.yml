@@ -9,6 +9,7 @@ services:
       - .:/usr/local/node/trinket
       - node_modules:/usr/local/node/trinket/node_modules
       - public_components:/usr/local/node/trinket/public/components
+      - public_css:/usr/local/node/trinket/public/css
     networks:
       - trinket
     links:
@@ -80,5 +81,6 @@ volumes:
   shared-cache:
   node_modules:
   public_components:
+  public_css:
   mongodb_data:
   minio_data:
