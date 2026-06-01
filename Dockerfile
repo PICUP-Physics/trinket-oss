@@ -30,6 +30,9 @@ RUN curl -L --silent -o ./public-components.tgz \
 
 RUN npm install --legacy-peer-deps
 
+# Generate CSS assets
+RUN npm run build:css
+
 ARG COMMIT_ID
 ARG NODE_ENV
 ENV NODE_ENV=$NODE_ENV
