@@ -24,7 +24,7 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_CALLBACK_URL: http://localhost:3000/auth/google/callback
       NODE_CONFIG: >-
-        {"app":{"plugins":{"session":{"cookieOptions":{"password":"${SESSION_PASSWORD:-change-this-password-for-production-use}"}}}},"aws":{"keyId":"minioadmin","key":"minioadmin","endpoint":"http://minio:9000","buckets":{"materials":{"name":"trinket-materials","host":"http://localhost:9000/trinket-materials"}}},"features":{"assets":true}}
+        {"app":{"plugins":{"session":{"cookieOptions":{"password":"${SESSION_PASSWORD:-change-this-password-for-production-use}"}}}},"db":{"mongo":{"host":"mongodb"},"redis":{"app":{"host":"redis"}}},"aws":{"keyId":"minioadmin","key":"minioadmin","endpoint":"http://minio:9000","buckets":{"materials":{"name":"trinket-materials","host":"http://localhost:9000/trinket-materials"}}},"features":{"assets":true}}
   redis:
     image: redis:latest
     ports:
