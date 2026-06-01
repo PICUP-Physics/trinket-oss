@@ -47,6 +47,9 @@ Optional:
   TAG                      Tag name for no-traffic deploys (default: candidate)
   GOOGLE_CLIENT_ID         Google OAuth 2.0 client ID (prompted if unset)
   GOOGLE_CLIENT_SECRET     Google OAuth 2.0 client secret
+  ROTATE_SECRETS           Set to 1 to add new Secret Manager versions even when
+                           the secret already exists. Default: skip update if the
+                           secret exists (avoids accumulating chargeable versions).
 
 Prerequisites:
   gcloud CLI installed and authenticated (gcloud auth login)
@@ -105,6 +108,7 @@ MAX_INSTANCES="${MAX_INSTANCES:-10}"
 SKIP_BUILD="${SKIP_BUILD:-false}"
 NO_TRAFFIC="${NO_TRAFFIC:-false}"
 TAG="${TAG:-candidate}"
+ROTATE_SECRETS="${ROTATE_SECRETS:-false}"
 SECRET_NAME="trinket-session-password"
 GOOGLE_CLIENT_ID_SECRET="trinket-google-client-id"
 GOOGLE_CLIENT_SECRET_SECRET="trinket-google-client-secret"
@@ -166,11 +170,17 @@ else
 fi
 
 # Create or update the session password secret
+# Only add a new version if the secret doesn't exist yet, or ROTATE_SECRETS=1.
+# Adding versions unnecessarily accumulates active versions and exceeds the free tier.
 echo "--- Storing session password in Secret Manager ---"
 if gcloud secrets describe "${SECRET_NAME}" --project="${GOOGLE_CLOUD_PROJECT}" 2>/dev/null; then
-  printf '%s' "${SESSION_PASSWORD}" | gcloud secrets versions add "${SECRET_NAME}" \
-    --data-file=- \
-    --project="${GOOGLE_CLOUD_PROJECT}"
+  if [[ "${ROTATE_SECRETS}" =~ ^(1|true|yes)$ ]]; then
+    printf '%s' "${SESSION_PASSWORD}" | gcloud secrets versions add "${SECRET_NAME}" \
+      --data-file=- \
+      --project="${GOOGLE_CLOUD_PROJECT}"
+  else
+    echo "    Secret already exists — skipping version update (set ROTATE_SECRETS=1 to force)"
+  fi
 else
   printf '%s' "${SESSION_PASSWORD}" | gcloud secrets create "${SECRET_NAME}" \
     --data-file=- \
@@ -179,14 +189,19 @@ else
 fi
 
 # Store Google OAuth credentials in Secret Manager (only if provided)
+# Same ROTATE_SECRETS guard as session password above.
 if [[ -n "${GOOGLE_CLIENT_ID:-}" ]]; then
   echo "--- Storing Google OAuth credentials in Secret Manager ---"
   for SECRET_PAIR in "${GOOGLE_CLIENT_ID_SECRET}:${GOOGLE_CLIENT_ID}" "${GOOGLE_CLIENT_SECRET_SECRET}:${GOOGLE_CLIENT_SECRET}"; do
     S_NAME="${SECRET_PAIR%%:*}"
     S_VALUE="${SECRET_PAIR#*:}"
     if gcloud secrets describe "${S_NAME}" --project="${GOOGLE_CLOUD_PROJECT}" 2>/dev/null; then
-      printf '%s' "${S_VALUE}" | gcloud secrets versions add "${S_NAME}" \
-        --data-file=- --project="${GOOGLE_CLOUD_PROJECT}"
+      if [[ "${ROTATE_SECRETS}" =~ ^(1|true|yes)$ ]]; then
+        printf '%s' "${S_VALUE}" | gcloud secrets versions add "${S_NAME}" \
+          --data-file=- --project="${GOOGLE_CLOUD_PROJECT}"
+      else
+        echo "    ${S_NAME} already exists — skipping (set ROTATE_SECRETS=1 to force)"
+      fi
     else
       printf '%s' "${S_VALUE}" | gcloud secrets create "${S_NAME}" \
         --data-file=- --replication-policy=automatic --project="${GOOGLE_CLOUD_PROJECT}"
