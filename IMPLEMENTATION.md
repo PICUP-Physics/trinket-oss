@@ -351,6 +351,23 @@ export MAX_INSTANCES=20                # default: 10
 
 ## Future considerations
 
+### Export/import folder structure with trinkets
+
+When exporting trinkets (the `trinket-export-*.zip` bulk export), also serialize
+the user's folder hierarchy so it can be reconstructed on import.
+
+**Approach:**
+- Add `folders.json` to the export zip alongside `manifest.json`, containing the
+  folder tree (id, name, parent, slug) and each folder's trinket membership list
+  (by shortCode, not by id — same as the manifest uses).
+- On import, recreate folders in parent-first order (sort by depth), then assign
+  imported trinkets to their folders using the old→new shortCode mapping already
+  built during `importTrinkets`.
+
+**Complexity:** moderate. The `Folder` model already exists. Main wrinkle is
+nested folders requiring ordered creation; everything else follows the existing
+trinket import pattern. No schema changes needed.
+
 ### WASM Python trinket type (Pyodide)
 
 Idea: add a new trinket `lang` (e.g. `python-wasm` or `pyodide`) that runs real
