@@ -95,6 +95,16 @@
   </div>
 </div>
 
+<div id="assetWarnings" style="display:none; margin-top:10px;">
+  <div class="alert-box warning">
+    <strong>Image hosting warning:</strong>
+    <ul id="assetWarningList" style="margin-top:6px;"></ul>
+    <p style="margin-top:6px; margin-bottom:0;">
+      Re-export from the original server and re-import to pick up a self-contained zip with embedded images.
+    </p>
+  </div>
+</div>
+
 <script type="text/javascript">
 (function() {
   var $trinketFile   = $('#trinketZipInput');
@@ -129,6 +139,7 @@
     pendingCourseFile = this.files[0] || null;
     $('#missingRefsWarning').hide();
     $('#courseResult').hide();
+    $('#assetWarnings').hide();
   });
 
   // ── Trinket import ─────────────────────────────────────────────────────────
@@ -215,6 +226,13 @@
         $('#courseLink').attr('href', href);
         $('#courseResult').show();
         showSuccess('Course imported successfully!');
+        if (d.warnings && d.warnings.length) {
+          var $wlist = $('#assetWarningList').empty();
+          d.warnings.forEach(function(w) { $wlist.append('<li>' + w + '</li>'); });
+          $('#assetWarnings').show();
+        } else {
+          $('#assetWarnings').hide();
+        }
       } else {
         showAlert(d.message || 'Unexpected response.');
       }
