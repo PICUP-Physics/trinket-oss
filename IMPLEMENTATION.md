@@ -393,65 +393,24 @@ ship disabled and be enabled per-environment.
 
 ---
 
-## Pending: merge export/import features from upstream PRs
+### Slice 9 — Export/import round-trip (cherry-picked 2026-06-02)
 
-### What needs to come in
+Cherry-picked from upstream PR branches — all applied cleanly with no conflicts.
 
-Two upstream PR branches (on `sspickle/trinket-oss`) contain new features that
-need to be cherry-picked into `gcr-firebase`:
+**Export side** (from `origin/feature/export-embedded-assets`):
+- `af64ed8` — Embed S3/GCS assets in course export zip (`lib/controllers/courses.js`, `lib/util/file.js`, `lib/models/file.js`)
+- `104c2ec` — Include material type and assignment trinket metadata in `course.json`
+- `678ed25` — Bundle referenced trinkets in course export zip
 
-**Export side — `origin/feature/export-embedded-assets`** (3 commits above main):
-- `4b6d297` — Embed S3 assets in course export zip (`lib/controllers/courses.js`, `lib/util/file.js`, `lib/models/file.js`)
-- `a627cf9` — Include material type and assignment trinket metadata in `course.json` (`courses.js`)
-- `f52408f` — Bundle referenced trinkets in course export zip (`courses.js`, `lib/models/trinket.js`)
+**Import side** (from `origin/feature/course-import`):
+- `35b6e8c` — Prefer zip-embedded assets over trinket.io fetch on import
+- `c1198d7` — Reconstruct assignment type and trinket subdocument on course import
+- `e705412` — Auto-import bundled trinkets from course zip before course creation
+- `abc2a21` — Allow hostname:port in iframe src whitelist (needed for local dev)
 
-**Import side — `origin/feature/course-import`** (4 new commits on top of the
-course-import base that `gcr-firebase` already has partially integrated):
-- `44f72ce` — Prefer zip-embedded assets over trinket.io fetch (`lib/controllers/imports.js`)
-- `fc13412` — Reconstruct assignment type and trinket subdocument on import (`imports.js`)
-- `c899155` — Auto-import bundled trinkets from course zip before course creation (`imports.js`)
-- `b4c2d75` — Allow hostname:port in iframe src whitelist (`lib/shared/trinket-markdown.js`)
-
-### What gcr-firebase already has (don't re-add)
-
-- `rehostAsset` and `rehostImportedAssets` in `imports.js` — already present
-  (from `ce021c9 testing import fixes`). The new import commits extend these
-  functions to also check the zip for embedded assets before fetching from
-  trinket.io.
-- `pad2` in `parseCourseZip` — already present. The new commits are consistent
-  with this (they use `pad2` in path lookups).
-- `43a957d Fix course.json having empty {} for all material entries` — already
-  at the tip of `gcr-firebase` (cherry-picked from upstream fix/course-export).
-  The export commits build on top of this fix.
-
-### Approach
-
-Cherry-pick each commit individually in order (export first, then import).
-Expect conflicts in `courses.js` and `imports.js` — `gcr-firebase` has its
-own evolved versions of both. Key things to preserve from `gcr-firebase` side:
-- The GCS asset upload path in `courses.js` (if any — check before resolving)
-- The Firestore-compatible model calls in `imports.js`
-- `pad2` usage in `parseCourseZip`
-
-After cherry-picks, test with `./dev-docker.sh` (Firestore emulator + MinIO):
-1. Export a course → verify zip contains `assets/`, `trinkets/`, `course.json`
-2. Import that zip → verify lessons, materials (pages + assignments), and
-   trinket embed URLs all reconstruct correctly
-
-### Resume prompt for this work
-
-```
-We're on branch gcr-firebase in trinket-oss. We need to cherry-pick the
-export/import features from origin/feature/export-embedded-assets (3 commits)
-and origin/feature/course-import (4 commits) into this branch.
-
-Read IMPLEMENTATION.md section "Pending: merge export/import features" for
-the full commit list, what's already present, and conflict guidance.
-
-Start by: git fetch origin, then cherry-pick 4b6d297 a627cf9 f52408f from
-the export branch, then 44f72ce fc13412 c899155 b4c2d75 from the import branch.
-Resolve conflicts preserving gcr-firebase's GCS/Firestore-compatible code.
-```
+**Round-trip test** (run with `./dev-docker.sh`):
+1. Export a course → zip should contain `assets/`, `trinkets/`, `course.json`
+2. Import that zip → lessons, materials (pages + assignments), and trinket embed URLs should reconstruct correctly
 
 ## Resume prompt
 
