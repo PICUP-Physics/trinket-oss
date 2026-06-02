@@ -130,8 +130,8 @@ selects the adapter at boot time via `config.db.backend`.
 - `config/default.yaml` — added `gcs.buckets.snapshots.{name,host}`.
 - `firebase.json` / `storage.rules` — added storage emulator config with
   permissive dev rules.
-- `emulator.sh` — now starts `--only firestore,storage`.
-- `dev-docker.sh` — sources `.env`; translates `localhost:9199` →
+- `docker-compose.yml` — firebase service now starts `--only auth,firestore,storage`.
+- (Previously `emulator.sh` and `dev-docker.sh`; both removed — `docker compose up` supersedes them.)
   `host.docker.internal:9199` for container uploads; passes
   `STORAGE_PUBLIC_HOST=http://localhost:9199` for browser-facing URLs.
 
@@ -141,8 +141,8 @@ the SDK uses Application Default Credentials automatically on Cloud Run.
 ### Slice 7 — WebVPython-only mode + Google OAuth (commit 9f8bf21)
 - `config/default.yaml` — `features.trinkets`: `glowscript: true`, all others
   `false`.
-- `dev-docker.sh` — `NODE_CONFIG` now includes `features.trinkets` overrides
-  and `app.auth.google.{clientID,clientSecret,callbackURL}` sourced from `.env`.
+- `docker-compose.yml` — `NODE_CONFIG` includes `features.trinkets` overrides
+  and `app.auth.google` credentials sourced from `.env` via environment variables.
   This avoids putting secrets in `config/local.yaml` (which must never be
   committed).
 - `public-components` updated to v1.1.0 (includes Ace editor fix; removed
@@ -255,38 +255,26 @@ Firestore as well, but it is low priority (users can simply re-request a reset).
 
 ## Local development setup
 
-### 1. config/local.yaml additions (Firestore mode)
+### 1. Prerequisites
 
-```yaml
-db:
-  backend: firestore
-  firestore:
-    projectId: demo-trinket   # must match GOOGLE_CLOUD_PROJECT below
-  redis:
-    enabled: false
-```
+- Docker Desktop (Mac/Windows) or Docker Engine (Linux)
+- `.env` file with `SESSION_PASSWORD`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
 
-No MongoDB connection string needed. The `mongo:` block from the default config
-is ignored when `backend: firestore`.
-
-### 2. Start the emulator and app
+### 2. Start everything
 
 ```bash
-# Prerequisites: Node 20 (via nvm), Firebase CLI, Java 11+
-nvm use   # reads .nvmrc (Node 20)
-npm install --legacy-peer-deps
-npm install -g firebase-tools
-firebase setup:emulators:firestore   # one-time download
+# First run only — builds the Firebase emulator image (~2-3 min, ~500 MB)
+docker compose build firebase
 
-# Terminal 1 — emulator (any Node version)
-firebase emulators:start --only firestore --project demo-trinket
-
-# Terminal 2 — app (Node 20), or use Docker:
-#   docker compose up
-export FIRESTORE_EMULATOR_HOST=localhost:8080
-export GOOGLE_CLOUD_PROJECT=demo-trinket
-node app.js
+# Start emulators + app together
+docker compose up
 ```
+
+The `firebase` service starts the Auth, Firestore, and Storage emulators.
+The `app` service waits for the emulator health check before starting.
+
+- App: http://localhost:3001
+- Emulator UI: http://localhost:4000
 
 ### 3. Smoke tests
 
@@ -296,9 +284,9 @@ FIRESTORE_EMULATOR_HOST=localhost:8080 GOOGLE_CLOUD_PROJECT=demo-trinket \
 NODE_ENV=development node test/smoke-firestore-sessions.js
 
 # HTTP smoke test (app must be running):
-curl http://localhost:3000/          # → 200
-curl http://localhost:3000/login     # → 200
-curl http://localhost:3000/api/trinkets  # → 401
+curl http://localhost:3001/          # → 200
+curl http://localhost:3001/login     # → 200
+curl http://localhost:3001/api/trinkets  # → 401
 ```
 
 ## Deploying to Cloud Run
@@ -425,7 +413,7 @@ Cherry-picked from upstream PR branches — all applied cleanly with no conflict
 - `e705412` — Auto-import bundled trinkets from course zip before course creation
 - `abc2a21` — Allow hostname:port in iframe src whitelist (needed for local dev)
 
-**Round-trip test** (run with `./dev-docker.sh`):
+**Round-trip test** (run with `docker compose up`):
 1. Export a course → zip should contain `assets/`, `trinkets/`, `course.json`
 2. Import that zip → lessons, materials (pages + assignments), and trinket embed URLs should reconstruct correctly
 
@@ -450,8 +438,8 @@ Slices completed:
            UI at /account/import, legacyShortCode on Trinket model,
            unresolvedLegacyRefs on Material model, auto-patch on late import
 
-Local dev: ./emulator.sh (terminal 1), ./dev-docker.sh (terminal 2).
-Rebuild image after source changes: ./dev-docker.sh --build
+Local dev: docker compose up (firebase emulator + app in one command).
+Rebuild app image after dependency changes: docker compose build app
 
 Known deferred work:
 - Store.get/set/del/expire (password reset tokens) still in-memory — lost on
