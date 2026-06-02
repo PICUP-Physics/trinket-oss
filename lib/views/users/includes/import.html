@@ -172,7 +172,9 @@
         $('#trFailed').text(d.failed);
         $('#trPatched').text(d.patched || 0);
         $('#trinketResult').show();
-        showSuccess('Trinket import complete: ' + d.imported + ' new, ' + (d.updated || 0) + ' updated, ' + d.skipped + ' skipped.');
+        $('#importSuccessMsg').text('Trinket import complete: ' + d.imported + ' new, ' + (d.updated || 0) + ' updated, ' + d.skipped + ' skipped.');
+        $('#importSuccess').show();
+        $('#importAlert').hide();
       } else {
         showAlert(resp.error || 'Import failed.');
       }
