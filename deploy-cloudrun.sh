@@ -302,9 +302,14 @@ NODE_APP_INSTANCE: cloudrun
 GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT}
 YAML
 
-# In no-traffic mode, include every env var up front so the single deploy
-# produces the final revision. JSON.stringify quotes values safely for YAML.
-if [[ "${NO_TRAFFIC}" =~ ^(1|true|yes)$ ]]; then
+# Include hostname-dependent vars upfront when the URL is already known:
+# NO_TRAFFIC always has the URL (required); re-deploys have _LIVE_SERVICE_URL.
+# This avoids a second "patch" revision on every re-deployment.
+if [[ "${NO_TRAFFIC}" =~ ^(1|true|yes)$ ]] || [[ -n "${_LIVE_SERVICE_URL}" ]]; then
+  # For NO_TRAFFIC, HOSTNAME is already set above; for re-deploys, derive it now.
+  if [[ ! "${NO_TRAFFIC}" =~ ^(1|true|yes)$ ]]; then
+    HOSTNAME=$(echo "${_LIVE_SERVICE_URL}" | sed 's|https://||')
+  fi
   HOSTNAME="${HOSTNAME}" \
   FIREBASE_CLIENT_CONFIG="${FIREBASE_CLIENT_CONFIG}" \
   _LIVE_ADMIN_EMAILS="${_LIVE_ADMIN_EMAILS}" \
@@ -377,17 +382,20 @@ if [[ "${NO_TRAFFIC}" =~ ^(1|true|yes)$ ]]; then
   exit 0
 fi
 
-# Patch NODE_CONFIG with the service hostname
-echo "--- Patching NODE_CONFIG with service hostname ---"
-HOSTNAME=$(echo "${SERVICE_URL}" | sed 's|https://||')
-# ^|^ makes | the delimiter so JSON commas/colons in values are safe.
-_PATCH_VARS="NODE_ENV=production|NODE_APP_INSTANCE=cloudrun|GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}|NODE_CONFIG={\"app\":{\"url\":{\"hostname\":\"${HOSTNAME}\"}}}|GOOGLE_CALLBACK_URL=https://${HOSTNAME}/auth/google/callback|FIREBASE_CLIENT_CONFIG=${FIREBASE_CLIENT_CONFIG}"
-[[ -n "${_LIVE_ADMIN_EMAILS:-}" ]] && _PATCH_VARS="${_PATCH_VARS}|ADMIN_EMAILS=${_LIVE_ADMIN_EMAILS}"
-gcloud run services update "${SERVICE_NAME}" \
-  --region="${GOOGLE_CLOUD_REGION}" \
-  --project="${GOOGLE_CLOUD_PROJECT}" \
-  --update-env-vars "^|^${_PATCH_VARS}" \
-  --quiet
+# First-time deploy only: patch NODE_CONFIG with the hostname now that the URL
+# is known. On re-deploys, hostname vars were already included above.
+if [[ -z "${_LIVE_SERVICE_URL}" ]]; then
+  echo "--- Patching NODE_CONFIG with service hostname (first deploy) ---"
+  HOSTNAME=$(echo "${SERVICE_URL}" | sed 's|https://||')
+  # ^|^ makes | the delimiter so JSON commas/colons in values are safe.
+  _PATCH_VARS="NODE_ENV=production|NODE_APP_INSTANCE=cloudrun|GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}|NODE_CONFIG={\"app\":{\"url\":{\"hostname\":\"${HOSTNAME}\"}}}|GOOGLE_CALLBACK_URL=https://${HOSTNAME}/auth/google/callback|FIREBASE_CLIENT_CONFIG=${FIREBASE_CLIENT_CONFIG}"
+  [[ -n "${_LIVE_ADMIN_EMAILS:-}" ]] && _PATCH_VARS="${_PATCH_VARS}|ADMIN_EMAILS=${_LIVE_ADMIN_EMAILS}"
+  gcloud run services update "${SERVICE_NAME}" \
+    --region="${GOOGLE_CLOUD_REGION}" \
+    --project="${GOOGLE_CLOUD_PROJECT}" \
+    --update-env-vars "^|^${_PATCH_VARS}" \
+    --quiet
+fi
 
 echo ""
 echo "=== Deployment complete ==="
