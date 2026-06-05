@@ -10,6 +10,13 @@ app:
     protocol: https
     hostname: ''   # Overridden at runtime via NODE_CONFIG — see deploy-cloudrun.sh
     port:
+    # All hostnames this deployment is reachable under (custom domain, .run.app URL,
+    # tagged candidate URLs). Used by trinket-markdown and material-parser to
+    # recognise embed URLs in stored content regardless of which host created them.
+    knownHosts:
+      - trinket.matterandinteractions.org
+      - trinket-661552644165.us-central1.run.app
+      - trinket-ev5jxhvyya-uc.a.run.app
   hostname: 0.0.0.0
   plugins:
     session:

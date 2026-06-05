@@ -50,6 +50,9 @@ Optional:
   ROTATE_SECRETS           Set to 1 to add new Secret Manager versions even when
                            the secret already exists. Default: skip update if the
                            secret exists (avoids accumulating chargeable versions).
+  MONTHLY_BUDGET           Monthly spend alert threshold in USD (default: 10).
+                           A GCP budget alert is created on first deploy; billing
+                           admins receive email when spend hits 50%, 90%, 100%.
 
 Prerequisites:
   gcloud CLI installed and authenticated (gcloud auth login)
@@ -109,6 +112,7 @@ SKIP_BUILD="${SKIP_BUILD:-false}"
 NO_TRAFFIC="${NO_TRAFFIC:-false}"
 TAG="${TAG:-candidate}"
 ROTATE_SECRETS="${ROTATE_SECRETS:-false}"
+MONTHLY_BUDGET="${MONTHLY_BUDGET:-10}"
 SECRET_NAME="trinket-session-password"
 GOOGLE_CLIENT_ID_SECRET="trinket-google-client-id"
 GOOGLE_CLIENT_SECRET_SECRET="trinket-google-client-secret"
@@ -135,6 +139,7 @@ gcloud services enable \
   cloudbuild.googleapis.com \
   firestore.googleapis.com \
   secretmanager.googleapis.com \
+  billingbudgets.googleapis.com \
   --project="${GOOGLE_CLOUD_PROJECT}" \
   --quiet
 
@@ -349,7 +354,7 @@ gcloud run deploy "${SERVICE_NAME}" \
   --max-instances="${MAX_INSTANCES}" \
   --env-vars-file="${ENV_VARS_FILE}" \
   --set-secrets="${SECRETS_ARG}" \
-  "${DEPLOY_TRAFFIC_ARGS[@]}" \
+  ${DEPLOY_TRAFFIC_ARGS[@]+"${DEPLOY_TRAFFIC_ARGS[@]}"} \
   --quiet
 
 # Get the service URL (stable across revisions)
@@ -395,6 +400,52 @@ if [[ -z "${_LIVE_SERVICE_URL}" ]]; then
     --project="${GOOGLE_CLOUD_PROJECT}" \
     --update-env-vars "^|^${_PATCH_VARS}" \
     --quiet
+fi
+
+# Set up a weekly Firestore backup schedule (idempotent — skips if one exists).
+echo "--- Ensuring Firestore backup schedule ---"
+_EXISTING_BACKUP=$(gcloud firestore backups schedules list \
+  --database='(default)' \
+  --project="${GOOGLE_CLOUD_PROJECT}" \
+  --format='value(name)' 2>/dev/null | head -1)
+if [[ -z "${_EXISTING_BACKUP}" ]]; then
+  gcloud firestore backups schedules create \
+    --database='(default)' \
+    --recurrence=weekly \
+    --day-of-week=sunday \
+    --retention=4w \
+    --project="${GOOGLE_CLOUD_PROJECT}" \
+    --quiet
+  echo "    Weekly backup schedule created (4-week retention)"
+else
+  echo "    Backup schedule already exists — skipping"
+fi
+
+# Create a monthly budget alert (idempotent — skips if a budget already exists).
+echo "--- Ensuring billing budget alert (${MONTHLY_BUDGET} USD/month) ---"
+_BILLING_ACCOUNT=$(gcloud billing projects describe "${GOOGLE_CLOUD_PROJECT}" \
+  --format='value(billingAccountName)' 2>/dev/null | sed 's|billingAccounts/||')
+if [[ -n "${_BILLING_ACCOUNT}" ]]; then
+  _EXISTING_BUDGET=$(gcloud billing budgets list \
+    --billing-account="${_BILLING_ACCOUNT}" \
+    --filter="displayName=trinket-${GOOGLE_CLOUD_PROJECT}" \
+    --format='value(name)' 2>/dev/null | head -1)
+  if [[ -z "${_EXISTING_BUDGET}" ]]; then
+    gcloud billing budgets create \
+      --billing-account="${_BILLING_ACCOUNT}" \
+      --display-name="trinket-${GOOGLE_CLOUD_PROJECT}" \
+      --budget-amount="${MONTHLY_BUDGET}USD" \
+      --threshold-rule=percent=0.5 \
+      --threshold-rule=percent=0.9 \
+      --threshold-rule=percent=1.0 \
+      --filter-projects="projects/${GOOGLE_CLOUD_PROJECT}" \
+      --quiet
+    echo "    Budget alert created: email at 50%, 90%, 100% of \$${MONTHLY_BUDGET}/month"
+  else
+    echo "    Budget alert already exists — skipping"
+  fi
+else
+  echo "    Could not determine billing account — skipping budget alert"
 fi
 
 echo ""

@@ -231,6 +231,17 @@ const init = async () => {
     return h.continue;
   });
 
+  // Inject request hostname into every view context so templates render
+  // correctly regardless of which domain served the request.
+  server.ext('onPreResponse', (request, h) => {
+    const response = request.response;
+    if (response && response.variety === 'view' &&
+        response.source && response.source.context) {
+      response.source.context._hostname = request.info.hostname;
+    }
+    return h.continue;
+  });
+
   // Add onPreResponse extension for cookie expiration
   const cookieIsSecure = config.app.plugins.session.cookieOptions.isSecure !== false;
   server.ext('onPreResponse', (request, h) => {
