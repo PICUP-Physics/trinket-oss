@@ -61,7 +61,8 @@ selects the adapter at boot time via `config.db.backend`.
 **Query translation** (MongoDB syntax → Firestore):
 - `{ field: value }` → equality `==`
 - `{ field: { $ne: v } }` → `!=`
-- `{ field: { $in: [...] } }` → `in`
+- `{ field: { $in: [...] } }` → `in` for scalar fields, `array-contains-any` for
+  array-typed fields (see Slice 10 — Mongo array semantics)
 - `{ field: { $gt/$lt/$gte/$lte: v } }` → range comparisons
 - `{ field: { $exists: true/false } }` → `!= null` / `== null`
 - `{ $or: [...] }` → `Filter.or()` (Firestore Native mode only)
@@ -417,6 +418,65 @@ Cherry-picked from upstream PR branches — all applied cleanly with no conflict
 1. Export a course → zip should contain `assets/`, `trinkets/`, `course.json`
 2. Import that zip → lessons, materials (pages + assignments), and trinket embed URLs should reconstruct correctly
 
+### Slice 10 — Import refactor convergence + `$in`-on-array adapter fix (commits ecb6115, ac07d30)
+
+Ported the upstream `imports.js` cleanup (oss commit `2a0552b`) and, in doing so,
+fixed a latent Firestore query-translation bug that had silently disabled
+`patchUnresolvedRefs` on this backend.
+
+**Import controller convergence** (`ecb6115`):
+- `lib/controllers/imports.js` — extracted the embed-URL rewrite regex into one
+  `EMBED_URL_RE` constant; extracted the `$in` chunking loop into
+  `findInChunks(items, finderFn)`; `patchUnresolvedRefs` dedups matched materials
+  by `_id` after concat; `resolveAllRefs` uses a fresh `RegExp` per `exec` loop
+  instead of mutating the shared global's `lastIndex`.
+- `lib/models/trinket.js` — added `findByLegacyShortCode` / `findByLegacyShortCodes`
+  classMethods; `lib/models/material.js` — added `findByUnresolvedLegacyRefs`.
+  The controller now calls model classMethods (matching oss) instead of inline
+  `this.model.find({...}).exec()`. The two forks' import controllers now differ
+  only in the intentional gcr-specific slug pre-check (`findByUserAndSlug` —
+  Firestore has no unique index, so duplicate slugs are checked before save
+  rather than caught as E11000).
+
+**Firestore adapter `$in`-on-array fix** (`ac07d30`):
+- Mongo treats `{ arrayField: { $in: [...] } }` as "matches any element"; Firestore's
+  `in` operator only does scalar equality, so `$in` on an array field matched
+  **nothing**. This broke `patchUnresolvedRefs`, which queries `Material` by the
+  array field `unresolvedLegacyRefs` — it never patched anything on Firestore (and
+  had been wrong since the import feature landed, independent of the refactor).
+- Fix: `extractArrayPaths(schema)` collects top-level array-typed paths
+  (`schema.paths[name].instance === 'Array'`) into `_array_paths` on the
+  lightweight modelSchema at `createModel` time; the query translator
+  (`applyConstraints` + the `$or` `buildFirestoreFilter`) emits `array-contains-any`
+  for `$in` on those fields, keeping `in` for scalars. `array-contains-any` caps at
+  30 values, which matches the existing `CHUNK = 30` batching in `findInChunks`.
+
+**Gotcha for future adapter work:** `createModel` does **not** retain the mongoose
+Schema — it pre-extracts what it needs (`_defaults`, `_refs`, `_instance_methods`,
+now `_array_paths`) into a lightweight object. Any type-aware translation logic
+must likewise extract its metadata at `createModel` time; there is no `.path()` to
+call at query time. The deferred `findById` + `alternateIds` adapter fix should
+follow this same pattern rather than per-model overrides.
+
+**Testing endpoints that require a session** (Firebase Auth emulator):
+Auth is Firebase Auth (emulator on `:9099`, project `demo-trinket`). To get an
+authenticated session without the browser OAuth flow:
+1. Create a user via the emulator REST signUp:
+   `POST http://localhost:9099/identitytoolkit.googleapis.com/v1/accounts:signUp?key=fake-api-key`
+   with `{email, password, returnSecureToken:true}` → returns `idToken` + `localId`.
+2. Seed a matching trinket `User` doc (email + `firebaseUid: localId`) via a script
+   run inside the container (`docker exec trinket-gcr node ...`); the script must
+   keep the container's `FIRESTORE_EMULATOR_HOST` (`firebase:8080`), so use
+   `process.env.X = process.env.X || 'default'`, never override.
+3. `POST http://localhost:3001/api/auth/session` with `{idToken}` → sets the `session`
+   cookie (`auth.session` verifies via Firebase Admin and links the user by email).
+4. Use the cookie (`curl -b cookies.txt`) to hit `/api/imports/*` etc.
+
+**Round-trip + dedup test result** (gcr stack, matches the mongo stack exactly):
+90 trinkets, 12 lessons, 28/28 assignments linked, 46 materials rewritten; and a
+cross-chunk `patchUnresolvedRefs` case patches the target material exactly once
+(`patched: 1`) — the path that was previously broken on Firestore.
+
 ## Resume prompt
 
 Paste this at the start of a new Claude Code session in this repo:
@@ -437,6 +497,9 @@ Slices completed:
 - Slice 8: Legacy import feature — POST /api/imports/trinkets + course,
            UI at /account/import, legacyShortCode on Trinket model,
            unresolvedLegacyRefs on Material model, auto-patch on late import
+- Slice 9: Export/import round-trip cherry-picked from upstream PR branches
+- Slice 10: Import refactor convergence + Firestore $in-on-array fix
+            ($in on array fields → array-contains-any via _array_paths)
 
 Local dev: docker compose up (firebase emulator + app in one command).
 Rebuild app image after dependency changes: docker compose build app
