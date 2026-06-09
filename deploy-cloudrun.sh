@@ -41,6 +41,8 @@ Optional:
   MEMORY                   Container memory (default: 512Mi)
   MAX_INSTANCES            Max instances (default: 10)
   SKIP_BUILD               Set to 1 to reuse the existing image tag
+  SKIP_DEPLOY              Set to 1 to skip build+deploy entirely (runs only
+                           post-deploy steps: backup schedule, budget alert)
   NO_TRAFFIC               Set to 1 to deploy without routing traffic; the new
                            revision is reachable only via its tagged URL until
                            you promote it with `gcloud run services update-traffic`
@@ -109,6 +111,7 @@ REPO_NAME="${REPO_NAME:-trinket}"
 MEMORY="${MEMORY:-512Mi}"
 MAX_INSTANCES="${MAX_INSTANCES:-10}"
 SKIP_BUILD="${SKIP_BUILD:-false}"
+SKIP_DEPLOY="${SKIP_DEPLOY:-false}"
 NO_TRAFFIC="${NO_TRAFFIC:-false}"
 TAG="${TAG:-candidate}"
 ROTATE_SECRETS="${ROTATE_SECRETS:-false}"
@@ -245,7 +248,9 @@ gcloud artifacts repositories describe "${REPO_NAME}" \
   --project="${GOOGLE_CLOUD_PROJECT}" \
   --quiet
 
-if [[ "${SKIP_BUILD}" =~ ^(1|true|yes)$ ]]; then
+if [[ "${SKIP_DEPLOY}" =~ ^(1|true|yes)$ ]]; then
+  echo "--- Skipping build and deploy (SKIP_DEPLOY=1) ---"
+elif [[ "${SKIP_BUILD}" =~ ^(1|true|yes)$ ]]; then
   echo "--- Skipping image build; reusing ${IMAGE} ---"
 else
   # Configure Docker auth for Artifact Registry
@@ -298,6 +303,10 @@ if [[ "${NO_TRAFFIC}" =~ ^(1|true|yes)$ ]]; then
   fi
   HOSTNAME=$(echo "${_LIVE_SERVICE_URL}" | sed 's|https://||')
 fi
+
+if [[ "${SKIP_DEPLOY}" =~ ^(1|true|yes)$ ]]; then
+  SERVICE_URL="${_LIVE_SERVICE_URL}"
+else
 
 # Deploy to Cloud Run
 echo "--- Deploying to Cloud Run ---"
@@ -402,6 +411,8 @@ if [[ -z "${_LIVE_SERVICE_URL}" ]]; then
     --quiet
 fi
 
+fi # end SKIP_DEPLOY
+
 # Set up a weekly Firestore backup schedule (idempotent — skips if one exists).
 echo "--- Ensuring Firestore backup schedule ---"
 _EXISTING_BACKUP=$(gcloud firestore backups schedules list \
@@ -423,15 +434,15 @@ fi
 
 # Create a monthly budget alert (idempotent — skips if a budget already exists).
 echo "--- Ensuring billing budget alert (${MONTHLY_BUDGET} USD/month) ---"
-_BILLING_ACCOUNT=$(gcloud billing projects describe "${GOOGLE_CLOUD_PROJECT}" \
-  --format='value(billingAccountName)' 2>/dev/null | sed 's|billingAccounts/||')
+_BILLING_ACCOUNT=$(timeout 20 gcloud billing projects describe "${GOOGLE_CLOUD_PROJECT}" \
+  --format='value(billingAccountName)' --quiet 2>/dev/null | sed 's|billingAccounts/||')
 if [[ -n "${_BILLING_ACCOUNT}" ]]; then
-  _EXISTING_BUDGET=$(gcloud billing budgets list \
+  _EXISTING_BUDGET=$(timeout 20 gcloud billing budgets list \
     --billing-account="${_BILLING_ACCOUNT}" \
     --filter="displayName=trinket-${GOOGLE_CLOUD_PROJECT}" \
-    --format='value(name)' 2>/dev/null | head -1)
+    --format='value(name)' --quiet 2>/dev/null | head -1)
   if [[ -z "${_EXISTING_BUDGET}" ]]; then
-    gcloud billing budgets create \
+    timeout 30 gcloud billing budgets create \
       --billing-account="${_BILLING_ACCOUNT}" \
       --display-name="trinket-${GOOGLE_CLOUD_PROJECT}" \
       --budget-amount="${MONTHLY_BUDGET}USD" \
