@@ -3,7 +3,8 @@ services:
     build: .
     image: trinket/app:latest
     ports:
-      - 3000:3000
+      # Loopback only: Caddy proxies this on the VPS; local dev uses localhost:3000
+      - 127.0.0.1:3000:3000
     container_name: trinket
     volumes:
       - .:/usr/local/node/trinket
@@ -28,26 +29,26 @@ services:
             "buckets": {
               "userassets": {
                 "name": "trinket-userassets",
-                "host": "http://trinket-userassets.localhost:3902",
+                "host": "${ASSET_HOST_USERASSETS:-http://trinket-userassets.localhost:3902}",
                 "thumbnail": "thumb-%{s}",
-                "thumbnailHost": "http://trinket-userassets.localhost:3902",
+                "thumbnailHost": "${ASSET_HOST_USERASSETS:-http://trinket-userassets.localhost:3902}",
                 "thumbnailBucket": "trinket-userassets"
               },
               "snapshots": {
                 "name": "trinket-snapshots",
-                "host": "http://trinket-snapshots.localhost:3902"
+                "host": "${ASSET_HOST_SNAPSHOTS:-http://trinket-snapshots.localhost:3902}"
               },
               "materials": {
                 "name": "trinket-materials",
-                "host": "http://trinket-materials.localhost:3902"
+                "host": "${ASSET_HOST_MATERIALS:-http://trinket-materials.localhost:3902}"
               },
               "useravatars": {
                 "name": "trinket-useravatars",
-                "host": "http://trinket-useravatars.localhost:3902"
+                "host": "${ASSET_HOST_USERAVATARS:-http://trinket-useravatars.localhost:3902}"
               },
               "exports": {
                 "name": "trinket-exports",
-                "host": "http://trinket-exports.localhost:3902"
+                "host": "${ASSET_HOST_EXPORTS:-http://trinket-exports.localhost:3902}"
               }
             }
           }
@@ -73,9 +74,10 @@ services:
       GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET}
       GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN}
     ports:
-      - 3900:3900
-      - 3902:3902
-      - 3903:3903
+      # Loopback only: Caddy (or local dev) is the public entry point
+      - 127.0.0.1:3900:3900
+      - 127.0.0.1:3902:3902
+      - 127.0.0.1:3903:3903
     volumes:
       - ./docker/garage/garage.toml:/etc/garage.toml:ro
       - garage_data:/var/lib/garage
@@ -108,14 +110,14 @@ services:
   redis:
     image: redis:latest
     ports:
-      - 16379:6379
+      - 127.0.0.1:16379:6379
     container_name: redis
     networks:
       - trinket
   mongodb:
     image: mongo:5
     ports:
-      - 17017:27017
+      - 127.0.0.1:17017:27017
     container_name: mongodb
     volumes:
       - mongodb_data:/data/db
