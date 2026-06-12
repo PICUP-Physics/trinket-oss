@@ -1241,7 +1241,8 @@ module.exports = [
       auth: 'session',
       payload : {
         maxBytes  : 1048576 * 5, // 5MB
-        output : 'file'
+        output : 'file',
+        multipart : true // Hapi v19+ rejects multipart/form-data with 415 unless opted in
       },
       validate : {
         payload : {
@@ -1257,7 +1258,8 @@ module.exports = [
       pre : ['file(params.fileId)'],
       payload : {
         maxBytes : 1048576 * 5, // 5MB
-        output : 'file'
+        output : 'file',
+        multipart : true // Hapi v19+ rejects multipart/form-data with 415 unless opted in
       },
       validate : {
         payload : {
