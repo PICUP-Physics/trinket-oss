@@ -201,7 +201,7 @@ while True:
           // need to distinguish between 2.9 and <
           var floatVersion = parseFloat('{{version}}');
 
-          if ('{{runMode}}' === 'calculator' && ('{{version}}' === '3.2.2' || floatVersion > 3.2)) {
+          if ('{{runMode}}' === 'calculator' && ('{{version}}' === '3.2.2' || '{{version}}' === '3.2.3' || floatVersion > 3.2)) {
             $('#print-output').css('display', 'flex');
             window.addEventListener('message', function(e) {
               var data;

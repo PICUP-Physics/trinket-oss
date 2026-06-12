@@ -35,6 +35,19 @@ RUN curl -L --silent -o public/components/src-min-noconflict/theme-github.js \
     && curl -L --silent -o public/components/src-min-noconflict/mode-markdown.js \
     https://cdnjs.cloudflare.com/ajax/libs/ace/1.2.6/mode-markdown.min.js
 
+# Web VPython runtime from the rsWVPRunner build (gs://rswvprunner), pinned as 3.2.3
+# in the versionMap (lib/views/embed/glowscript-config.html). The stock 3.2.2 build
+# from the tarball stays in place as a fallback. Bump GLOWSCRIPT_PACKAGE_BUILD after
+# redeploying rsWVPRunner: it busts both this layer's cache and (as a query param)
+# the GCS edge cache, which can otherwise serve hour-old copies.
+ARG GLOWSCRIPT_PACKAGE_BUILD=2026-06-12a
+RUN curl -fL --silent -o public/components/vpython-glowscript/package/glow.3.2.3.min.js \
+    "https://storage.googleapis.com/rswvprunner/package/glow.3.2.min.js?build=${GLOWSCRIPT_PACKAGE_BUILD}" \
+    && curl -fL --silent -o public/components/vpython-glowscript/package/RScompiler.3.2.3.min.js \
+    "https://storage.googleapis.com/rswvprunner/package/RScompiler.3.2.min.js?build=${GLOWSCRIPT_PACKAGE_BUILD}" \
+    && curl -fL --silent -o public/components/vpython-glowscript/package/RSrun.3.2.3.min.js \
+    "https://storage.googleapis.com/rswvprunner/package/RSrun.3.2.min.js?build=${GLOWSCRIPT_PACKAGE_BUILD}"
+
 # Copy source last so code changes don't bust the layers above
 COPY --chown=trinket:trinket . .
 

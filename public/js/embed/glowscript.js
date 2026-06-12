@@ -210,7 +210,7 @@ function runCode() {
   });
 
   var glowscriptTextarea = 'block';
-  if (runMode && runMode === 'calculator' && (trinketVersion === '3.2.2' || parseFloat(trinketVersion) > 3.2)) {
+  if (runMode && runMode === 'calculator' && (trinketVersion === '3.2.2' || trinketVersion === '3.2.3' || parseFloat(trinketVersion) > 3.2)) {
     glowscriptTextarea = 'none';
   }
 
