@@ -116,7 +116,7 @@ function syncFilesToFS(files, main) {
 // Heuristics on the source so we can show a "loading packages" hint and decide
 // whether to set up matplotlib's render target.
 function importsPackages(code) {
-  return /(^|\n)\s*(import|from)\s+(numpy|matplotlib|pandas|scipy|sympy|PIL|sklearn)\b/.test(code);
+  return /(^|\n)\s*(import|from)\s+(numpy|matplotlib|pandas|scipy|sympy|PIL|sklearn|micropip)\b/.test(code);
 }
 function usesMatplotlib(code) {
   return /(^|\n)\s*(import\s+matplotlib|from\s+matplotlib\b)/.test(code);
@@ -131,6 +131,47 @@ function showGraphic() {
   $('#graphic-wrap').css('height', '65%');
   $('#console-wrap').css('height', '35%');
   $('#output-dragbar').removeClass('hide');
+}
+
+// Jupyter-style rich display: if the value of the last top-level expression has
+// a _repr_html_ (pandas DataFrame, Styler, …), render it as HTML in the graphic
+// pane. `result` is whatever pyodide.runPythonAsync resolved to — a JS primitive
+// for ints/strings/None, or a PyProxy for other objects.
+function renderRichResult(result) {
+  if (result === null || result === undefined) return;
+  if (typeof result !== 'object') return; // primitives have no rich repr
+
+  var html = null;
+  try {
+    if (typeof result._repr_html_ === 'function') {
+      html = result._repr_html_();
+    }
+  } catch (e) { /* no rich repr */ }
+
+  if (html) showRichHtml(html);
+
+  // PyProxies must be released manually or they leak.
+  if (typeof result.destroy === 'function') {
+    try { result.destroy(); } catch (e) {}
+  }
+}
+
+function showRichHtml(html) {
+  var g = document.getElementById('graphic');
+  if (!g) return;
+  var style = '<style>'
+    + '.pyodide-rich-output{padding:12px;overflow:auto;height:100%;'
+    + 'font-family:Helvetica,Arial,sans-serif;font-size:13px;}'
+    + '.pyodide-rich-output table{border-collapse:collapse;}'
+    + '.pyodide-rich-output th,.pyodide-rich-output td{border:1px solid #ccc;'
+    + 'padding:4px 8px;text-align:right;}'
+    + '.pyodide-rich-output th{background:#f4f4f4;}'
+    + '</style>';
+  var box = document.createElement('div');
+  box.className = 'pyodide-rich-output';
+  box.innerHTML = style + html;
+  g.appendChild(box);
+  showGraphic();
 }
 
 function finishRun(serializedCode, err) {
@@ -196,7 +237,8 @@ function runCode() {
       }
       return pyodide.runPythonAsync(prog || '');
     });
-  }).then(function() {
+  }).then(function(result) {
+    renderRichResult(result);
     finishRun(serializedCode);
   }).catch(function(err) {
     // Python exceptions reject with a PythonError whose message is the traceback.
