@@ -3,6 +3,7 @@ var config = require('config');
 var constants = {
   trinketLangs : [
       'python'
+    , 'pyodide'
     , 'python3'
     , 'console'
     , 'music'
