@@ -113,6 +113,26 @@ function syncFilesToFS(files, main) {
   return prog;
 }
 
+// Heuristics on the source so we can show a "loading packages" hint and decide
+// whether to set up matplotlib's render target.
+function importsPackages(code) {
+  return /(^|\n)\s*(import|from)\s+(numpy|matplotlib|pandas|scipy|sympy|PIL|sklearn)\b/.test(code);
+}
+function usesMatplotlib(code) {
+  return /(^|\n)\s*(import\s+matplotlib|from\s+matplotlib\b)/.test(code);
+}
+
+// Reveal the graphic pane (where matplotlib figures render) and split it with
+// the console below.
+function showGraphic() {
+  var wrap = document.getElementById('graphic-wrap');
+  if (!wrap) return;
+  wrap.classList.remove('hide');
+  $('#graphic-wrap').css('height', '65%');
+  $('#console-wrap').css('height', '35%');
+  $('#output-dragbar').removeClass('hide');
+}
+
 function finishRun(serializedCode, err) {
   running = false;
   window.readyForSnapshot = true;
@@ -141,6 +161,12 @@ function runCode() {
   resetOutput();
   $('#console-output').removeClass('console-mode');
 
+  // Default to a console-only layout each run; showGraphic() re-splits the pane
+  // when the code uses matplotlib.
+  $('#graphic-wrap').addClass('hide');
+  $('#output-dragbar').addClass('hide');
+  $('#console-wrap').css('height', '100%');
+
   if (!pyodideReady) {
     writeOut('Loading Python (Pyodide)…\n');
   }
@@ -149,7 +175,27 @@ function runCode() {
 
   ensurePyodide().then(function() {
     var prog = syncFilesToFS(editor.getAllFiles(), mainFile);
-    return pyodide.runPythonAsync(prog || '');
+
+    if (importsPackages(prog)) {
+      writeOut('Loading packages…\n');
+    }
+
+    // Auto-install any Pyodide-bundled packages the code imports (numpy,
+    // matplotlib, pandas, …) from the CDN before running.
+    return pyodide.loadPackagesFromImports(prog).then(function() {
+      if (usesMatplotlib(prog)) {
+        // Point matplotlib's canvas backend at the trinket graphic pane, then
+        // select that backend before the user's code imports pyplot.
+        window.document.pyodideMplTarget = document.getElementById('graphic');
+        showGraphic();
+        return pyodide.runPythonAsync(
+          "import matplotlib; matplotlib.use('module://matplotlib_pyodide.html5_canvas_backend')"
+        ).then(function() {
+          return pyodide.runPythonAsync(prog || '');
+        });
+      }
+      return pyodide.runPythonAsync(prog || '');
+    });
   }).then(function() {
     finishRun(serializedCode);
   }).catch(function(err) {
