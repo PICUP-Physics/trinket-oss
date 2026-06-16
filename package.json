@@ -88,7 +88,8 @@
     "build:css": "vite build",
     "watch:css": "vite build --watch",
     "build": "npm run build:css",
-    "make-admin": "node scripts/make-admin.js"
+    "make-admin": "node scripts/make-admin.js",
+    "setup-vendor": "bash scripts/setup-glowscript.sh"
   },
   "repository": {
     "type": "git",

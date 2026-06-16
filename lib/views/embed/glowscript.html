@@ -195,6 +195,11 @@ while True:
 <script id="glowscript_source" type="text/plain">{{prog}}</script>
 
         <script type="text/javascript">
+          window.onerror = function(msg, url, line, col, err) {
+            window.parent.postMessage(JSON.stringify({ "glowscript.error": "SRCDOC ERROR: " + msg + " at " + url + ":" + line, type: "runtime" }), "*");
+            return false;
+          };
+
           var prog = $('#glowscript_source').text()
             , compiled, main_func;
 

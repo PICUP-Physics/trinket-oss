@@ -208,6 +208,38 @@ After that, all subsequent deploys can use the staged workflow.
 
 ---
 
+## Updating the Web VPython runtime (rsWVPRunner)
+
+The GlowScript embed loads `glow.3.2.3.min.js` (and `RScompiler` / `RSrun`) from
+`public/components/vpython-glowscript/package/`. These files come from the
+`rsWVPRunner` build, pinned as version `3.2.3` in `lib/views/embed/glowscript-config.html`.
+
+### After rebuilding rsWVPRunner (`do_build.sh`)
+
+**Local dev** — copy the new files into the running container without a full rebuild:
+
+```bash
+npm run setup-vendor
+```
+
+Then reload your browser. The script reads `GLOWSCRIPT_PACKAGE_BUILD` from the
+Dockerfile and copies from the local `rsWVPRunner/package/` tree (or falls back
+to GCS if that repo isn't present).
+
+**Deploy** — bump the cache-buster in `Dockerfile` so Cloud Build fetches the
+new files from GCS instead of reusing its cached layer:
+
+```diff
+-ARG GLOWSCRIPT_PACKAGE_BUILD=2026-06-12a
++ARG GLOWSCRIPT_PACKAGE_BUILD=<today's date or build tag>
+```
+
+Then deploy normally. The `RUN curl` step in the Dockerfile fetches the three
+runtime files from `gs://rswvprunner/package/` and bakes them into the image.
+No extra steps needed at deploy time.
+
+---
+
 ## Environment flags reference
 
 | Env var                | Default       | Effect                                                    |

@@ -40,7 +40,7 @@ RUN curl -L --silent -o public/components/src-min-noconflict/theme-github.js \
 # from the tarball stays in place as a fallback. Bump GLOWSCRIPT_PACKAGE_BUILD after
 # redeploying rsWVPRunner: it busts both this layer's cache and (as a query param)
 # the GCS edge cache, which can otherwise serve hour-old copies.
-ARG GLOWSCRIPT_PACKAGE_BUILD=2026-06-12a
+ARG GLOWSCRIPT_PACKAGE_BUILD=2026-06-16a
 RUN curl -fL --silent -o public/components/vpython-glowscript/package/glow.3.2.3.min.js \
     "https://storage.googleapis.com/rswvprunner/package/glow.3.2.min.js?build=${GLOWSCRIPT_PACKAGE_BUILD}" \
     && curl -fL --silent -o public/components/vpython-glowscript/package/RScompiler.3.2.3.min.js \

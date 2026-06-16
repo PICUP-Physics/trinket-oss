@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<body>
+<pre id="log"></pre>
+<div id="iframe-container"></div>
+<script>
+function log(msg) { document.getElementById('log').textContent += msg + '\n'; }
+
+// Listen for messages from the srcdoc iframe
+window.addEventListener('message', function(e) {
+  try {
+    var data = JSON.parse(e.data);
+    if (data['srcdoc.log']) log('[SRCDOC] ' + data['srcdoc.log']);
+    if (data['srcdoc.print']) log('[PRINT] ' + data['srcdoc.print']);
+  } catch(err) {}
+});
+
+// Build srcdoc that mimics the actual glowscript embed structure
+var srcdoc = `<!DOCTYPE html>
+<html>
+<head>
+  <script type="text/javascript" src="http://localhost:3001/components/vpython-glowscript/lib/jquery/2.1/jquery.min.js"><\/script>
+  <script type="text/javascript">
+    window.parent.postMessage(JSON.stringify({'srcdoc.log': 'In head: document.body=' + document.body + ', jquery body len=' + $('body').length}), '*');
+  <\/script>
+  <script type="text/javascript" src="http://localhost:3001/components/vpython-glowscript/package/glow.3.2.3.min.js"><\/script>
+  <script type="text/javascript" src="http://localhost:3001/components/vpython-glowscript/package/RSrun.3.2.3.min.js"><\/script>
+  <script type="text/javascript" src="http://localhost:3001/components/vpython-glowscript/package/RScompiler.3.2.3.min.js"><\/script>
+</head>
+<body>
+  <div id="loading">Loading</div>
+  <div id="glowscript"></div>
+  <script type="text/javascript">
+    window.parent.postMessage(JSON.stringify({'srcdoc.log': 'In body: document.body=' + document.body + ', jquery body len=' + $('body').length}), '*');
+    
+    window.onerror = function(msg,url,line,col,err) {
+      window.parent.postMessage(JSON.stringify({'srcdoc.log': 'ONERROR: ' + msg + ' at ' + line}), '*');
+    };
+
+    window.__context = { glowscript_container: $('#glowscript') };
+
+    var prog = 'Web VPython 3.2\\nprint("hello from srcdoc")\\n';
+    
+    async function runProgram(program) {
+      try {
+        eval(program);
+        await __main__();
+      } catch(err) {
+        window.parent.postMessage(JSON.stringify({'srcdoc.log': 'RUNTIME ERR: ' + err.message}), '*');
+      }
+    }
+
+    try {
+      var compiled = window.glowscript_compile(prog, {lang:'vpython', version:'3.2.3'});
+      window.parent.postMessage(JSON.stringify({'srcdoc.log': 'compiled len=' + compiled.length}), '*');
+      runProgram(compiled).then(function() {
+        var ta = document.getElementById('print');
+        var val = ta ? ta.value : 'NO TEXTAREA';
+        window.parent.postMessage(JSON.stringify({'srcdoc.log': 'after run, textarea: ' + val}), '*');
+      });
+    } catch(e) {
+      window.parent.postMessage(JSON.stringify({'srcdoc.log': 'compile err: ' + e.message}), '*');
+    }
+  <\/script>
+</body>
+</html>`;
+
+var iframe = document.createElement('iframe');
+iframe.sandbox = 'allow-scripts allow-forms allow-modals allow-popups';
+iframe.srcdoc = srcdoc;
+iframe.style.width = '600px'; iframe.style.height = '200px';
+document.getElementById('iframe-container').appendChild(iframe);
+log('srcdoc iframe created');
+</script>
+</body>
+</html>
