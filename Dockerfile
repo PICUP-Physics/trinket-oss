@@ -40,13 +40,25 @@ RUN curl -L --silent -o public/components/src-min-noconflict/theme-github.js \
 # from the tarball stays in place as a fallback. Bump GLOWSCRIPT_PACKAGE_BUILD after
 # redeploying rsWVPRunner: it busts both this layer's cache and (as a query param)
 # the GCS edge cache, which can otherwise serve hour-old copies.
+#
+# Each file is pinned to its rsWVPRunner build by sha256: if upstream republishes a
+# changed runtime, the sha256sum -c check fails the build instead of silently shipping
+# it. After an *intended* rsWVPRunner glow change: redeploy rsWVPRunner, then bump
+# GLOWSCRIPT_PACKAGE_BUILD and update the *_SHA256 values below. Recompute via:
+#   curl -fsSL "https://storage.googleapis.com/rswvprunner/package/<file>.3.2.min.js" | sha256sum
 ARG GLOWSCRIPT_PACKAGE_BUILD=2026-06-16b
-RUN curl -fL --silent -o public/components/vpython-glowscript/package/glow.3.2.3.min.js \
-    "https://storage.googleapis.com/rswvprunner/package/glow.3.2.min.js?build=${GLOWSCRIPT_PACKAGE_BUILD}" \
-    && curl -fL --silent -o public/components/vpython-glowscript/package/RScompiler.3.2.3.min.js \
-    "https://storage.googleapis.com/rswvprunner/package/RScompiler.3.2.min.js?build=${GLOWSCRIPT_PACKAGE_BUILD}" \
-    && curl -fL --silent -o public/components/vpython-glowscript/package/RSrun.3.2.3.min.js \
-    "https://storage.googleapis.com/rswvprunner/package/RSrun.3.2.min.js?build=${GLOWSCRIPT_PACKAGE_BUILD}"
+ARG GLOW_SHA256=1587799056b9d5aa5a854ec653653e0c0b6c11ab708a9783e3bffc126104f5ca
+ARG RSCOMPILER_SHA256=ada7775620cdea6472de0e7bd4175e126a3f232c74bf6392dbf238350c14c588
+ARG RSRUN_SHA256=2735844b615f87b4147e9cb2b90bf8a7a15da208fc8876eae469fc98861e429d
+RUN set -eu; \
+    base="https://storage.googleapis.com/rswvprunner/package"; \
+    dir="public/components/vpython-glowscript/package"; \
+    curl -fL --silent -o "$dir/glow.3.2.3.min.js"       "$base/glow.3.2.min.js?build=${GLOWSCRIPT_PACKAGE_BUILD}"; \
+    curl -fL --silent -o "$dir/RScompiler.3.2.3.min.js" "$base/RScompiler.3.2.min.js?build=${GLOWSCRIPT_PACKAGE_BUILD}"; \
+    curl -fL --silent -o "$dir/RSrun.3.2.3.min.js"      "$base/RSrun.3.2.min.js?build=${GLOWSCRIPT_PACKAGE_BUILD}"; \
+    echo "${GLOW_SHA256}  $dir/glow.3.2.3.min.js"             | sha256sum -c -; \
+    echo "${RSCOMPILER_SHA256}  $dir/RScompiler.3.2.3.min.js" | sha256sum -c -; \
+    echo "${RSRUN_SHA256}  $dir/RSrun.3.2.3.min.js"           | sha256sum -c -
 
 # Copy source last so code changes don't bust the layers above
 COPY --chown=trinket:trinket . .
