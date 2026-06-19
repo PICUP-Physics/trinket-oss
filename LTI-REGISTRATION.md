@@ -141,11 +141,64 @@ lands you on the course page. Re-launching the same user does not create a dupli
 
 ---
 
-## Canvas (later, for realism)
+## Canvas (LTI 1.3 Developer Key)
 
-Same three URLs. In Canvas you create an **LTI 1.3 Developer Key** (Admin → Developer Keys → +LTI
-Key) with the login/launch/JWKS URLs; Canvas issues a **client_id** and exposes its issuer
-(`https://canvas.instructure.com` or the instance), OIDC auth endpoint, JWKS URL, and a
-deployment_id (after you enable the key and add the app). Seed those exactly as in Step 3. Canvas
-custom-parameter substitution uses `$Custom.…`/literal values — set `trinket_course` to the course
-id. Each Canvas *instance* is its own `LtiPlatform` record.
+Same trinket URLs as Saltire; Canvas is just a different platform record. Two things to know up
+front:
+
+- **You need Canvas *admin* access** (to create Developer Keys). **Canvas Free-for-Teacher does
+  NOT grant this** — use a local Canvas (Docker) or an instance where you're an account admin.
+- Canvas must reach `<host>` over HTTPS — same tunnel or candidate-deploy rule as Saltire.
+
+### A. Create the Developer Key (Canvas admin)
+
+1. **Admin → Developer Keys → + Developer Key → + LTI Key.**
+2. Configure (Method: **Manual Entry**):
+   - **Title:** `trinket`
+   - **Target Link URI:** `<host>/lti/launch`
+   - **OpenID Connect Initiation Url:** `<host>/lti/login`
+   - **JWK Method:** *Public JWK URL* → `<host>/lti/jwks`
+   - **Redirect URIs:** `<host>/lti/launch`
+   - **Privacy Level:** **Public** — so name + email are sent (needed for provisioning /
+     link-by-email; otherwise trinket synthesizes a placeholder email).
+   - **Custom Fields:** `trinket_course=<a trinket course id>` (one `name=value` per line; literal
+     value — *not* a Canvas `$Canvas.…` substitution, which would give Canvas's id, not trinket's).
+   - **Placements:** add **Course Navigation** (a course-level launch). Assignment/Link Selection
+     can come later.
+3. **Save.** In the Developer Keys list the key now shows a **Client ID** (a ~10–18 digit number in
+   the Details column) — copy it. Toggle the key **ON**.
+
+### B. Install the tool → get the deployment_id
+
+1. **Admin → Settings → Apps → + App** (or Course → Settings → Apps for a single course).
+2. **Configuration Type: By Client ID** → paste the **Client ID** → Submit → Install.
+3. Open the installed app's **gear → Deployment Id** and copy the **Deployment ID**.
+
+### C. Canvas platform endpoints (hosted Canvas — fixed)
+
+- **Issuer (`iss`):** `https://canvas.instructure.com`  *(Canvas uses this same issuer for all
+  hosted instances — they differ only by client_id/deployment, which is why trinket matches on
+  both `iss` + `client_id`.)*
+- **OIDC auth URL:** `https://sso.canvaslms.com/api/lti/authorize_redirect`
+- **JWKS URL:** `https://sso.canvaslms.com/api/lti/security/jwks`
+- **Token URL (later, for AGS):** `https://sso.canvaslms.com/login/oauth2/token`
+
+(Self-hosted/local Canvas: substitute your Canvas domain; older instances may still use
+`canvas.instructure.com` for these. Confirm against your Canvas's LTI config if a launch fails.)
+
+### D. Seed trinket, then launch
+
+```bash
+node scripts/seed-lti-platform.js \
+  --issuer "https://canvas.instructure.com" \
+  --client-id "<the long Client ID from A3>" \
+  --auth-login-url "https://sso.canvaslms.com/api/lti/authorize_redirect" \
+  --jwks-url "https://sso.canvaslms.com/api/lti/security/jwks" \
+  --deployment-id "<Deployment ID from B3>" \
+  --name "Canvas"
+```
+
+Then open a Canvas course where the tool is installed and click **trinket** in Course Navigation.
+trinket signs you in (Teacher/TA/Designer → `course-admin`, Student → `course-student`), enrolls
+you, and lands you on the trinket course. Each Canvas *instance* is its own `LtiPlatform` record
+(same issuer, different client_id).
