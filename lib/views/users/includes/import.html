@@ -5,13 +5,17 @@
   <span id="importSuccessMsg"></span>
 </div>
 
-<!-- Step 1: Trinkets -->
+<!-- Optional: pre-import trinkets (for older, non-bundled exports) -->
 <div class="row">
   <div class="small-12 columns">
-    <h5>Step 1 — Import Trinkets</h5>
-    <p>Upload the <code>trinket-export-*.zip</code> file downloaded from the old server.
-       You can run this multiple times (once per author) before importing the course.</p>
-    <p><em>Already-imported trinkets are skipped automatically.</em></p>
+    <h5>Import Trinkets (optional)</h5>
+    <p>Only needed for older exports that don't bundle their trinkets. A course
+       <code>*-md.zip</code> exported with embedded trinkets imports them
+       automatically, so you can usually skip straight to <strong>Import Course</strong>
+       below.</p>
+    <p>Upload a <code>trinket-export-*.zip</code> to pre-import trinkets by author.
+       You can run this multiple times; already-imported trinkets are skipped
+       automatically.</p>
   </div>
 </div>
 
@@ -50,15 +54,15 @@
 
 <hr style="margin:30px 0;">
 
-<!-- Step 2: Course -->
+<!-- Course (the main path: self-contained zips bundle trinkets + assets) -->
 <div class="row">
   <div class="small-12 columns">
-    <h5>Step 2 — Import Course</h5>
-    <p>Upload the <code>*-md.zip</code> course file downloaded from the old server.
-       Trinket embed links are automatically rewritten to point to this server.</p>
-    <p><em>If any linked trinkets haven't been imported yet you'll see a warning and can
-       choose to continue anyway (old trinket.io URLs will be left intact until those
-       trinkets are imported later).</em></p>
+    <h5>Import Course</h5>
+    <p>Upload the <code>*-md.zip</code> course file. Bundled trinkets and images are
+       imported automatically and embed links are rewritten to point to this server.</p>
+    <p><em>For older zips that don't bundle their trinkets, any unresolved links are
+       flagged so you can import those trinkets above and retry — or continue anyway
+       (the old links are patched automatically once those trinkets are imported).</em></p>
   </div>
 </div>
 
@@ -81,7 +85,7 @@
     <strong>Some trinket links could not be resolved:</strong>
     <ul id="missingRefsList" style="margin-top:8px;"></ul>
     <p style="margin-top:10px;">
-      Import the missing trinkets (Step 1) and try again, or
+      Import the missing trinkets above and try again, or
       <button id="forceImportBtn" class="button tiny alert" style="margin:0 4px;">Import anyway</button>
       to leave old trinket.io URLs intact (they will be patched automatically once those trinkets are imported).
     </p>

@@ -1462,6 +1462,7 @@ module.exports = [
     route : 'POST /api/imports/trinkets imports.importTrinkets',
     config : {
       auth: 'session',
+      pre : ['canCreateCourse(user)'],
       payload : {
         maxBytes   : 50 * (1024 * 1024), // 50MB
         multipart  : { output: 'file' }
@@ -1478,6 +1479,7 @@ module.exports = [
     route : 'POST /api/imports/course imports.importCourse',
     config : {
       auth: 'session',
+      pre : ['canCreateCourse(user)'],
       payload : {
         maxBytes   : 50 * (1024 * 1024), // 50MB
         multipart  : { output: 'file' }
