@@ -57,6 +57,9 @@ Optional:
   TAG                      Tag name for no-traffic deploys (default: candidate)
   GOOGLE_CLIENT_ID         Google OAuth 2.0 client ID (prompted if unset)
   GOOGLE_CLIENT_SECRET     Google OAuth 2.0 client secret
+  LTI_PRIVATE_KEY          LTI 1.3 Tool signing key (PEM or base64-PEM). Optional; when set,
+                           stored in Secret Manager as trinket-lti-private-key and wired as env
+                           LTI_PRIVATE_KEY. Generate with scripts/generate-lti-keypair.js.
   ROTATE_SECRETS           Set to 1 to add new Secret Manager versions even when
                            the secret already exists. Default: skip update if the
                            secret exists (avoids accumulating chargeable versions).
@@ -132,6 +135,7 @@ MONTHLY_BUDGET="${MONTHLY_BUDGET:-10}"
 SECRET_NAME="trinket-session-password"
 GOOGLE_CLIENT_ID_SECRET="trinket-google-client-id"
 GOOGLE_CLIENT_SECRET_SECRET="trinket-google-client-secret"
+LTI_KEY_SECRET="trinket-lti-private-key"
 IMAGE="${GOOGLE_CLOUD_REGION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${REPO_NAME}/${SERVICE_NAME}"
 ENV_VARS_FILE=$(mktemp "${TMPDIR:-/tmp}/trinket-cloudrun-env.XXXXXX")
 _LIVE_ENV_FILE=$(mktemp "${TMPDIR:-/tmp}/trinket-live-env.XXXXXX")
@@ -150,6 +154,7 @@ echo "Traffic:         $([[ "${NO_TRAFFIC}" =~ ^(1|true|yes)$ ]] && echo "0% (ta
 echo "Rotate secrets:  $([[ "${ROTATE_SECRETS}" =~ ^(1|true|yes)$ ]] && echo "yes" || echo "no")"
 echo "Firebase config: $([[ -n "${FIREBASE_CLIENT_CONFIG:-}" ]] && echo "set" || echo "MISSING")"
 echo "Session secret:  $([[ -n "${SESSION_PASSWORD:-}" ]] && echo "set" || echo "MISSING")"
+echo "LTI key:         $([[ -n "${LTI_PRIVATE_KEY:-}" ]] && echo "set (will update secret)" || echo "— (LTI /lti/jwks inactive unless secret already exists)")"
 if [[ -n "${PUBLIC_HOSTNAME}" ]]; then
   echo "Public hostname: ${PUBLIC_HOSTNAME}"
 else
@@ -256,6 +261,24 @@ if [[ -n "${GOOGLE_CLIENT_ID:-}" ]]; then
   done
 fi
 
+# Store the LTI 1.3 Tool private key (optional). Value is whatever is in LTI_PRIVATE_KEY
+# (typically base64-wrapped PEM from .env); the app decodes either form. Same ROTATE_SECRETS
+# guard as above. If unset, we skip — LTI just stays inactive unless the secret already exists.
+if [[ -n "${LTI_PRIVATE_KEY:-}" ]]; then
+  echo "--- Storing LTI private key in Secret Manager ---"
+  if gcloud secrets describe "${LTI_KEY_SECRET}" --project="${GOOGLE_CLOUD_PROJECT}" 2>/dev/null; then
+    if [[ "${ROTATE_SECRETS}" =~ ^(1|true|yes)$ ]]; then
+      printf '%s' "${LTI_PRIVATE_KEY}" | gcloud secrets versions add "${LTI_KEY_SECRET}" \
+        --data-file=- --project="${GOOGLE_CLOUD_PROJECT}"
+    else
+      echo "    ${LTI_KEY_SECRET} already exists — skipping (set ROTATE_SECRETS=1 to force)"
+    fi
+  else
+    printf '%s' "${LTI_PRIVATE_KEY}" | gcloud secrets create "${LTI_KEY_SECRET}" \
+      --data-file=- --replication-policy=automatic --project="${GOOGLE_CLOUD_PROJECT}"
+  fi
+fi
+
 # Grant IAM roles to the Cloud Run compute SA
 echo "--- Granting IAM roles ---"
 PROJECT_NUMBER=$(gcloud projects describe "${GOOGLE_CLOUD_PROJECT}" --format='value(projectNumber)')
@@ -266,7 +289,7 @@ gcloud projects add-iam-policy-binding "${GOOGLE_CLOUD_PROJECT}" \
   --role="roles/datastore.user" \
   --quiet
 
-for S in "${SECRET_NAME}" "${GOOGLE_CLIENT_ID_SECRET}" "${GOOGLE_CLIENT_SECRET_SECRET}"; do
+for S in "${SECRET_NAME}" "${GOOGLE_CLIENT_ID_SECRET}" "${GOOGLE_CLIENT_SECRET_SECRET}" "${LTI_KEY_SECRET}"; do
   if gcloud secrets describe "${S}" --project="${GOOGLE_CLOUD_PROJECT}" 2>/dev/null; then
     gcloud secrets add-iam-policy-binding "${S}" \
       --project="${GOOGLE_CLOUD_PROJECT}" \
@@ -382,6 +405,11 @@ fi
 SECRETS_ARG="SESSION_PASSWORD=${SECRET_NAME}:latest"
 if [[ -n "${GOOGLE_CLIENT_ID:-}" ]]; then
   SECRETS_ARG="${SECRETS_ARG},GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID_SECRET}:latest,GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET_SECRET}:latest"
+fi
+# Wire the LTI private key only if the secret exists (created above or on a prior deploy);
+# referencing a non-existent secret would fail the deploy.
+if gcloud secrets describe "${LTI_KEY_SECRET}" --project="${GOOGLE_CLOUD_PROJECT}" >/dev/null 2>&1; then
+  SECRETS_ARG="${SECRETS_ARG},LTI_PRIVATE_KEY=${LTI_KEY_SECRET}:latest"
 fi
 
 DEPLOY_TRAFFIC_ARGS=()

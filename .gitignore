@@ -58,4 +58,6 @@ public/_published
 .claude
 *~
 
-*.log
+*.loglti-private-key.pem
+lti-private-key.pem
+firestore-debug.log

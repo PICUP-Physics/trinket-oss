@@ -414,6 +414,32 @@ routes = [
       auth : false
     }
   },
+  // ── LTI 1.3 (Tool) ──────────────────────────────────────────────────────────
+  // Public (no session); the launch establishes the session. See LTI-SPEC.md.
+  {
+    route : 'GET /lti/jwks lti.jwks',
+    config : {
+      auth : false
+    }
+  },
+  {
+    route : 'GET /lti/login lti.loginInit',
+    config : {
+      auth : false
+    }
+  },
+  {
+    route : 'POST /lti/login lti.loginInit',
+    config : {
+      auth : false
+    }
+  },
+  {
+    route : 'POST /lti/launch lti.launch',
+    config : {
+      auth : false
+    }
+  },
 ];
 
 // trinket language specific routes

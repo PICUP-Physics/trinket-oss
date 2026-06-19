@@ -130,12 +130,23 @@ Only after all pass do we read identity/context/roles/custom claims.
 Primary key is **`(iss, sub)`** — the platform issuer + stable per-platform subject. Do **not**
 key on email (LTI email may be absent or shared as private). Store email/name when provided.
 
-### 8.2 Lookup / create
-- Look up `LtiUserIdentity` by `(iss, sub)` → trinket `userId`.
-- If found, load that user.
-- If not, create a trinket `User` (username derived/uniquified; email if provided), then
-  create the `LtiUserIdentity` link. This **bypasses** the `auth.js` roster-email gate
-  entirely — LTI is its own trusted provisioning path.
+### 8.2 Lookup / create / link
+trinket `User.email` is `required` + `unique`, so email is a safe linking signal *on top of*
+the `(iss, sub)` identity. Order:
+
+1. **`LtiUserIdentity(iss, sub)` exists** → use that user. (Returning launch; survives LMS email
+   changes.)
+2. **Else, launch provides `email` matching an existing trinket `User`** (`findByLogin`) →
+   **link**: create `LtiUserIdentity(iss, sub)` pointing at the existing user. Don't duplicate.
+3. **Else** → create a new `User` (username uniquified; email/name from the launch) + the
+   `LtiUserIdentity` link.
+
+This **bypasses** the `auth.js` roster-email gate — LTI is its own trusted provisioning path.
+
+**Email-link trust:** step 2 trusts the platform's `email` assertion (LTI has no standard
+`email_verified` claim). Safe for a trusted institutional platform; riskier with self-set/
+unverified LMS emails or many platforms. Gate it with a per-platform **`LtiPlatform.trustEmail`**
+flag (default **on**); when off, skip step 2 (only `(iss, sub)` links, never email).
 
 ### 8.3 Enrollment
 Enroll the user in the launch's course (`LtiResourceLink.courseId`) if not already a member,
@@ -165,9 +176,13 @@ nothing back to the LMS. When AGS is added later, the minimal mapping is complet
 
 Follow the existing `lib/models/*` pattern (works on the Firestore backend).
 
-- **`LtiPlatform`** — one per LMS registration:
-  `issuer`, `clientId`, `authLoginUrl` (platform OIDC auth endpoint), `authTokenUrl` (for
-  later AGS), `jwksUrl`, `deploymentIds: [String]`, `name`. Indexed by `issuer`(+`clientId`).
+- **`LtiPlatform`** — **one per LMS instance** (each issues trinket its own `clientId`; two
+  installs of the same LMS software = two records): `issuer`, `clientId`, `authLoginUrl`
+  (platform OIDC auth endpoint), `authTokenUrl` (for later AGS), `jwksUrl`,
+  `deploymentIds: [String]` (one `clientId` can be deployed several times), `name`,
+  `trustEmail: Boolean` (default true; gates email-linking, §8.2). Indexed by `issuer`(+`clientId`).
+  Note: trinket's **own** Tool keypair/JWKS is single and shared across *all* platforms — only
+  the platform registration is per-instance.
 - **`LtiResourceLink`** — `platformId`, `resourceLinkId`, `contextId`, `courseId`,
   `targetType` (`course|topic|assignment`), `targetId`. Indexed by
   `(platformId, resourceLinkId)`.
@@ -228,8 +243,14 @@ controller, validation, provisioning, and models stay backend-neutral.
   `/lti/jwks`. Generate once; support `kid` + rotation.
 - **Platform registrations**: stored as `LtiPlatform` records (seedable via a small admin
   script or, later, an admin UI). v1 can seed via a script like `scripts/`.
-- `jsonwebtoken` is already a dependency; add a JWKS client (e.g. `jwks-rsa`) for fetching/
-  caching platform keys.
+- **Launch-JWT verification library.** The repo pins `jsonwebtoken@^5` (≈2015, unmaintained) —
+  fine for our own short-lived `state` token (we sign+verify with our own key) but **not** for
+  validating the platform's untrusted launch JWT, which is the security crux. v1 (gcr) adds
+  **`jose@^4`** (CJS-compatible; v5 is ESM-only) for that: it does remote-JWKS fetch + caching +
+  `kid` rotation. **Upstream-dependency caveat (Steve has no control over upstream deps):**
+  `jose` is isolated behind a single seam, **`lib/util/ltiVerify.js`** (`verifyLaunchToken(idToken,
+  platform)`), so trinket-oss can drop in a different implementation (or keep `jsonwebtoken` +
+  `jwks-rsa`) without touching the launch controller. Same spirit as the storage seam (§10.1).
 - **`state` signing**: reuse the Tool keypair to sign `state` as a short JWT (no extra secret),
   or use a dedicated HMAC secret in Secret Manager. Either way, no shared cache is needed for
   `state` (§7.1).
@@ -272,8 +293,9 @@ controller, validation, provisioning, and models stay backend-neutral.
 
 - Multi-tenant platform management: script-seeded for v1, but who administers `LtiPlatform`
   records long-term — an admin UI?
-- Username/email collisions when provisioning (LMS user whose email already maps to an
-  existing non-LTI trinket account — link or keep separate?).
+- ~~Username/email collisions when provisioning~~ **Decided:** key on `(iss, sub)`, link to an
+  existing account when the launch email matches (email is `unique`), gated by
+  `LtiPlatform.trustEmail` (§8.2).
 - Whether the assignment placement should pre-create an AGS line item now (even unused) to
   ease the later AGS phase.
 - Upstream: the facade seam (§10.1) makes this portable to trinket-oss — the only remaining
