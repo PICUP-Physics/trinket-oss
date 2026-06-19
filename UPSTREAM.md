@@ -122,3 +122,66 @@ the tarball.
 `public-components.tgz` tarball in the next release, and remove the curl workaround
 from the Dockerfile. Alternatively add the curl step to the upstream Dockerfile if
 the tarball is not being updated.
+
+---
+
+## 7. Course export/import: preserve visibility + draft status (in progress, 2026-06-18)
+
+**Goal:** Make course export/import round-trip course-level settings and
+draft/published state, so re-importing an exported course doesn't reset everything
+to published/default visibility.
+
+**The data model (verified):**
+- `course.globalSettings` = `{ courseType (Public/Private/Open — UI "Course
+  visibility"), contentDefault (publish/draft — UI "Default page and assignment
+  visibility"), copyable }`
+- `lesson.isDraft` (topic) and `material.isDraft` (page/assignment) — student
+  visibility gate (`course.js` populate uses `match: { isDraft: { $ne: true } }`
+  for non-editors).
+- The trinket `published` boolean is vestigial in this fork (no `/sites/` route) —
+  explicitly OUT of scope.
+
+**The change:** export writes `globalSettings` + per-lesson/material `isDraft` into
+the `course.json` manifest; import threads them back onto the new course/lessons/
+materials. Additive + backward-compatible (old archives import as before → defaults).
+Does NOT touch asset/trinket bundling (`embedAssets`/`embedTrinkets` unchanged).
+
+**Status by repo/branch:**
+- **trinket-gcr (`gcr-firebase`):** `lib/controllers/courses.js` (export) +
+  `lib/controllers/imports.js` (import) — implemented and VERIFIED. Uncommitted
+  (Steve to commit). Verified via in-container round-trip against the real export
+  and import handlers + a legacy-archive (no fields) compat test, plus a manual UI
+  round-trip.
+- **trinket-oss EXPORT PR:** **OPENED — [PR #14](https://github.com/trinketapp/trinket-oss/pull/14)**
+  (branch `feature/export-content-status`, commit `48f2606`, courses.js only,
+  feature-only — no tests). Round-trip verified manually on the `test/minio-export`
+  minio stack (assets on); reviewed solid against the schema (whitelist == full
+  `globalSettings`; `isDraft` real on Lesson + Material; legacy-safe via `|| {}`).
+- **trinket-oss IMPORT PR:** existing **PR #8** (`feature/course-import`). NOT yet
+  updated with the import-side `imports.js` changes. Deferred — nice-to-have, not
+  critical right now.
+- **`test/minio-export`** (integration test branch): `test/minio-import` + the
+  export change merged cleanly (merge commit `12e82fa`). Combines minio storage
+  (`features.assets: true` via compose `NODE_CONFIG`) + import PR + export change —
+  ≈ what trinket.io looks like with both PRs merged and assets on. Created, not yet
+  run.
+
+**Why feature-only (no automated tests in the export PR):** the oss mocha suite is
+broken at HEAD (on `main` too) — `test/helpers/catbox-redis.js` requires the
+unscoped `catbox-redis`, but the project moved to `@hapi/catbox-redis` and never
+updated the helper, so `npm test` fails at bootstrap. A separate harness-fix PR is
+the right place to add export/import tests.
+
+**Next steps (pick up here):**
+1. ~~Run the minio round-trip test.~~ DONE — verified manually (assets bundle
+   alongside the new fields).
+2. ~~Push + open the export PR.~~ DONE — [PR #14](https://github.com/trinketapp/trinket-oss/pull/14).
+3. (Later) update import PR #8 (`feature/course-import`) with the `imports.js`
+   globalSettings/isDraft threading; consider a separate PR fixing the test harness
+   (`catbox-redis` → `@hapi/catbox-redis`) + adding the export/import round-trip tests.
+4. Steve to commit the gcr changes (courses.js, imports.js, Dockerfile, UPSTREAM.md).
+
+**Env note:** an ephemeral `npm install catbox-redis@4 --no-save` was run in the
+running oss container to probe the harness; it perturbed that container's
+`node_modules` volume (app stayed healthy). `docker compose up --build` (or dropping
+the node_modules volume) restores a clean tree.
