@@ -31,6 +31,38 @@ URL** it prints (e.g. `https://candidate---trinket-….run.app`). That's your `<
 
 Sanity check: `curl <host>/lti/jwks` should return `{"keys":[{ "kid": … }]}`.
 
+### Faster alternative to Step 1: tunnel a local instance (no deploy)
+
+A Cloud Build deploy takes minutes; a tunnel gives seconds and writes only to your **local
+emulator** (zero production data touched). Expose the local stack over public HTTPS, and tell the
+local app its public host so the launch `redirect_uri` is the tunnel URL (not `localhost`):
+
+```bash
+# 1. tunnel the local app (host port 3001). Free, no account:
+cloudflared tunnel --url http://localhost:3001      # -> prints https://<something>.trycloudflare.com
+#    (or: ngrok http 3001)
+
+# 2. point the local app at that host and reload (env change recreates the container):
+export LTI_PUBLIC_HOST=<something>.trycloudflare.com LTI_PUBLIC_PROTO=https LTI_PUBLIC_PORT=null
+docker compose up -d
+
+# 3. sanity check through the tunnel:
+curl https://<something>.trycloudflare.com/lti/jwks      # -> {"keys":[{ "kid": … }]}
+```
+
+Now `<host>` = `https://<something>.trycloudflare.com` for Steps 2–4. The `trinket_course` you
+target in Step 4 must be a course in your **local emulator** (create one in the local UI).
+
+Notes:
+- The `LTI_PUBLIC_*` vars default to `localhost`/`http`/`3001`, so normal local dev is unchanged
+  when they're unset (`unset LTI_PUBLIC_HOST LTI_PUBLIC_PROTO LTI_PUBLIC_PORT; docker compose up -d`).
+- After **code** edits (not env), reload with `docker restart trinket-gcr` — `node app.js` doesn't
+  hot-reload volume-mounted files.
+- Free `cloudflared`/`ngrok` tunnels get a **new random URL each run**, so you re-enter the URLs in
+  Saltire each session. For repeated use, a named cloudflared tunnel or a reserved ngrok domain
+  gives a stable host.
+- Launch **top-level** (not in an iframe) from Saltire to avoid third-party-cookie/SameSite issues.
+
 ---
 
 ## Step 2 — Register trinket in Saltire (platform mode)
