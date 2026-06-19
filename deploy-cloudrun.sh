@@ -40,6 +40,12 @@ Optional:
   REPO_NAME                Artifact Registry repo name (default: trinket)
   MEMORY                   Container memory (default: 512Mi)
   MAX_INSTANCES            Max instances (default: 10)
+  PUBLIC_HOSTNAME          Public-facing hostname used to build config.url and all
+                           server-side absolute URLs (logout/other redirects, share
+                           and embed links, worker-generated URLs). Set to a mapped
+                           custom domain (e.g. trinket.matterandinteractions.org) so
+                           these stay on that domain instead of the *.run.app host.
+                           Defaults to the Cloud Run service URL when unset.
   SKIP_BUILD               Set to 1 to reuse the existing image tag
   SKIP_DEPLOY              Set to 1 to skip build+deploy entirely (runs only
                            post-deploy steps: backup schedule, budget alert)
@@ -114,6 +120,11 @@ SKIP_BUILD="${SKIP_BUILD:-false}"
 SKIP_DEPLOY="${SKIP_DEPLOY:-false}"
 NO_TRAFFIC="${NO_TRAFFIC:-false}"
 TAG="${TAG:-candidate}"
+# Public-facing hostname for building config.url / absolute redirects. Set this to a
+# mapped custom domain (e.g. trinket.matterandinteractions.org) so logout and other
+# server-side redirects stay on that domain instead of bouncing to the *.run.app host.
+# When empty, falls back to the Cloud Run service URL.
+PUBLIC_HOSTNAME="${PUBLIC_HOSTNAME:-}"
 ROTATE_SECRETS="${ROTATE_SECRETS:-false}"
 MONTHLY_BUDGET="${MONTHLY_BUDGET:-10}"
 SECRET_NAME="trinket-session-password"
@@ -301,7 +312,7 @@ if [[ "${NO_TRAFFIC}" =~ ^(1|true|yes)$ ]]; then
     echo "Error: NO_TRAFFIC requires the service to already exist (no prior revision to keep serving)." >&2
     exit 1
   fi
-  HOSTNAME=$(echo "${_LIVE_SERVICE_URL}" | sed 's|https://||')
+  HOSTNAME="${PUBLIC_HOSTNAME:-$(echo "${_LIVE_SERVICE_URL}" | sed 's|https://||')}"
 fi
 
 if [[ "${SKIP_DEPLOY}" =~ ^(1|true|yes)$ ]]; then
@@ -322,7 +333,7 @@ YAML
 if [[ "${NO_TRAFFIC}" =~ ^(1|true|yes)$ ]] || [[ -n "${_LIVE_SERVICE_URL}" ]]; then
   # For NO_TRAFFIC, HOSTNAME is already set above; for re-deploys, derive it now.
   if [[ ! "${NO_TRAFFIC}" =~ ^(1|true|yes)$ ]]; then
-    HOSTNAME=$(echo "${_LIVE_SERVICE_URL}" | sed 's|https://||')
+    HOSTNAME="${PUBLIC_HOSTNAME:-$(echo "${_LIVE_SERVICE_URL}" | sed 's|https://||')}"
   fi
   HOSTNAME="${HOSTNAME}" \
   FIREBASE_CLIENT_CONFIG="${FIREBASE_CLIENT_CONFIG}" \
@@ -373,12 +384,17 @@ SERVICE_URL=$(gcloud run services describe "${SERVICE_NAME}" \
   --format='value(status.url)')
 
 if [[ "${NO_TRAFFIC}" =~ ^(1|true|yes)$ ]]; then
+  # `describe` has no --filter (that's a list-only flag), so pull the full JSON
+  # and pick the traffic entry whose tag matches ours.
   TAGGED_URL=$(gcloud run services describe "${SERVICE_NAME}" \
     --region="${GOOGLE_CLOUD_REGION}" \
     --project="${GOOGLE_CLOUD_PROJECT}" \
-    --flatten=status.traffic \
-    --filter="status.traffic.tag=${TAG}" \
-    --format='value(status.traffic.url)' | head -1)
+    --format=json \
+  | node -e "
+    var d = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+    var t = ((d.status && d.status.traffic) || []).find(function(x){ return x.tag === '${TAG}'; });
+    process.stdout.write(t && t.url ? t.url : '');
+  ")
   echo ""
   echo "=== No-traffic deploy complete ==="
   echo "Tagged URL (test here):  ${TAGGED_URL}"
@@ -400,7 +416,7 @@ fi
 # is known. On re-deploys, hostname vars were already included above.
 if [[ -z "${_LIVE_SERVICE_URL}" ]]; then
   echo "--- Patching NODE_CONFIG with service hostname (first deploy) ---"
-  HOSTNAME=$(echo "${SERVICE_URL}" | sed 's|https://||')
+  HOSTNAME="${PUBLIC_HOSTNAME:-$(echo "${SERVICE_URL}" | sed 's|https://||')}"
   # ^|^ makes | the delimiter so JSON commas/colons in values are safe.
   _PATCH_VARS="NODE_ENV=production|NODE_APP_INSTANCE=cloudrun|GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}|NODE_CONFIG={\"app\":{\"url\":{\"hostname\":\"${HOSTNAME}\"}}}|GOOGLE_CALLBACK_URL=https://${HOSTNAME}/auth/google/callback|FIREBASE_CLIENT_CONFIG=${FIREBASE_CLIENT_CONFIG}"
   [[ -n "${_LIVE_ADMIN_EMAILS:-}" ]] && _PATCH_VARS="${_PATCH_VARS}|ADMIN_EMAILS=${_LIVE_ADMIN_EMAILS}"
