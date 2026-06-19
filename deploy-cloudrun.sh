@@ -46,6 +46,8 @@ Optional:
                            custom domain (e.g. trinket.matterandinteractions.org) so
                            these stay on that domain instead of the *.run.app host.
                            Defaults to the Cloud Run service URL when unset.
+  ASSUME_YES               Set to 1 to skip the pre-flight confirmation prompt
+                           (required for non-interactive / CI runs)
   SKIP_BUILD               Set to 1 to reuse the existing image tag
   SKIP_DEPLOY              Set to 1 to skip build+deploy entirely (runs only
                            post-deploy steps: backup schedule, budget alert)
@@ -137,13 +139,39 @@ cleanup() { rm -f "${ENV_VARS_FILE}" "${_LIVE_ENV_FILE}"; }
 trap cleanup EXIT
 
 echo "=== Deploying Trinket to Cloud Run ==="
-echo "Project:  ${GOOGLE_CLOUD_PROJECT}"
-echo "Region:   ${GOOGLE_CLOUD_REGION}"
-echo "Service:  ${SERVICE_NAME}"
-echo "Image:    ${IMAGE}"
-echo "Build:    $([[ "${SKIP_BUILD}" =~ ^(1|true|yes)$ ]] && echo "skip" || echo "run")"
-echo "Traffic:  $([[ "${NO_TRAFFIC}" =~ ^(1|true|yes)$ ]] && echo "0% (tag=${TAG})" || echo "100%")"
+echo "Project:         ${GOOGLE_CLOUD_PROJECT}"
+echo "Region:          ${GOOGLE_CLOUD_REGION}"
+echo "Service:         ${SERVICE_NAME}"
+echo "Image:           ${IMAGE}"
+echo "Memory:          ${MEMORY}"
+echo "Max instances:   ${MAX_INSTANCES}"
+echo "Build:           $([[ "${SKIP_BUILD}" =~ ^(1|true|yes)$ ]] && echo "skip" || echo "run")"
+echo "Traffic:         $([[ "${NO_TRAFFIC}" =~ ^(1|true|yes)$ ]] && echo "0% (tag=${TAG})" || echo "100%")"
+echo "Rotate secrets:  $([[ "${ROTATE_SECRETS}" =~ ^(1|true|yes)$ ]] && echo "yes" || echo "no")"
+echo "Firebase config: $([[ -n "${FIREBASE_CLIENT_CONFIG:-}" ]] && echo "set" || echo "MISSING")"
+echo "Session secret:  $([[ -n "${SESSION_PASSWORD:-}" ]] && echo "set" || echo "MISSING")"
+if [[ -n "${PUBLIC_HOSTNAME}" ]]; then
+  echo "Public hostname: ${PUBLIC_HOSTNAME}"
+else
+  echo "Public hostname: *** NOT SET — server-side URLs (logout, share/embed links)"
+  echo "                 will use the *.run.app host, not a custom domain ***"
+fi
 echo ""
+
+# Confirm the settings above before doing anything with side effects (enabling
+# APIs, writing secrets, building, deploying). Skip with ASSUME_YES=1 for CI.
+if [[ ! "${ASSUME_YES:-}" =~ ^(1|true|yes)$ ]]; then
+  if [[ -t 0 ]]; then
+    read -r -p "Proceed with these settings? [y/N] " _confirm
+    case "${_confirm}" in
+      y|Y|yes|YES) ;;
+      *) echo "Aborted — nothing was changed."; exit 1 ;;
+    esac
+  else
+    echo "Refusing to deploy non-interactively. Re-run with ASSUME_YES=1 to skip this prompt." >&2
+    exit 1
+  fi
+fi
 
 # Ensure required APIs are enabled
 echo "--- Enabling required APIs ---"
