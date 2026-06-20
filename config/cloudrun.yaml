@@ -22,6 +22,9 @@ app:
       cache:
         backend: memory
 
+lti:
+  instructorAuthority: instructormi
+
 db:
   backend: firestore   # No MongoDB required
   redis:

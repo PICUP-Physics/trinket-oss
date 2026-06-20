@@ -28,6 +28,9 @@ app:
       cache:
         backend: firestore
 
+lti:
+  instructorAuthority: instructormi
+
 db:
   backend: firestore   # No MongoDB required
   redis:

@@ -372,6 +372,12 @@ app:
     - '/signup'
     - '/contact'
     - '/educators'
+lti:
+  # Which instructor-authority impl resolves "is this launcher a trinket instructor?":
+  #   'default'     → trust the LMS Instructor role (or LTI_INSTRUCTOR_EMAILS if set). Portable; oss.
+  #   'instructormi'→ consult the instructormi approved-instructor Datastore (gcr only).
+  instructorAuthority: default
+
 workers:
   trinkets:
     outputDir: '/tmp/' # should be readable by nginx
