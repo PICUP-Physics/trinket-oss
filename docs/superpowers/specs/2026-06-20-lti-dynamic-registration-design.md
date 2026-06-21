@@ -195,6 +195,11 @@ schema = {
   `lib/views/admin/includes/lti-registrations.html`. The catch-all route
   `GET /admin/{adminPage*} admin.index` already covers `/admin/lti-registrations`, and the admin area
   is already admin-gated — so no new route or gate is added for the list view.
+- **Gate = the unified site-admin role.** Use the existing `isAdmin(user)` pre-handler
+  (`hasRole("admin")`), NOT an `isAdminEmail` check. Since the site-admin unification, `adminEmails`
+  is seeded into the `admin` role at login, so the role gate already covers config-admins — and gating
+  the subpage by role keeps it consistent with every sibling `/admin` page. See
+  `docs/authority-model.md`.
 - Lists `LtiPlatform` where `status === 'pending'`. Each row: issuer, product family, deployment
   id(s), created date, **and** the initiating instructor's approval record (component 7). Buttons:
   **Approve** (`status → 'active'`) and **Reject/Delete** (remove the pending record — used for
