@@ -67,6 +67,9 @@ LtiPlatform.findByIssuer(fields.issuer, fields.clientId, function(err, existing)
     platform.deploymentIds = ids;
   }
 
+  platform.status = 'active';            // seeded platforms are trusted (the operator ran this)
+  platform.registeredVia = 'manual';
+
   platform.save(function(saveErr, doc) {
     if (saveErr) { console.error('Save failed:', saveErr.message); process.exit(1); }
     console.log((existing ? 'Updated' : 'Created') + ' platform ' + (doc.id || '') +
