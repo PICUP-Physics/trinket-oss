@@ -166,8 +166,19 @@ schema = {
 
 ### 5. Instructor "Connect your LMS" page (new controller action + view)
 
-- Route gated by the **same approved-instructor check as course creation** (`canCreateCourse` /
-  `instructorAuth`). Shows a *Generate registration link* button; on submit it calls a reusable
+- Route gated through the **`ltiInstructorAuthority` seam** (`resolveInstructor({ email })`), **not**
+  `instructorAuth.isApprovedInstructor` directly. This is deliberate: the seam is config-selected per
+  deploy (`instructormi` allowlist / `default` trust-or-env-list / a future `domain` gate), so the
+  registration-initiation gate automatically matches whatever gate that deploy uses for instructor
+  launches — see **Deployment profiles** below. The session user's email is the `email` passed in.
+- **Fail-closed guard for trust-the-platform deploys:** when the active authority is the bare
+  trust-platform fallback (`default` with no `LTI_INSTRUCTOR_EMAILS` and no other allowlist),
+  `resolveInstructor` would return truthy for *any* LMS-asserted instructor — which is fine for launch
+  but too open for self-registration (it would make `/lti/register` an effectively open endpoint).
+  In that configuration the registration page must require an explicit allowlist (env list or
+  admin-only) and otherwise refuse to mint tokens, failing closed. A deploy that wants open
+  self-registration opts in explicitly; it is never the default.
+- Shows a *Generate registration link* button; on submit it calls a reusable
   `ltiRegistration.mintRegistrationToken({ label, ttlDays, initiatedByEmail })` service function and
   displays the returned `<config.url>/lti/register?reg_token=<raw>` with a copy button + step-by-step
   "send this to your LMS admin" instructions.
@@ -176,13 +187,19 @@ schema = {
   return the raw token + full URL). The controller is a thin wrapper. A CLI can later call the same
   function for a headless mint without re-implementing it.
 
-### 6. Admin activation page (new controller action + view)
+### 6. Admin activation page (new `/admin` subpage)
 
-- Route gated by trinket **admin** (`instructorAuth.isAdminEmail` / existing admin gate).
+- Built as a **new admin subpage**, reusing trinket's existing admin area rather than a standalone
+  page — the same pattern as `featured-courses`. Concretely: add an `lti-registrations` case to the
+  `admin.index` dispatcher (`lib/controllers/admin.js`) and a partial
+  `lib/views/admin/includes/lti-registrations.html`. The catch-all route
+  `GET /admin/{adminPage*} admin.index` already covers `/admin/lti-registrations`, and the admin area
+  is already admin-gated — so no new route or gate is added for the list view.
 - Lists `LtiPlatform` where `status === 'pending'`. Each row: issuer, product family, deployment
   id(s), created date, **and** the initiating instructor's approval record (component 7). Buttons:
   **Approve** (`status → 'active'`) and **Reject/Delete** (remove the pending record — used for
-  duplicates when two instructors at one school both initiate).
+  duplicates when two instructors at one school both initiate). Approve/Reject POST to a new
+  admin-gated handler (the one new route this component adds).
 - **DRY:** the Approve action calls a reusable `ltiRegistration.activatePlatform(issuer, clientId)`
   service function (the controller is a thin wrapper); the activation logic lives there, not in the
   handler. This is what lets a CLI tap the identical path later without duplicating it.
@@ -236,13 +253,42 @@ schema = {
 
 ### 9. `config/routes.js` (modified)
 
-Add (string form, `auth:false` for the LMS-facing register endpoints; auth-gated for the two pages):
+Add (string form, `auth:false` for the LMS-facing register endpoints; auth-gated for the pages):
 - `GET /lti/register lti.registerInit`
 - `POST /lti/register lti.registerComplete`
-- `GET  <connect-lms-page>` (approved-instructor gated)
-- `POST <connect-lms-page>/token` (approved-instructor gated)
-- `GET  <admin-activation-page>` (admin gated)
-- `POST <admin-activation-page>/activate` (admin gated)
+- `GET  <connect-lms-page>` (gated via the `ltiInstructorAuthority` seam — component 5)
+- `POST <connect-lms-page>/token` (same seam gate)
+- `POST /admin/lti-registrations/activate admin.activateLtiRegistration` (admin gated)
+
+The admin **list** view needs no new route — it is the `lti-registrations` subpage of the existing
+`GET /admin/{adminPage*} admin.index` (component 6). Only the Approve/Reject POST is new.
+
+## Deployment profiles / configurable gates
+
+The same trinket image runs in several deployment shapes; the difference between them is **config, not
+code**. All registration/launch authorization flows through the `ltiInstructorAuthority` seam
+(`lib/util/ltiInstructorAuthority.js`), selected by `config.lti.instructorAuthority`. Adding a new
+gate is a new impl file + one config value — the LTI core, the registration flow, and the admin UI are
+untouched.
+
+| Profile | `instructorAuthority` | Who may launch as instructor / initiate registration |
+| --- | --- | --- |
+| Main gcr (multi-institution) | `instructormi` | The cross-project Datastore allowlist (`authorized === true`) |
+| OSS / mongo+redis | `default` | `LTI_INSTRUCTOR_EMAILS` env allowlist, else trust-the-platform |
+| Single-institution gcr (example) | `domain` *(future impl)* | Email domain matches that institution (e.g. `@school.edu`) |
+
+Design rules that keep this open-ended:
+- **Gate at the seam, never at a concrete impl.** Components 5 (and the launch path) call
+  `resolveInstructor`, not `instructorAuth.isApprovedInstructor`. A new profile is purely additive.
+- **`@google-cloud/datastore` stays quarantined** in `ltiInstructorAuthority-instructormi.js` +
+  `instructorAuth.js`. mongo/redis deploys simply never select `instructormi`; everything else in SP2
+  (models, registration flow, admin UI) is backend-portable through the existing model layer.
+- **Fail closed, open-in only by opt-in.** The bare trust-platform fallback does not expose open
+  self-registration (see component 5's guard). A deploy that genuinely wants open registration sets it
+  explicitly.
+- A `domain`-gated single-institution impl (`ltiInstructorAuthority-domain.js`, ~15 lines reading an
+  allowed-domain list from config) is **not built in v1** — listed here to confirm the seam already
+  accommodates it with no SP2 changes. YAGNI until a single-institution deploy is actually stood up.
 
 ## Security / threat model
 
