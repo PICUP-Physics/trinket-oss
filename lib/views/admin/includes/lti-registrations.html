@@ -47,7 +47,7 @@
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ issuer: row.dataset.issuer, clientId: row.dataset.clientId, action: action })
-    }).then(function(r){ return r.json(); }).then(function(){ row.parentNode.removeChild(row); });
+    }).then(function(r){ if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(function(res){ if (!res || !res.ok) throw new Error('rejected'); row.parentNode.removeChild(row); }).catch(function(e){ alert('Could not update registration: ' + e.message); });
   }
   document.querySelectorAll('.lti-approve').forEach(function(b){
     b.addEventListener('click', function(){ act(this.closest('tr'), 'approve'); });
