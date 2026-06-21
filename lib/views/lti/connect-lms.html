@@ -14,6 +14,7 @@
     <input id="reg-url" type="text" readonly style="width:100%">
   </div>
 </div></div>
+{% endblock %}
 {% block extra_js %}
 <script>
   document.getElementById('gen-form').addEventListener('submit', function(e){
@@ -24,5 +25,4 @@
       .then(function(res){ document.getElementById('reg-url').value = res.url; document.getElementById('gen-result').classList.remove('hide'); });
   });
 </script>
-{% endblock %}
 {% endblock %}
