@@ -190,6 +190,13 @@ routes = [
     }
   },
   {
+    route : 'POST /admin/lti-registrations/activate admin.activateLtiRegistration',
+    config : {
+      auth : 'session',
+      pre  : ['isAdmin(user)']
+    }
+  },
+  {
     route : 'GET /account users.account',
     html  : 'users/account.html',
     config : {
