@@ -440,6 +440,26 @@ routes = [
       auth : false
     }
   },
+  {
+    route : 'GET /lti/register lti.registerInit',
+    html  : 'lti/register-confirm.html',
+    fail  : {
+      html : 'lti/register-error.html'
+    },
+    config : {
+      auth : false
+    }
+  },
+  {
+    route : 'POST /lti/register lti.registerComplete',
+    html  : 'lti/register-close.html',
+    fail  : {
+      html : 'lti/register-error.html'
+    },
+    config : {
+      auth : false
+    }
+  },
 ];
 
 // trinket language specific routes
