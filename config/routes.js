@@ -414,6 +414,17 @@ routes = [
       auth : false
     }
   },
+  // ── LTI 1.3 — Connect your LMS (instructor-gated) ───────────────────────────
+  // Approved instructors mint a Dynamic Registration link to hand to their LMS admin.
+  {
+    route : 'GET /lti/connect connectLms.page',
+    html  : 'lti/connect-lms.html',
+    config : { auth : 'session', pre : [ 'canInitiateLtiRegistration(user)' ] }
+  },
+  {
+    route : 'POST /lti/connect/token connectLms.createToken',
+    config : { auth : 'session', pre : [ 'canInitiateLtiRegistration(user)' ] }
+  },
   // ── LTI 1.3 (Tool) ──────────────────────────────────────────────────────────
   // Public (no session); the launch establishes the session. See LTI-SPEC.md.
   {

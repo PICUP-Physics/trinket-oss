@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row"><div class="small-12 medium-8 columns small-centered">
+  <h3>Connect your LMS to Trinket</h3>
+  <p>Generate a one-time registration link, then send it to your LMS administrator. They paste it into
+     your LMS's <em>Dynamic Registration</em> field (Canvas: Developer Keys &rarr; + LTI Registration;
+     Moodle: External tools &rarr; Tool registration URL). Trinket activates the connection after review.</p>
+  <form id="gen-form">
+    <label>Label (optional) <input type="text" name="label" placeholder="e.g. UIndy Canvas"></label>
+    <button type="submit" class="button">Generate registration link</button>
+  </form>
+  <div id="gen-result" class="hide">
+    <p>Send this link to your LMS admin (valid 7 days, single use):</p>
+    <input id="reg-url" type="text" readonly style="width:100%">
+  </div>
+</div></div>
+{% block extra_js %}
+<script>
+  document.getElementById('gen-form').addEventListener('submit', function(e){
+    e.preventDefault();
+    var label = this.label.value;
+    fetch('/lti/connect/token', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ label: label }) })
+      .then(function(r){ return r.json(); })
+      .then(function(res){ document.getElementById('reg-url').value = res.url; document.getElementById('gen-result').classList.remove('hide'); });
+  });
+</script>
+{% endblock %}
+{% endblock %}
