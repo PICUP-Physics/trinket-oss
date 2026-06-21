@@ -115,6 +115,15 @@ Pure-ish logic, no Hapi/HTTP-framework coupling, mirroring the `ltiVerify`/`ltiT
   `clientId ← registrationResponse.client_id`,
   `deploymentIds ← [ tool-config.deployment_id ]` when the platform returns one (else `[]`),
   `productFamily ← lti-platform-configuration.product_family_code`, `name ← productFamily/issuer`.
+- `mintRegistrationToken({ label, ttlDays = 7, initiatedByEmail })` → generates 32 random bytes,
+  persists an `LtiRegistrationToken` (sha256 of the raw token, `label`, `initiatedByEmail`,
+  `expiresAt = now + ttlDays`), and returns `{ rawToken, url }` where `url =
+  <config.url>/lti/register?reg_token=<rawToken>`. **DRY anchor:** the Connect-your-LMS controller
+  (component 5) is a thin wrapper over this; a future ops CLI calls the identical function.
+- `activatePlatform(issuer, clientId)` → loads the `pending` `LtiPlatform` via `findByIssuer`, sets
+  `status:'active'`, saves, and returns the updated record (throws/returns null if not found or not
+  pending). **DRY anchor:** the admin activation controller (component 6) is a thin wrapper over this;
+  a future ops CLI calls the identical function.
 
 ### 2. `lib/models/ltiRegistrationToken.js` (new)
 
@@ -158,10 +167,14 @@ schema = {
 ### 5. Instructor "Connect your LMS" page (new controller action + view)
 
 - Route gated by the **same approved-instructor check as course creation** (`canCreateCourse` /
-  `instructorAuth`). Shows a *Generate registration link* button; on submit, mint a
-  `LtiRegistrationToken` (random 32 bytes; store sha256; `expiresAt = now + 7d`;
-  `initiatedByEmail = session user`) and display `<config.url>/lti/register?reg_token=<raw>` with
-  copy button + step-by-step "send this to your LMS admin" instructions.
+  `instructorAuth`). Shows a *Generate registration link* button; on submit it calls a reusable
+  `ltiRegistration.mintRegistrationToken({ label, ttlDays, initiatedByEmail })` service function and
+  displays the returned `<config.url>/lti/register?reg_token=<raw>` with a copy button + step-by-step
+  "send this to your LMS admin" instructions.
+- **DRY:** `mintRegistrationToken()` owns the token logic (random 32 bytes; store sha256;
+  `expiresAt = now + ttlDays` default 7d; persist `LtiRegistrationToken` with `initiatedByEmail`;
+  return the raw token + full URL). The controller is a thin wrapper. A CLI can later call the same
+  function for a headless mint without re-implementing it.
 
 ### 6. Admin activation page (new controller action + view)
 
@@ -170,7 +183,14 @@ schema = {
   id(s), created date, **and** the initiating instructor's approval record (component 7). Buttons:
   **Approve** (`status → 'active'`) and **Reject/Delete** (remove the pending record — used for
   duplicates when two instructors at one school both initiate).
-- CLI fallback `scripts/activate-lti-platform.js --issuer <iss> --client-id <cid>` for ops.
+- **DRY:** the Approve action calls a reusable `ltiRegistration.activatePlatform(issuer, clientId)`
+  service function (the controller is a thin wrapper); the activation logic lives there, not in the
+  handler. This is what lets a CLI tap the identical path later without duplicating it.
+
+> **Deferred from v1 (convenience CLI):** `scripts/activate-lti-platform.js` was considered as an ops
+> fallback to this page. Cut from the first build — the in-app page is the primary, tested path and the
+> CLI duplicates surface area with no new capability. Because the activation logic lives in
+> `activatePlatform()` (above), adding the CLI later is a thin `argv → activatePlatform()` wrapper.
 
 ### 7. `instructorAuth.getInstructorRecord(email)` (new, instructormi seam)
 
@@ -189,21 +209,30 @@ schema = {
   - The view renders present fields and tolerates missing ones.
 - oss `default`: no such function / returns `null`; the activation view degrades to email + timestamp.
 
-> **Gate caveat (caught while reading the schema — affects this feature):**
-> `instructorAuth.isApprovedInstructor` returns `true` for **any** matching `Instructor` record — it
-> does **not** filter on `authorized === true`, so *pending* and *rejected* requesters also pass the
-> "approved-instructor" gate. That means the Connect-your-LMS page (component 5) would admit
-> pending/rejected instructors too. The admin-activation step is therefore the real backstop: by
-> rendering `authorized`/`rejected`/`date`/`processedby`, the admin can see whether the initiating
-> instructor is genuinely authorized before activating. Whether to *also* tighten
-> `isApprovedInstructor` to require `authorized === true` is a **separate decision** (it would change
-> existing signup/launch behavior for everyone, not just LTI registration) — flagged here, not
-> silently changed by this plan.
+> **Gate note (updated post-fix):**
+> `instructorAuth.isApprovedInstructor` now filters on `authorized === true` (fixed in commit
+> `76a3e54`), so *pending* and *rejected* requesters no longer pass the "approved-instructor" gate.
+> The Connect-your-LMS page (component 5) therefore only admits genuinely authorized instructors. The
+> admin-activation step remains defense-in-depth: by rendering `authorized`/`rejected`/`date`/
+> `processedby`, the admin still sees the full approval record before activating (and catches the edge
+> case where a record's `authorized` flag changed after the link was generated). One related item is
+> still **open and deliberately out of scope for this plan**: whether the general signup gate
+> (`isApprovedToSignup` / auth.js) warrants any further tightening beyond what `76a3e54` already gave
+> it — flagged, not changed here.
 
-### 8. `scripts/generate-lti-registration-token.js` + `scripts/seed-lti-platform.js` (modified)
+### 8. `scripts/seed-lti-platform.js` (modified)
 
-- New CLI to mint a token (ops fallback to the in-app page): `--label`, `--ttl-days`, prints the URL.
-- `seed-lti-platform.js` sets `status:'active'`, `registeredVia:'manual'`.
+- `seed-lti-platform.js` sets `status:'active'`, `registeredVia:'manual'`. **Kept** — it is the real
+  fallback for LMSs that do **not** support Dynamic Registration (older Moodle/Blackboard, locked-down
+  enterprise installs) and the break-glass path when an automated handshake fails. Removing it would
+  strand those institutions.
+
+> **Deferred from v1 (convenience CLI):** `scripts/generate-lti-registration-token.js` (a headless
+> token mint) was considered as an ops fallback to the in-app "Connect your LMS" page (component 5).
+> Cut from the first build — it duplicates the in-app path with no new capability. Because the token
+> logic lives in `ltiRegistration.mintRegistrationToken()` (component 5), adding the CLI later is a
+> thin `argv → mintRegistrationToken()` wrapper. Note this is distinct from `seed-lti-platform.js`
+> above, which is a genuine capability fallback and stays in v1.
 
 ### 9. `config/routes.js` (modified)
 
@@ -277,5 +306,9 @@ Firestore cost rules.
 
 - Deep Linking message type + course picker (SP3).
 - AGS scopes / grade passback (v2).
-- A polished admin dashboard (v1 ships a functional list + the CLI fallback).
+- A polished admin dashboard (v1 ships a functional in-app activation list).
+- Convenience ops CLIs (`generate-lti-registration-token.js`, `activate-lti-platform.js`) — deferred;
+  the in-app pages are the primary path and the shared `ltiRegistration` service functions make these
+  thin wrappers to add later. (`seed-lti-platform.js` stays in v1 — it is a capability fallback, not a
+  convenience.)
 - Self-service *re-registration* / key rotation flows.
