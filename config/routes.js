@@ -464,6 +464,11 @@ routes = [
     config: { auth: 'session' }
   },
   {
+    route : 'POST /lti/deep-link/select lti.deepLinkSelect',
+    html  : 'lti/deep-link-response.html',
+    config: { auth: 'session' }
+  },
+  {
     route : 'GET /lti/register lti.registerInit',
     html  : 'lti/register-confirm.html',
     fail  : {
