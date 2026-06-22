@@ -352,60 +352,87 @@ git commit -m "feat(lti): fork deep-linking launches to the picker"
 
 ## Task 4: Picker — list the instructor's courses & assignments
 
+**Data model (verified against the code — read before implementing):** `Course.lessons` is an array of **lesson ids** (`ref: 'Lesson'`); `Lesson.materials` is an array of **material ids** (`ref: 'Material'`); `Material` has `name` (its title) and `type` (`'page'|'assignment'`, default `'page'`) and **no** back-reference to its course/lesson. So the picker must traverse Course → Lesson → Material. This is **not a hot path** (an instructor sets up an assignment occasionally), so the per-course traversal is acceptable; resolve in parallel. The owned-courses method is `Course.findForUser(userId, cb)` (a `model.js` classMethod that queries `{ _owner: userId }` — confirmed at `lib/models/model.js:197`; it is callback-style and takes `request.user.id`, NOT the username). `Lesson.findById(id)` and `Material.findById(id)` return promises.
+
 **Files:**
-- Modify: `lib/controllers/lti.js` (add `deepLinkPicker`)
+- Modify: `lib/controllers/lti.js` (add `deepLinkPicker` + requires for `Course`, `Lesson`, `Material`)
 - Create: `lib/views/lti/deep-link-picker.html`
 - Test: `scripts/test-lti-deeplink-picker.js`
 
 **Interfaces:**
-- Consumes: `request.user` (the session user from Task 3), the existing course model (`Course.findByOwner`/the listing query used by the courses page — confirm the exact method in `lib/models/course.js` during implementation; it is the same query the standalone "my courses" page uses), and `request.yar.get('ltiDeepLink')`.
+- Consumes: `request.user` (the session user from Task 3); `Course.findForUser(userId, cb)` → owned courses (each has `lessons: [lessonId]`); `Lesson.findById(lessonId)` → `{ materials: [materialId] }`; `Material.findById(materialId)` → `{ id, name, type }`; `request.yar.get('ltiDeepLink')`.
 - Produces: `deepLinkPicker(request, reply)` renders the picker with `{ courses: [{ id, name, slug, assignments: [{ materialId, title }] }], returnConfigured: Boolean }`. If `request.yar.get('ltiDeepLink')` is absent → `request.fail({ message: 'Deep linking session expired — relaunch from your LMS.' })`.
 
-- [ ] **Step 1: Write the failing test.** Stub `Course` + the session via the `Module._load` shim; call `lti.deepLinkPicker` with a fake `request` whose `user` owns two courses (one with an assignment material, one without) and whose `yar.get('ltiDeepLink')` returns a settings object. Assert `request.success` is called with a `courses` array containing the assignment material's `{ materialId, title }`, and that an absent `ltiDeepLink` triggers `request.fail`.
+- [ ] **Step 1: Write the failing test** (`scripts/test-lti-deeplink-picker.js`). Use the `Module._load` shim to stub `../models/course`, `../models/lesson`, `../models/material`, and require only `lib/controllers/lti`. Set up: the user owns course A (`lessons:['L1']`) and course B (`lessons:['L2']`); `Lesson.findById('L1')` → `{ materials:['M1','M2'] }`, `Lesson.findById('L2')` → `{ materials:['M3'] }`; `Material.findById('M1')` → `{ id:'M1', name:'Lab 1', type:'assignment' }`, `'M2'` → `{ id:'M2', name:'Reading', type:'page' }`, `'M3'` → `{ id:'M3', name:'Notes', type:'page' }`. Stub `Course.findForUser(userId, cb)` to `cb(null, [courseA, courseB])`. Call `lti.deepLinkPicker` with a fake request whose `yar.get('ltiDeepLink')` returns `{ deep_link_return_url: 'https://lms/return' }` and a `request.success`/`request.fail` capture. Assert: `success` is called; `courses[0].assignments` is `[{ materialId:'M1', title:'Lab 1' }]` (only the assignment, not the page); `courses[1].assignments` is `[]`. Second case: `yar.get` returns `undefined` → `request.fail` is called.
+
+```javascript
+// shim sketch (model on scripts/test-lti-deeplinking.js for the Module._load pattern):
+var courses = { A: { id:'A', name:'Course A', slug:'a', lessons:['L1'] },
+                B: { id:'B', name:'Course B', slug:'b', lessons:['L2'] } };
+var lessons = { L1:{ materials:['M1','M2'] }, L2:{ materials:['M3'] } };
+var mats    = { M1:{ id:'M1', name:'Lab 1', type:'assignment' },
+                M2:{ id:'M2', name:'Reading', type:'page' },
+                M3:{ id:'M3', name:'Notes', type:'page' } };
+var fakeCourse   = { findForUser: function(uid, cb){ cb(null, [courses.A, courses.B]); } };
+var fakeLesson   = { findById: function(id){ return Promise.resolve(lessons[id]); } };
+var fakeMaterial = { findById: function(id){ return Promise.resolve(mats[id]); } };
+// Module._load: map /models/course$, /models/lesson$, /models/material$ to these.
+```
 
 - [ ] **Step 2: Run it to confirm it fails**
 
-Run: `docker exec trinket-gcr node /usr/local/node/trinket/scripts/test-lti-deeplink-picker.js`
+Run: `docker exec trinket-tests node /usr/local/node/trinket/scripts/test-lti-deeplink-picker.js`
 Expected: FAIL — `lti.deepLinkPicker is not a function`.
 
-- [ ] **Step 3: Implement `deepLinkPicker`** in `lib/controllers/lti.js`. Load the instructor's courses, flatten each course's lessons→materials to the assignment materials (`material.type === 'assignment'`), and shape the view model. Guard on the session:
+- [ ] **Step 3: Implement `deepLinkPicker`** in `lib/controllers/lti.js`. Add `var Course = require('../models/course');`, `var Lesson = require('../models/lesson');`, `var Material = require('../models/material');` at the top if not present, then:
 
 ```javascript
-  // GET /lti/deep-link — the instructor picks content to return to the LMS. Session established by
-  // the deep-linking launch (Task 3); the deep_linking_settings live in request.yar.
+  // GET /lti/deep-link — the instructor picks content to return to the LMS. Session + the
+  // deep_linking_settings were established by the deep-linking launch (Task 3, in request.yar).
+  // Not a hot path (an instructor sets up an assignment occasionally), so the per-course
+  // Course->Lesson->Material traversal is acceptable; resolve in parallel.
   deepLinkPicker: function(request, reply) {
     var dl = request.yar.get('ltiDeepLink');
     if (!dl || !dl.deep_link_return_url) {
       return request.fail({ message: 'Deep linking session expired — relaunch from your LMS.' });
     }
-    return Promise.resolve(Course.findByOwner(request.user.username)).then(function(courses) {
-      var view = (courses || []).map(function(course) {
-        var assignments = [];
-        (course.lessons || []).forEach(function(lesson) {
-          (lesson.materials || []).forEach(function(m) {
-            if (m.type === 'assignment') assignments.push({ materialId: m.id, title: m.title || m.name });
-          });
-        });
-        return { id: course.id, name: course.name, slug: course.slug, assignments: assignments };
+    return new Promise(function(resolve, reject) {
+      Course.findForUser(request.user.id, function(err, courses) {
+        return err ? reject(err) : resolve(courses || []);
       });
+    }).then(function(courses) {
+      return Promise.all(courses.map(function(course) {
+        return Promise.all((course.lessons || []).map(function(lessonId) {
+          return Promise.resolve(Lesson.findById(lessonId)).then(function(lesson) {
+            if (!lesson) return [];
+            return Promise.all((lesson.materials || []).map(function(materialId) {
+              return Promise.resolve(Material.findById(materialId)).then(function(m) {
+                return (m && m.type === 'assignment') ? { materialId: m.id, title: m.name } : null;
+              });
+            }));
+          });
+        })).then(function(perLesson) {
+          var assignments = [].concat.apply([], perLesson).filter(Boolean);
+          return { id: course.id, name: course.name, slug: course.slug, assignments: assignments };
+        });
+      }));
+    }).then(function(view) {
       return request.success({ courses: view, returnConfigured: true });
     });
   },
 ```
 
-(Add `var Course = require('../models/course');` at the top of `lti.js` if not present. Confirm `Course.findByOwner` is the existing owner-listing method during implementation; if it differs, use the actual method — do not invent one.)
-
 - [ ] **Step 4: Create the view** `lib/views/lti/deep-link-picker.html` — a minimal server-rendered list. Each assignment is a button that POSTs `{ targetType: 'assignment', targetId: <materialId>, title: <title> }` to `/lti/deep-link/select`; each course is a button posting `{ targetType: 'course', targetId: <courseId>, title: <name> }`. Follow the existing `lib/views/lti/*.html` markup conventions. Empty state when a course has no assignments / the instructor has no courses ("Create a course or assignment in Trinket first, then return here.").
 
 - [ ] **Step 5: Run the test to confirm it passes**
 
-Run: `docker exec trinket-gcr node /usr/local/node/trinket/scripts/test-lti-deeplink-picker.js`
+Run: `docker exec trinket-tests node /usr/local/node/trinket/scripts/test-lti-deeplink-picker.js`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Commit** (the test is gitignored — commit only the source + view)
 
 ```bash
-git add lib/controllers/lti.js lib/views/lti/deep-link-picker.html scripts/test-lti-deeplink-picker.js
+git add lib/controllers/lti.js lib/views/lti/deep-link-picker.html
 git commit -m "feat(lti): deep-linking picker lists instructor courses + assignments"
 ```
 
