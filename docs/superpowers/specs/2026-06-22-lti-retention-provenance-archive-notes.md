@@ -95,10 +95,22 @@ adoption); it is not a replacement — see open decision #3.
 
 Resolves the cost objection: let faculty **archive** the student work they want to keep *before*
 expiry, then expiry **hard-deletes from the live DB** — PII gone *and* storage reclaimed, with
-nothing of value lost. Archive ≈ a **course-scoped export of student submissions + feedback**,
-which is almost exactly the **existing course export/import machinery** (the draft+globalSettings
-round-trip already built — see `project_export_import_status`). The "extract documents from
-archive" tool ≈ the reader side of that bundle. (Mechanism/custody = open decision #2.)
+nothing of value lost. Archive ≈ a **course-scoped export of student submissions + feedback**.
+
+**Verified 2026-06-22 — the archive is a NEW export mode, not the existing button.** The current
+course export (`courses.download`, `lib/controllers/courses.js:149-472`) deliberately exports
+**only** course structure + assignment *templates*: it bundles template trinkets by
+`material.trinket.shortCode` with metadata limited to `{name, lang, settings}` (`courses.js:406`),
+and **never** serializes student-owned submission trinkets (`.copy()`-created, with `_owner` /
+`submissionState` / `submittedOn`) or the nested `comments[]` feedback. I.e. today's export is
+**PII-clean course portability** by design. The archive needs the **opposite** content selection —
+exactly the student submissions (`_owner` + `courseId`) and `comments[]` feedback that export
+filters out. So what's reused is the **plumbing** (zip-bundling, serialization, manifest scaffold —
+see `project_export_import_status`), not the existing selection; the archive is a **distinct,
+explicitly-labeled "student data included" mode**. Keeping the two modes separate is a feature: the
+portability export stays PII-clean, and the student-data archive is opt-in and obvious to a privacy
+reviewer. The "extract documents from archive" tool ≈ the reader side of that new bundle.
+(Mechanism/custody = open decision #2.)
 
 ## Open decisions — parked for the meeting (week of 2026-06-22)
 
