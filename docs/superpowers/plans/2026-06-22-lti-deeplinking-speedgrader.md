@@ -522,27 +522,61 @@ git commit -m "feat(lti): select returns the signed Deep Linking Response"
 
 ---
 
-## Task 6: `LtiResourceLink` — line-item field + assignment lookup; capture on launch
+## Task 6: assignment target resolution + AGS line-item capture
+
+**Critical correction (verified):** a `Material` has NO course/lesson back-reference (only `_owner`), and there is no reverse lookup, so a launch CANNOT derive the course from `trinket_assignment` alone. The assignment content item must therefore ALSO carry `trinket_course=<courseId>` (LTI-SPEC §6 lists both params), and the launch resolves the course via the **existing** `trinket_course` path in `ltiTarget` — no Material→course lookup. This task first threads `trinket_course` through the assignment content item (Part A, amending the Task 1/4/5 output), then adds the line-item field + capture (Parts B–C). **Write-once is automatic:** `resolveTarget`'s existing "found mapping → return early" branch means `agsLineItemUrl` is only written when the record is first created.
 
 **Files:**
-- Modify: `lib/models/ltiResourceLink.js:6-22`
+- Modify: `lib/util/ltiDeepLinking.js` (`assignmentContentItem` — add `courseId`)
+- Modify: `lib/views/lti/deep-link-picker.html` (assignment form posts `courseId`)
+- Modify: `lib/controllers/lti.js` (`deepLinkSelect` — pass `courseId`)
+- Modify: `lib/models/ltiResourceLink.js`
 - Modify: `lib/util/ltiTarget.js`
-- Test: `scripts/test-lti-target-assignment.js`
+- Tests (gitignored, not committed): `scripts/test-lti-deeplinking.js`, `scripts/test-lti-deeplink-select.js` (update to pass/assert `courseId`/`trinket_course`); new `scripts/test-lti-target-assignment.js`
 
 **Interfaces:**
-- Produces:
-  - `LtiResourceLink.agsLineItemUrl` (String) on the schema.
-  - `LtiResourceLink.findAssignmentLink(courseId, materialId, cb)` → the assignment link for `(courseId, targetId=materialId, targetType='assignment')`.
-  - `ltiTarget.resolveTarget` now also resolves the `trinket_assignment` custom param to the assignment's course **and** captures `agsLineItemUrl` from the launch's AGS endpoint claim (write-once).
+- `assignmentContentItem({ courseId, materialId, title, scoreMaximum })` → `custom: { trinket_course, trinket_assignment }`.
+- `LtiResourceLink.agsLineItemUrl` (String); `LtiResourceLink.findAssignmentLink(courseId, materialId, cb)` → the `(courseId, targetId=materialId, targetType='assignment')` link.
+- `ltiTarget.resolveTarget` resolves the course via `custom.trinket_course`; when `custom.trinket_assignment` is also present it persists the new `LtiResourceLink` with `targetType:'assignment'`, `targetId: <materialId>`, `agsLineItemUrl: <endpoint.lineitem>`, and returns `{ course, targetType: 'assignment' }`.
 
-- [ ] **Step 1: Write the failing test** (`scripts/test-lti-target-assignment.js`). Stub `Course` + `LtiResourceLink` via the shim. Drive `ltiTarget.resolveTarget(claims, platform)` with a `custom.trinket_assignment` and an AGS `endpoint` claim carrying `lineitem`. Assert: it resolves the assignment's course, persists an `LtiResourceLink` with `targetType:'assignment'`, `targetId` = the material id, and `agsLineItemUrl` = the claim's `lineitem`. Add a second case: a re-launch where the link already has `agsLineItemUrl` does **not** re-write (capture write-once).
+### Part A — thread `trinket_course` into the assignment content item
 
-- [ ] **Step 2: Run it to confirm it fails**
+- [ ] **Step 1 (Part A):** In `lib/util/ltiDeepLinking.js`, change `assignmentContentItem` to:
 
-Run: `docker exec trinket-gcr node /usr/local/node/trinket/scripts/test-lti-target-assignment.js`
-Expected: FAIL.
+```javascript
+function assignmentContentItem(opts) {
+  return {
+    type:    'ltiResourceLink',
+    title:   opts.title,
+    url:     launchUrl(),
+    custom:  { trinket_course: String(opts.courseId), trinket_assignment: String(opts.materialId) },
+    lineItem: { scoreMaximum: (typeof opts.scoreMaximum === 'number' ? opts.scoreMaximum : 1),
+                label: opts.title }
+  };
+}
+```
 
-- [ ] **Step 3: Add the field + query** in `lib/models/ltiResourceLink.js`:
+- [ ] **Step 2 (Part A):** In `lib/controllers/lti.js` `deepLinkSelect`, pass the course id (the picker now posts `courseId`):
+
+```javascript
+    var item = (b.targetType === 'assignment')
+      ? ltiDeepLinking.assignmentContentItem({ courseId: b.courseId, materialId: b.targetId, title: b.title, scoreMaximum: 1 })
+      : ltiDeepLinking.linkContentItem({ targetType: b.targetType, targetId: b.targetId, title: b.title });
+```
+
+- [ ] **Step 3 (Part A):** In `lib/views/lti/deep-link-picker.html`, the assignment selection form must include the course id. Add a hidden field to the assignment `<form>` (the course is in scope as you iterate `courses`):
+
+```html
+<input type="hidden" name="courseId" value="{{ course.id }}"/>
+```
+
+- [ ] **Step 4 (Part A):** Update the gitignored tests `scripts/test-lti-deeplinking.js` (call `assignmentContentItem({ courseId:'c1', materialId:'m1', title:'Lab 1', scoreMaximum:1 })`; assert `ci.custom.trinket_course === 'c1'` AND `ci.custom.trinket_assignment === 'm1'`) and `scripts/test-lti-deeplink-select.js` (POST payload includes `courseId:'c1'`; assert the content item's `custom.trinket_course === 'c1'`). Run both — they must pass:
+`docker exec trinket-tests node /usr/local/node/trinket/scripts/test-lti-deeplinking.js` → PASS;
+`docker exec trinket-tests node /usr/local/node/trinket/scripts/test-lti-deeplink-select.js` → PASS.
+
+### Part B — line-item field + lookup
+
+- [ ] **Step 5 (Part B):** In `lib/models/ltiResourceLink.js`, add the field + query:
 
 ```javascript
 var schema = {
@@ -552,7 +586,7 @@ var schema = {
   courseId       : { type: String },
   targetType     : { type: String },   // course | topic | assignment
   targetId       : { type: String },
-  agsLineItemUrl : { type: String }    // AGS line-item endpoint, captured write-once on launch
+  agsLineItemUrl : { type: String }    // AGS line-item endpoint, captured write-once on first launch
 };
 
 function findByLink(platformId, resourceLinkId, cb) {
@@ -570,30 +604,38 @@ var LtiResourceLink = model.create('LtiResourceLink', {
 }).publicModel;
 ```
 
-- [ ] **Step 4: Extend `resolveTarget`** in `lib/util/ltiTarget.js` to handle `trinket_assignment` and capture the line item. Read the AGS endpoint claim and the assignment custom param:
+### Part C — resolve assignment target + capture line item
+
+- [ ] **Step 6 (Part C): Write the failing test** `scripts/test-lti-target-assignment.js`. Stub `Course` + `LtiResourceLink` via the `Module._load` shim. Drive `ltiTarget.resolveTarget(claims, platform)` with `custom = { trinket_course: 'c1', trinket_assignment: 'm1' }` and an AGS endpoint claim `claims['https://purl.imsglobal.org/spec/lti-ags/claim/endpoint'] = { lineitem: 'https://lms/li/9' }`, and no pre-existing `LtiResourceLink` mapping. Assert: returns `{ course, targetType: 'assignment' }`; a new `LtiResourceLink` was saved with `targetType:'assignment'`, `targetId:'m1'`, `courseId:'c1'`, `agsLineItemUrl:'https://lms/li/9'`. Second case: when `findByLink` already returns a mapping (`{ courseId:'c1', targetType:'assignment', agsLineItemUrl:'https://lms/li/9' }`), `resolveTarget` returns it and saves nothing (write-once). Run: `docker exec trinket-tests node /usr/local/node/trinket/scripts/test-lti-target-assignment.js` → FAIL.
+
+- [ ] **Step 7 (Part C): Extend `resolveTarget`** in `lib/util/ltiTarget.js`. Keep the existing "found mapping → return early" branch (it gives write-once for free). In the bootstrap branch (no existing mapping), resolve the course from `custom.trinket_course` (unchanged), then branch on whether `custom.trinket_assignment` is present:
 
 ```javascript
 var AGS = 'https://purl.imsglobal.org/spec/lti-ags/claim/';
-// inside resolveTarget, after the existing trinket_course branch fails to resolve:
-//   var endpoint = claims[AGS + 'endpoint'] || {};
-//   var lineItemUrl = endpoint.lineitem;
-//   var materialId = custom.trinket_assignment;
-// Resolve the material -> its course, persist an assignment LtiResourceLink with agsLineItemUrl
-// (only writing agsLineItemUrl when absent on an existing record — write-once).
+// ... in the bootstrap branch, after Course.findById(courseId) resolves to `course`:
+var assignmentId = custom.trinket_assignment;
+var endpoint     = claims[AGS + 'endpoint'] || {};
+var rec = new LtiResourceLink({
+  platformId: platform.id, resourceLinkId: resourceLinkId, contextId: ctx.id, courseId: course.id,
+  targetType: assignmentId ? 'assignment' : 'course',
+  targetId:   assignmentId ? String(assignmentId) : course.id,
+  agsLineItemUrl: assignmentId ? endpoint.lineitem : undefined
+});
+var targetType = assignmentId ? 'assignment' : 'course';
+// best-effort persist; resolution still succeeds if the write fails
+return Promise.resolve(rec.save()).then(
+  function() { return { course: course, targetType: targetType }; },
+  function() { return { course: course, targetType: targetType }; }
+);
 ```
 
-Implementation: resolve `Material.findById(materialId)` → its `courseId` → `Course.findById`. Persist/refresh the `LtiResourceLink` (`targetType:'assignment'`, `targetId: materialId`, `agsLineItemUrl: lineItemUrl`). On an existing record that already has `agsLineItemUrl`, do not re-write (CLAUDE.md). Return `{ course: course, targetType: 'assignment' }`. (Use `require('../models/material')` for `Material`.)
+- [ ] **Step 8 (Part C): Run the tests.** `docker exec trinket-tests node /usr/local/node/trinket/scripts/test-lti-target-assignment.js` → PASS; re-run `docker exec trinket-tests node /usr/local/node/trinket/scripts/test-lti-launch.js` (plain course resolution unchanged) → 15/0.
 
-- [ ] **Step 5: Run the test to confirm it passes**
-
-Run: `docker exec trinket-gcr node /usr/local/node/trinket/scripts/test-lti-target-assignment.js`
-Expected: PASS. Re-run `scripts/test-lti-launch.js` (course resolution unchanged).
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 9: Commit** (tests gitignored — commit only source/view):
 
 ```bash
-git add lib/models/ltiResourceLink.js lib/util/ltiTarget.js scripts/test-lti-target-assignment.js
-git commit -m "feat(lti): resolve assignment targets + capture AGS line-item write-once"
+git add lib/util/ltiDeepLinking.js lib/views/lti/deep-link-picker.html lib/controllers/lti.js lib/models/ltiResourceLink.js lib/util/ltiTarget.js
+git commit -m "feat(lti): assignment target resolution (trinket_course+assignment) + AGS line-item capture"
 ```
 
 ---
