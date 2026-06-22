@@ -7,13 +7,6 @@
   {% if not courses or courses | length == 0 %}
     <p class="panel">You don't have any Trinket courses yet. Create a course or assignment in Trinket first, then return here.</p>
   {% else %}
-    {% set hasAny = false %}
-    {% for course in courses %}
-      {% if course.assignments and course.assignments | length > 0 %}
-        {% set hasAny = true %}
-      {% endif %}
-    {% endfor %}
-
     {% for course in courses %}
       {% if course.assignments and course.assignments | length > 0 %}
         <h4>{{ course.name }}</h4>
@@ -46,7 +39,7 @@
       {% endfor %}
     </ul>
 
-    {% if not hasAny %}
+    {% if not anyAssignments %}
     <p class="panel">None of your courses have assignments yet. Create an assignment in Trinket first, then return here.</p>
     {% endif %}
   {% endif %}
