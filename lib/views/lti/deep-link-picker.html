@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row"><div class="small-12 medium-8 columns small-centered">
+  <h3>Add Trinket Content to Your LMS</h3>
+  <p>Select an assignment or course below. Your LMS will add it as a link that launches directly into Trinket.</p>
+
+  {% if not courses or courses | length == 0 %}
+    <p class="panel">You don't have any Trinket courses yet. Create a course or assignment in Trinket first, then return here.</p>
+  {% else %}
+    {% set hasAny = false %}
+    {% for course in courses %}
+      {% if course.assignments and course.assignments | length > 0 %}
+        {% set hasAny = true %}
+      {% endif %}
+    {% endfor %}
+
+    {% for course in courses %}
+      {% if course.assignments and course.assignments | length > 0 %}
+        <h4>{{ course.name }}</h4>
+        <ul class="no-bullet">
+          {% for assignment in course.assignments %}
+          <li style="margin-bottom: 0.5rem;">
+            <form method="POST" action="/lti/deep-link/select" style="display:inline;">
+              <input type="hidden" name="targetType" value="assignment">
+              <input type="hidden" name="targetId" value="{{ assignment.materialId }}">
+              <input type="hidden" name="title" value="{{ assignment.title }}">
+              <button type="submit" class="button small">{{ assignment.title }}</button>
+            </form>
+          </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    {% endfor %}
+
+    <h4>Add a Full Course</h4>
+    <ul class="no-bullet">
+      {% for course in courses %}
+      <li style="margin-bottom: 0.5rem;">
+        <form method="POST" action="/lti/deep-link/select" style="display:inline;">
+          <input type="hidden" name="targetType" value="course">
+          <input type="hidden" name="targetId" value="{{ course.id }}">
+          <input type="hidden" name="title" value="{{ course.name }}">
+          <button type="submit" class="button small secondary">{{ course.name }}</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+
+    {% if not hasAny %}
+    <p class="panel">None of your courses have assignments yet. Create an assignment in Trinket first, then return here.</p>
+    {% endif %}
+  {% endif %}
+</div></div>
+{% endblock %}
