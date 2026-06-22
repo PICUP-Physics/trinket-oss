@@ -16,6 +16,7 @@
             <form method="POST" action="/lti/deep-link/select" style="display:inline;">
               <input type="hidden" name="targetType" value="assignment">
               <input type="hidden" name="targetId" value="{{ assignment.materialId }}">
+              <input type="hidden" name="courseId" value="{{ course.id }}"/>
               <input type="hidden" name="title" value="{{ assignment.title }}">
               <button type="submit" class="button small">{{ assignment.title }}</button>
             </form>
