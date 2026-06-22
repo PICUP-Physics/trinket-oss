@@ -459,6 +459,11 @@ routes = [
     }
   },
   {
+    route : 'GET /lti/deep-link lti.deepLinkPicker',
+    html  : 'lti/deep-link-picker.html',
+    config: { auth: 'session' }
+  },
+  {
     route : 'GET /lti/register lti.registerInit',
     html  : 'lti/register-confirm.html',
     fail  : {
