@@ -8,6 +8,38 @@
 <link rel="stylesheet" type="text/css" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/8.0/styles/github.min.css">
 {% endif %}
 
+{# VPython programs render GlowScript widgets (button, menu, slider, …) directly
+   in the embed DOM (the glowscript trinket isolates them in its own iframe).
+   Foundation's global `button{...}` reset in embed.css flattens them to plain
+   text, so restore sensible widget styling scoped to the scene container. A
+   single id beats the element-level reset on specificity. #}
+<style type="text/css">
+  #glowscript button {
+    -webkit-appearance: none;
+    appearance: none;
+    border: 1px solid #adadad;
+    border-radius: 3px;
+    background: #f0f0f0;
+    color: #222;
+    font-family: Helvetica, Arial, sans-serif;
+    font-weight: normal;
+    font-size: 13px;
+    line-height: 1.4;
+    width: auto;
+    margin: 2px;
+    padding: 3px 12px;
+    cursor: pointer;
+  }
+  #glowscript button:hover  { background: #e6e6e6; }
+  #glowscript button:active { background: #dadada; }
+  /* Other GlowScript widgets: keep native rendering rather than the trinket UI's. */
+  #glowscript select,
+  #glowscript input {
+    -webkit-appearance: auto;
+    appearance: auto;
+  }
+</style>
+
 {% endblock %}
 
 {% block body_data -%}
