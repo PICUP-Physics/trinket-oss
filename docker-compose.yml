@@ -10,7 +10,7 @@ services:
     command: firebase emulators:start --only auth,firestore,storage --project demo-trinket
     ports:
       - "4000:4000"   # Emulator UI
-      - "8080:8080"   # Firestore
+      - "8088:8080"   # Firestore (host 8088 avoids Canvas testbed's host 8080; container port + firebase:8080 unchanged)
       - "9099:9099"   # Auth
       - "9199:9199"   # Storage
     healthcheck:
