@@ -29,7 +29,10 @@ app:
         backend: firestore
 
 lti:
-  instructorAuthority: instructormi
+  # UIndy: trust the LMS-asserted Instructor role (portable/oss default). The
+  # 'instructormi' Datastore allowlist is matterandinteractions-specific and does
+  # not resolve in this project.
+  instructorAuthority: default
 
 db:
   backend: firestore   # No MongoDB required
