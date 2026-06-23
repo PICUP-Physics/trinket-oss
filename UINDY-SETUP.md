@@ -46,8 +46,11 @@ deploys, and sets a weekly Firestore backup + a $10/mo budget alert. The active 
 4. **OAuth (optional, server-side passport login):** Console → APIs & Services → Credentials → create
    OAuth client (Web); redirect `https://<host>/auth/google/callback`; put the ID/secret in `.env`;
    redeploy. Skip if Firebase Google sign-in is sufficient.
-5. **First admin**: set `ADMIN_EMAILS` in the Cloud Run console (e.g. `["spicklemire@uindy.edu"]`) —
-   the deploy script preserves the console value across deploys and ignores any `.env` value.
+5. **Site admin** (kept out of git): set the `ADMIN_EMAILS` env var in the Cloud Run console to your
+   admin email as a JSON array, e.g. `["you@example.com"]`. `siteAdmin.js` prefers this env value over
+   the tracked `auth.adminEmails: []`, so the admin email never lands in the repo; the deploy script
+   preserves the console value across redeploys. (This deployment's intended sole admin is recorded in
+   local agent memory, not here.)
 6. **LTI**: tool JWKS at `https://<host>/lti/jwks`; register via Dynamic Registration per
    `LTI-REGISTRATION.md`. Instructor authority is `default` (LMS-asserted Instructor role grants
    instructor in trinket).
