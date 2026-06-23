@@ -41,7 +41,7 @@ db:
 storage:
   backend: gcs
 
-# features.assets requires gs://trinket-materials to exist with the Cloud Run
+# features.assets requires gs://trinket-uindy-materials to exist with the Cloud Run
 # service account having roles/storage.objectAdmin on that bucket.
 features:
   assets: true
@@ -49,22 +49,22 @@ features:
 aws:
   buckets:
     materials:
-      name: trinket-materials
-      host: https://storage.googleapis.com/trinket-materials
+      name: trinket-uindy-materials
+      host: https://storage.googleapis.com/trinket-uindy-materials
     userassets:
-      name: trinket-user-assets
-      host: https://storage.googleapis.com/trinket-user-assets
+      name: trinket-uindy-user-assets
+      host: https://storage.googleapis.com/trinket-uindy-user-assets
     useravatars:
-      name: trinket-user-assets
-      host: https://storage.googleapis.com/trinket-user-assets
+      name: trinket-uindy-user-assets
+      host: https://storage.googleapis.com/trinket-uindy-user-assets
     snapshots:
-      name: trinket-snapshots
-      host: https://storage.googleapis.com/trinket-snapshots
+      name: trinket-uindy-snapshots
+      host: https://storage.googleapis.com/trinket-uindy-snapshots
 
 # adminEmails and firebase.clientConfig are injected via NODE_CONFIG env var at deploy time.
 # See deploy-cloudrun.sh and .env (ADMIN_EMAILS, FIREBASE_CLIENT_CONFIG).
 auth:
   adminEmails: []
   firebase:
-    projectId: trinket-gcr-test
+    projectId: trinket-uindy
     clientConfig: {}
