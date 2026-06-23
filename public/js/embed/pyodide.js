@@ -131,14 +131,19 @@ function usesMatplotlib(code) {
   return /(^|\n)\s*(import\s+matplotlib|from\s+matplotlib\b)/.test(code);
 }
 
+// Fraction of the output pane given to the graphic (vs. console). Default
+// 65/35; updated when the user drags the separator so the split survives
+// subsequent runs instead of resetting.
+var graphicSplit = 0.65;
+
 // Reveal the graphic pane (where matplotlib figures render) and split it with
-// the console below.
+// the console below, honoring any split the user dragged to.
 function showGraphic() {
   var wrap = document.getElementById('graphic-wrap');
   if (!wrap) return;
   wrap.classList.remove('hide');
-  $('#graphic-wrap').css('height', '65%');
-  $('#console-wrap').css('height', '35%');
+  $('#graphic-wrap').css('height', (graphicSplit * 100) + '%');
+  $('#console-wrap').css('height', ((1 - graphicSplit) * 100) + '%');
   $('#output-dragbar').removeClass('hide');
 }
 
@@ -600,6 +605,12 @@ window.TrinketAPI = {
 
       $(document).on('mouseup.output-dragbar', function() {
         $(document).off('mousemove.output-dragbar mouseup.output-dragbar');
+        // Remember the split so the next Run keeps it instead of resetting.
+        var gh = $('#graphic-wrap').height();
+        var ch = $('#console-wrap').height();
+        if (gh + ch > 0) {
+          graphicSplit = gh / (gh + ch);
+        }
       });
 
       if (typeof api.sendInterfaceAnalytics === 'function') {
