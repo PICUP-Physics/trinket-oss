@@ -63,6 +63,15 @@ aws:
       name: trinket-uindy-snapshots
       host: https://storage.googleapis.com/trinket-uindy-snapshots
 
+# Trinket screenshots use the SEPARATE gcs.buckets.snapshots config (lib/util/storage.js
+# uploadSnapshot), NOT aws.buckets above. default.yaml points this at matterand's
+# 'trinket-snapshots'; override it here so screenshots write to this project's bucket.
+gcs:
+  buckets:
+    snapshots:
+      name: trinket-uindy-snapshots
+      host: https://storage.googleapis.com/trinket-uindy-snapshots
+
 # adminEmails and firebase.clientConfig are injected via NODE_CONFIG env var at deploy time.
 # See deploy-cloudrun.sh and .env (ADMIN_EMAILS, FIREBASE_CLIENT_CONFIG).
 auth:
