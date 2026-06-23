@@ -235,6 +235,19 @@ function runVpython(prog) {
       'scene = _vpy.scene\n'
     );
   }).then(function() {
+    // Load bundled packages the program imports (numpy, matplotlib, …).
+    return pyodide.loadPackagesFromImports(prog);
+  }).then(function() {
+    // A VPython program can also plot. Without this, matplotlib falls back to
+    // its default target and the figure floats loose in the page next to the
+    // 3D scene; point its canvas backend at the graphic pane instead.
+    if (usesMatplotlib(prog)) {
+      window.document.pyodideMplTarget = document.getElementById('graphic');
+      return pyodide.runPythonAsync(
+        "import matplotlib; matplotlib.use('module://matplotlib_pyodide.html5_canvas_backend')"
+      );
+    }
+  }).then(function() {
     var lines = prog.split('\n');
     if (/^\s*(Web\s+VPython|GlowScript)\b/i.test(lines[0])) {
       lines[0] = '#' + lines[0];
@@ -244,9 +257,7 @@ function runVpython(prog) {
       'from vpython._async_transform import transform_source\n' +
       'transform_source(__user_source__)'
     );
-    return pyodide.loadPackagesFromImports(asyncProg).then(function() {
-      return pyodide.runPythonAsync(asyncProg);
-    });
+    return pyodide.runPythonAsync(asyncProg);
   });
 }
 
