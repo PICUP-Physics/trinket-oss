@@ -7,9 +7,9 @@
   var originalLink    = marked.Renderer.prototype.link;
 
   var trinket_hosts   = [trinketConfig.get('apphostname')];
-  var trinket_types   = ['python', 'html', 'music', 'glowscript', 'blocks', 'python3', 'java', 'glowscript-blocks', 'R', 'pygame'];
+  var trinket_types   = ['python', 'pyodide', 'html', 'music', 'glowscript', 'blocks', 'python3', 'java', 'glowscript-blocks', 'R', 'pygame'];
   var python_types    = [];
-  var inline_trinkets = ['python', 'python3', 'html', 'glowscript', 'java', 'R', 'pygame'];
+  var inline_trinkets = ['python', 'pyodide', 'python3', 'html', 'glowscript', 'java', 'R', 'pygame'];
 
   var EMBED_URLS = [
     {

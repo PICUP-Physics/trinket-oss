@@ -8,6 +8,7 @@ features:
   trinkets:
     # Client-side languages - work out of the box
     python: false      # Skulpt-based Python 2/3
+    pyodide: true      # Pyodide (real CPython via WASM, client-side, CDN-loaded)
     html: false        # HTML/CSS/JS
     blocks: false      # Block-based coding
     glowscript: true   # 3D graphics with GlowScript/VPython (WebVPython)
