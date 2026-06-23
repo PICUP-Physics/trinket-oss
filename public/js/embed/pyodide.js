@@ -148,6 +148,36 @@ var glowLoading = null;    // memoized GlowScript library load
 var vpythonLoading = null; // memoized vpython package install + import
 var glowScene = null;      // the GlowScript canvas/scene object
 
+// Cooperative cancellation for VPython animation loops. Pyodide can't preempt a
+// running coroutine, but VPython loops yield at rate(), so we wrap rate() to
+// reject (raising in Python) when a re-run is requested mid-run — the loop
+// unwinds at the next frame, then we start the fresh run. Loops with no rate()
+// yield point can't be cancelled this way (they also freeze the tab anyway).
+var CANCEL_MARKER = '__trinket_run_cancelled__';
+var glowRate = null;          // original glow rate(), before our wrapper
+var cancelRequested = false;  // set true to make the next rate() reject
+var rerunQueued = false;      // a Run was clicked mid-run; re-run once it stops
+var runningIsVpython = false; // the in-flight run is a VPython program (cancellable)
+
+// Wrap the global rate() so it rejects when cancellation is requested. Must run
+// before the vpython bridge does `from js import rate` (which binds at import
+// time); idempotent, so calling it every run is fine.
+function installRateCancellation() {
+  if (glowRate || typeof window.rate !== 'function') return;
+  glowRate = window.rate;
+  window.rate = function() {
+    if (cancelRequested) {
+      return Promise.reject(new Error(CANCEL_MARKER));
+    }
+    return glowRate.apply(this, arguments);
+  };
+}
+
+function isCancelError(err) {
+  var msg = (err && (err.message || err.toString())) || '';
+  return msg.indexOf(CANCEL_MARKER) >= 0;
+}
+
 // True when the program is a VPython/GlowScript program: either the classic
 // first-line version header ("Web VPython 3.2" / "GlowScript 3.2 VPython") or
 // an explicit vpython import.
@@ -220,19 +250,25 @@ function ensureVpython() {
 function runVpython(prog) {
   writeOut('Loading VPython (GlowScript)…\n');
   return ensureGlow().then(function() {
+    installRateCancellation();  // wrap rate() before the bridge imports it
     setupGlowScene();
     showGraphic();
     return ensureVpython();
   }).then(function() {
-    // The bridge binds `scene` to window.scene at import time (once). Since we
-    // rebuilt the canvas above, re-point the package's scene proxy — and the
-    // global `scene` from `from vpython import *` — at the fresh canvas so
-    // scene.* access in re-run programs targets the live canvas.
+    // The bridge binds `scene` and `rate` to window.* at import time (once).
+    // Re-point them in Python before the user code imports them:
+    //  - scene: the canvas was rebuilt above, so target the fresh one.
+    //  - rate:  bind to the cancellation-wrapped window.rate so a re-run can
+    //           interrupt the loop (the import-time binding caught the
+    //           unwrapped rate, defeating cancellation otherwise).
     return pyodide.runPythonAsync(
       'import vpython as _vpy\n' +
       'from js import scene as _js_scene\n' +
+      'from js import rate as _wrapped_rate\n' +
       '_vpy.scene = _vpy.canvas(jsObj=_js_scene)\n' +
-      'scene = _vpy.scene\n'
+      '_vpy.rate = _wrapped_rate\n' +
+      'scene = _vpy.scene\n' +
+      'rate = _wrapped_rate\n'
     );
   }).then(function() {
     // Load bundled packages the program imports (numpy, matplotlib, …).
@@ -313,12 +349,36 @@ function finishRun(serializedCode, err) {
   if (typeof api.collectErrorData === 'function') {
     api.collectErrorData(serializedCode, err ? (err.message || err.toString()) : undefined);
   }
+
+  // A Run was clicked while the previous (VPython) run was being cancelled;
+  // now that it has stopped, start the fresh run.
+  if (rerunQueued) {
+    rerunQueued = false;
+    startRun();
+  }
 }
 
 function runCode() {
   $('.reveal-modal').foundation('reveal', 'close');
 
-  if (running) return;
+  if (running) {
+    // A run is already in flight. For a VPython program (which yields at rate())
+    // request cancellation and queue a fresh run, so clicking Run restarts a
+    // running animation. For anything else keep the old behavior (ignore).
+    if (runningIsVpython) {
+      cancelRequested = true;
+      rerunQueued = true;
+    }
+    return;
+  }
+
+  startRun();
+}
+
+function startRun() {
+  cancelRequested = false;
+  rerunQueued = false;
+  runningIsVpython = false;
 
   if (window.parent) {
     window.parent.postMessage("started", "*");
@@ -348,6 +408,7 @@ function runCode() {
     // VPython/GlowScript programs take a separate path: glow library + the
     // vpython bridge + async rewriting, rendering 3D into the graphic pane.
     if (usesVPython(prog)) {
+      runningIsVpython = true;  // mark cancellable so Run-while-running restarts
       return runVpython(prog);
     }
 
@@ -388,6 +449,12 @@ function runCode() {
     renderRichResult(result);
     finishRun(serializedCode);
   }).catch(function(err) {
+    // Intentional cancellation (Run clicked mid-run): unwind quietly, then
+    // finishRun starts the queued re-run.
+    if (isCancelError(err)) {
+      finishRun(serializedCode);
+      return;
+    }
     // Python exceptions reject with a PythonError whose message is the traceback.
     var msg = (err && (err.message || err.toString())) || 'Error';
     if (jqconsole) {
