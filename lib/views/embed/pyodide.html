@@ -38,6 +38,17 @@
     -webkit-appearance: auto;
     appearance: auto;
   }
+  /* GlowScript's fast graph (fast=True) draws on a base canvas with a
+     transparent <canvas class="overlay"> on top for mouse interaction. That
+     class collides with the trinket UI's generic .overlay (a full-size white
+     modal panel: background #fff, z-index 500), which paints an opaque white
+     rectangle over the graph. Restore the GlowScript overlay to transparent so
+     the graph shows and the canvas+graph flow as with fast=False. */
+  #glowscript canvas.overlay {
+    background: transparent;
+    padding: 0;
+    overflow: visible;
+  }
 </style>
 
 {% endblock %}
