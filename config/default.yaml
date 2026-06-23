@@ -4,8 +4,8 @@ features:
   accessibilityToggle: false  # Show accessibility toggle in embed toolbar (for screen reader mode)
   trinkets:
     # Client-side languages - work out of the box
-    python: true       # Skulpt-based Python 2/3 (enabled by default)
-    pyodide: true      # Pyodide (real CPython via WASM, client-side, CDN-loaded)
+    python: false      # Skulpt-based Python 2/3 (disabled; superseded by pyodide, which is shown as "Python")
+    pyodide: true      # Pyodide (real CPython via WASM, client-side, CDN-loaded) — labeled "Python" in the UI
     html: false        # HTML/CSS/JS
     blocks: false      # Block-based coding
     glowscript: true  # 3D graphics with GlowScript/VPython

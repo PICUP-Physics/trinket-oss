@@ -33,7 +33,7 @@
           { lang : 'python',     image : '{{config.aws.buckets.appassets.host}}/python.png',     label : 'Python'                                     },
           {% endif %}
           {% if not config.features or not config.features.trinkets or config.features.trinkets.pyodide %}
-          { lang : 'pyodide',    image : '{{config.aws.buckets.appassets.host}}/python.png',     label : 'Pyodide' },
+          { lang : 'pyodide',    image : '{{config.aws.buckets.appassets.host}}/python.png',     label : 'Python' },
           {% endif %}
           {% if not config.features or not config.features.trinkets or config.features.trinkets.python3 %}
           { lang : 'python3',    image : '{{config.aws.buckets.appassets.host}}/python.png',     label : 'Python3' },
@@ -149,6 +149,9 @@
                     <ul id="new_trinket_list" class="dropdown" role="group" role="menu">
                       {% if not config.features or not config.features.trinkets or config.features.trinkets.python %}
                       <li><a href="/library/trinkets/create?lang=python"><i class="lang-sprite lang-sprite-python"></i> Python</a></li>
+                      {% endif %}
+                      {% if not config.features or not config.features.trinkets or config.features.trinkets.pyodide %}
+                      <li><a href="/library/trinkets/create?lang=pyodide"><i class="lang-sprite lang-sprite-python"></i> Python</a></li>
                       {% endif %}
                       {% if not config.features or not config.features.trinkets or config.features.trinkets.python3 %}
                       <li><a href="/library/trinkets/create?lang=python3"><i class="lang-sprite lang-sprite-python"></i> Python3</a></li>
