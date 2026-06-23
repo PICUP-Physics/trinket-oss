@@ -356,6 +356,19 @@ function runCode() {
           "import matplotlib; matplotlib.use('module://matplotlib_pyodide.html5_canvas_backend')"
         ).then(function() {
           return pyodide.runPythonAsync(prog || '');
+        }).then(function(result) {
+          // Notebook-style auto-display: if the program created figures but
+          // never called plt.show(), show them. If a canvas already rendered
+          // (the user called show()), skip — so we never double-plot.
+          var g = document.getElementById('graphic');
+          if (g && g.querySelector('canvas')) {
+            return result;
+          }
+          return pyodide.runPythonAsync(
+            "import matplotlib.pyplot as _plt\n" +
+            "if _plt.get_fignums():\n" +
+            "    _plt.show()\n"
+          ).then(function() { return result; });
         });
       }
       return pyodide.runPythonAsync(prog || '');
