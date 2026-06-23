@@ -23,7 +23,8 @@ app:
         backend: memory
 
 lti:
-  instructorAuthority: instructormi
+  # UIndy: no relationship to the matterandinteractions instructormi allowlist.
+  instructorAuthority: default
 
 db:
   backend: firestore   # No MongoDB required
