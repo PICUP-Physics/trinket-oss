@@ -171,20 +171,27 @@ function ensureGlow() {
   return glowLoading;
 }
 
-// Create the GlowScript scene inside a dedicated child of #graphic. GlowScript
-// reads its container from window.__context.glowscript_container; calling
-// canvas() does NOT set window.scene on this build, so we expose it explicitly
-// for the bridge's `from js import scene`.
+// Build a fresh GlowScript scene inside a dedicated child of #graphic. Unlike
+// the glowscript trinket — which throws away its whole iframe each run — we
+// keep Pyodide and the glow library loaded (too expensive to reload) and
+// instead rebuild just the scene every run: resetOutput() empties #graphic
+// each run, destroying the old canvas DOM, so a memoized scene would be dead on
+// re-run. Tear down the previous scene first so its render loop stops, then
+// create a new canvas. GlowScript reads its container from
+// window.__context.glowscript_container; canvas() does not set window.scene on
+// this build, so we expose it explicitly for the bridge's `from js import scene`.
 function setupGlowScene() {
-  if (glowScene) return glowScene;
-  var graphic = document.getElementById('graphic');
-  var cont = document.getElementById('glowscript');
-  if (!cont) {
-    cont = document.createElement('div');
-    cont.id = 'glowscript';
-    cont.className = 'glowscript';
-    graphic.appendChild(cont);
+  if (glowScene && typeof glowScene.remove === 'function') {
+    try { glowScene.remove(); } catch (e) {}
   }
+  glowScene = null;
+
+  var graphic = document.getElementById('graphic');
+  var cont = document.createElement('div');
+  cont.id = 'glowscript';
+  cont.className = 'glowscript';
+  graphic.appendChild(cont);
+
   window.__context = { glowscript_container: $(cont) };
   glowScene = window.canvas();
   window.scene = glowScene;
@@ -216,6 +223,17 @@ function runVpython(prog) {
     setupGlowScene();
     showGraphic();
     return ensureVpython();
+  }).then(function() {
+    // The bridge binds `scene` to window.scene at import time (once). Since we
+    // rebuilt the canvas above, re-point the package's scene proxy — and the
+    // global `scene` from `from vpython import *` — at the fresh canvas so
+    // scene.* access in re-run programs targets the live canvas.
+    return pyodide.runPythonAsync(
+      'import vpython as _vpy\n' +
+      'from js import scene as _js_scene\n' +
+      '_vpy.scene = _vpy.canvas(jsObj=_js_scene)\n' +
+      'scene = _vpy.scene\n'
+    );
   }).then(function() {
     var lines = prog.split('\n');
     if (/^\s*(Web\s+VPython|GlowScript)\b/i.test(lines[0])) {
