@@ -13,6 +13,15 @@
 
 var PYODIDE_INDEX_URL = 'https://cdn.jsdelivr.net/pyodide/v0.27.2/full/';
 
+// VPython/GlowScript support (experimental). When a program is detected as
+// VPython, we load the GlowScript graphics library and a Python `vpython`
+// bridge package into Pyodide so real CPython can drive 3D objects (sphere,
+// box, rate(), …) — the approach proven by webvpython's wmWVPRunner. The glow
+// library is the same build the `glowscript` trinket uses; the bridge zip is
+// the webvpython `vpython` package.
+var GLOW_SRC = '/components/vpython-glowscript/package/glow.3.2.2.min.js';
+var VPYTHON_ZIP_URL = '/js/embed/wvpython/vpython.zip';
+
 var api;
 var codeRuns = {};
 var editor;
@@ -133,6 +142,96 @@ function showGraphic() {
   $('#output-dragbar').removeClass('hide');
 }
 
+// --- VPython / GlowScript bridge -------------------------------------------
+
+var glowLoading = null;    // memoized GlowScript library load
+var vpythonLoading = null; // memoized vpython package install + import
+var glowScene = null;      // the GlowScript canvas/scene object
+
+// True when the program is a VPython/GlowScript program: either the classic
+// first-line version header ("Web VPython 3.2" / "GlowScript 3.2 VPython") or
+// an explicit vpython import.
+function usesVPython(code) {
+  return /^\s*(Web\s+VPython|GlowScript)\b/i.test(code)
+      || /(^|\n)\s*(import\s+vpython|from\s+vpython\b)/.test(code);
+}
+
+// Inject the GlowScript graphics library into the embed window (same realm as
+// Pyodide, so the bridge's `from js import sphere, …` resolves). Memoized.
+function ensureGlow() {
+  if (glowLoading) return glowLoading;
+  glowLoading = new Promise(function(resolve, reject) {
+    if (typeof window.canvas === 'function') { resolve(); return; }
+    var s = document.createElement('script');
+    s.src = GLOW_SRC;
+    s.onload = function() { resolve(); };
+    s.onerror = function() { reject(new Error('Failed to load the GlowScript library.')); };
+    document.head.appendChild(s);
+  });
+  return glowLoading;
+}
+
+// Create the GlowScript scene inside a dedicated child of #graphic. GlowScript
+// reads its container from window.__context.glowscript_container; calling
+// canvas() does NOT set window.scene on this build, so we expose it explicitly
+// for the bridge's `from js import scene`.
+function setupGlowScene() {
+  if (glowScene) return glowScene;
+  var graphic = document.getElementById('graphic');
+  var cont = document.getElementById('glowscript');
+  if (!cont) {
+    cont = document.createElement('div');
+    cont.id = 'glowscript';
+    cont.className = 'glowscript';
+    graphic.appendChild(cont);
+  }
+  window.__context = { glowscript_container: $(cont) };
+  glowScene = window.canvas();
+  window.scene = glowScene;
+  return glowScene;
+}
+
+// Fetch + unpack the vpython package into Pyodide's FS and import it (plus the
+// math/random star-imports VPython programs assume). Memoized; assumes Pyodide
+// is ready and GlowScript globals exist. Mirrors wmWVPRunner's run sequence.
+function ensureVpython() {
+  if (vpythonLoading) return vpythonLoading;
+  vpythonLoading = fetch(VPYTHON_ZIP_URL)
+    .then(function(r) { return r.arrayBuffer(); })
+    .then(function(buf) {
+      pyodide.unpackArchive(buf, 'zip');
+      return pyodide.runPythonAsync('from math import *');
+    })
+    .then(function() { return pyodide.runPythonAsync('from random import *'); })
+    .then(function() { return pyodide.runPythonAsync('from vpython import *'); });
+  return vpythonLoading;
+}
+
+// Run a VPython program: load glow + scene + bridge, comment out the version
+// header line (keeping line numbers stable), rewrite blocking rate()/sleep()
+// loops to async via the bridge's AST transformer, then execute.
+function runVpython(prog) {
+  writeOut('Loading VPython (GlowScript)…\n');
+  return ensureGlow().then(function() {
+    setupGlowScene();
+    showGraphic();
+    return ensureVpython();
+  }).then(function() {
+    var lines = prog.split('\n');
+    if (/^\s*(Web\s+VPython|GlowScript)\b/i.test(lines[0])) {
+      lines[0] = '#' + lines[0];
+    }
+    pyodide.globals.set('__user_source__', lines.join('\n'));
+    var asyncProg = pyodide.runPython(
+      'from vpython._async_transform import transform_source\n' +
+      'transform_source(__user_source__)'
+    );
+    return pyodide.loadPackagesFromImports(asyncProg).then(function() {
+      return pyodide.runPythonAsync(asyncProg);
+    });
+  });
+}
+
 // Jupyter-style rich display: if the value of the last top-level expression has
 // a _repr_html_ (pandas DataFrame, Styler, …), render it as HTML in the graphic
 // pane. `result` is whatever pyodide.runPythonAsync resolved to — a JS primitive
@@ -216,6 +315,12 @@ function runCode() {
 
   ensurePyodide().then(function() {
     var prog = syncFilesToFS(editor.getAllFiles(), mainFile);
+
+    // VPython/GlowScript programs take a separate path: glow library + the
+    // vpython bridge + async rewriting, rendering 3D into the graphic pane.
+    if (usesVPython(prog)) {
+      return runVpython(prog);
+    }
 
     if (importsPackages(prog)) {
       writeOut('Loading packages…\n');
