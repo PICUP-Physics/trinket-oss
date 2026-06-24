@@ -385,6 +385,19 @@ routes = [
     }
   },
   {
+    // published-trinket "site" — the vanity URL produced by the Publish modal
+    route  : 'GET /u/{username}/sites/{trinketSlug} trinket.getByShortCode',
+    html   : 'trinket/{trinket.lang}/{trinket.lang}.html',
+    config : {
+      pre : [
+        { method : helpers.userByUsername, assign : 'user' },
+        { method : helpers.trinketByOwnerAndSlug, assign : 'trinket' },
+        helpers.requirePublished,
+        { method : helpers.findFeaturedTrinkets, assign : 'featuredTrinkets' }
+      ]
+    }
+  },
+  {
     route : 'GET /embed/beta/{type} trinket.beta',
     html  : 'embed/beta/{type}.html',
     config : {
