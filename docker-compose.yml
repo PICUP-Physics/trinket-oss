@@ -38,6 +38,7 @@ services:
       - /usr/local/node/trinket/public/components
     environment:
       NODE_ENV: development
+      ADMIN_EMAILS: ${ADMIN_EMAILS}
       GOOGLE_CLOUD_PROJECT: demo-trinket
       FIRESTORE_EMULATOR_HOST: firebase:8080
       STORAGE_EMULATOR_HOST: http://firebase:9199
