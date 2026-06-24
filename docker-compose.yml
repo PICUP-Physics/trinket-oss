@@ -1,3 +1,9 @@
+# Shared NODE_CONFIG for the app and the export worker. Overrides hostnames to
+# the compose service names and points S3 at the local MinIO. Includes the
+# `exports` redis queue host + bucket so the bulk-export worker can run locally.
+x-node-config: &node-config >-
+  {"app":{"url":{"hostname":"localhost","protocol":"http","port":3000},"plugins":{"session":{"cookieOptions":{"password":"${SESSION_PASSWORD:-change-this-password-for-production-use}"}}}},"db":{"mongo":{"host":"mongodb"},"redis":{"enabled":true,"app":{"host":"redis"},"exports":{"host":"redis"}}},"aws":{"keyId":"minioadmin","key":"minioadmin","endpoint":"http://minio:9000","buckets":{"materials":{"name":"trinket-materials","host":"http://localhost:9000/trinket-materials"},"exports":{"name":"trinket-exports","host":"http://localhost:9000/trinket-exports"}}},"features":{"assets":true}}
+
 services:
   app:
     build: .
@@ -24,8 +30,11 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_CALLBACK_URL: http://localhost:3000/auth/google/callback
-      NODE_CONFIG: >-
-        {"app":{"url":{"hostname":"localhost","protocol":"http","port":3000},"plugins":{"session":{"cookieOptions":{"password":"${SESSION_PASSWORD:-change-this-password-for-production-use}"}}}},"db":{"mongo":{"host":"mongodb"},"redis":{"app":{"host":"redis"}}},"aws":{"keyId":"minioadmin","key":"minioadmin","endpoint":"http://minio:9000","buckets":{"materials":{"name":"trinket-materials","host":"http://localhost:9000/trinket-materials"}}},"features":{"assets":true}}
+      # Run the bulk-export queue worker in-process. The standalone worker can't
+      # load config/app.config's route layer cleanly, so it rides along in the
+      # app process here (production runs workers as a separate tier).
+      RUN_EXPORT_WORKER: "true"
+      NODE_CONFIG: *node-config
   redis:
     image: redis:latest
     ports:
@@ -73,6 +82,8 @@ services:
       mc alias set local http://minio:9000 minioadmin minioadmin;
       mc mb --ignore-existing local/trinket-materials;
       mc anonymous set public local/trinket-materials;
+      mc mb --ignore-existing local/trinket-exports;
+      mc anonymous set public local/trinket-exports;
       "
 networks:
   trinket:
