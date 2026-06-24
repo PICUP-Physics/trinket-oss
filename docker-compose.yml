@@ -34,6 +34,9 @@ services:
       # load config/app.config's route layer cleanly, so it rides along in the
       # app process here (production runs workers as a separate tier).
       RUN_EXPORT_WORKER: "true"
+      # Rewrite presigned S3 download URLs from the internal minio:9000 host to
+      # one the browser can reach (the published MinIO port).
+      S3_PUBLIC_HOST: "localhost:9000"
       NODE_CONFIG: *node-config
   redis:
     image: redis:latest
