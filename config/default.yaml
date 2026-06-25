@@ -12,8 +12,10 @@ features:
     glowscript-blocks: false
     console: false     # Python console/REPL
     music: true       # EarSketch music coding
+    # python3 now runs on Pyodide (client-side), not the :8080 backend — see
+    # lib/views/embed/python3.html. Enabled so imported python3 trinkets work.
+    python3: true      # Runs on Pyodide (no backend; was: requires Python 3 backend)
     # Server-side languages - require additional backend services
-    python3: false     # Requires Python 3 backend
     java: false        # Requires Java backend
     pygame: false      # Requires Pygame backend
     R: false           # Requires R backend
@@ -330,7 +332,8 @@ app:
   serverside:
     # Maps trinket lang param to config key
     langmap:
-      python3: python3
+      # python3 intentionally omitted: it runs on Pyodide (client-side), not a
+      # server-side backend, so it must not resolve a serverside API URL.
       R: r3
       java: java8
       pygame: pygame
