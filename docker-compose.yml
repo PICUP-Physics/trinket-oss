@@ -14,6 +14,9 @@ services:
     networks:
       - trinket
     environment:
+      # Run the bulk-export queue worker in-process (the standalone worker can't
+      # load the route layer cleanly; production runs workers as a separate tier).
+      RUN_EXPORT_WORKER: "true"
       NODE_CONFIG: |
         {
           "features": {
