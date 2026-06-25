@@ -515,6 +515,12 @@ routes = [
     }
   },
   {
+    route : 'GET /legacy/embed/{shortCode} trinket.legacyEmbedRedirect'
+  },
+  {
+    route : 'GET /legacy/{shortCode} trinket.legacyRedirect'
+  },
+  {
     route : 'GET /library/trinkets/{path*} trinket.library',
     config : {
       pre : [helpers.trinketTypeEnabled],
