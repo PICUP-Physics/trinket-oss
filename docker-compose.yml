@@ -27,6 +27,7 @@ services:
             "key": "${GARAGE_SECRET}",
             "region": "garage",
             "endpoint": "http://garage:3900",
+            "publicEndpoint": "${S3_PUBLIC_ENDPOINT:-http://localhost:3900}",
             "s3ForcePathStyle": true,
             "signatureVersion": "v4",
             "buckets": {

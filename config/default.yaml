@@ -395,7 +395,11 @@ aws:
   key: ''
   keyId: ''
   region: us-east-1
-  endpoint:
+  endpoint:          # internal S3 API endpoint the app talks to (e.g. http://garage:3900)
+  publicEndpoint:    # browser-reachable S3 API endpoint for presigned download URLs
+                     # (e.g. http://localhost:3900 dev; public Garage endpoint in prod).
+                     # Required for export downloads under SigV4 (host is signed).
+                     # Per-deployment: set via aws.publicEndpoint or $S3_PUBLIC_ENDPOINT.
   s3ForcePathStyle:
   signatureVersion:
   buckets:
