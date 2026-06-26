@@ -405,30 +405,78 @@ function escHtml(s) {
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+var lastVars = [];          // most recent full snapshot (all kinds)
+var showCallables = false;  // toggle: also list functions & classes
+
+// A repr length is meaningful only for sized containers; show it for these so
+// users see "list (1000)" without the repr having to spell it out.
+var SIZED_TYPES = { list:1, tuple:1, dict:1, set:1, frozenset:1, str:1, bytes:1, bytearray:1, range:1 };
+
+function kindIcon(kind) {
+  if (kind === 'function') return '<i class="fa fa-superscript var-kind-icon" title="function"></i> ';
+  if (kind === 'class') return '<i class="fa fa-cube var-kind-icon" title="class"></i> ';
+  return '';
+}
+
+function copyToClipboard(text) {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text);
+      return;
+    }
+  } catch (e) { /* fall through */ }
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); } catch (e) {}
+  document.body.removeChild(ta);
+}
+
+// Store the latest snapshot, then paint. Painting is split out so the
+// functions/classes toggle can re-render without re-running the program.
 function renderVariables(vars) {
+  lastVars = vars || [];
+  paintVariables();
+}
+
+function paintVariables() {
   var $body = $('#variables-table tbody');
   if (!$body.length) return; // no Variables panel (e.g. outputOnly embed)
 
-  // Phase 1: show plain values only; a functions/classes toggle comes in Phase 2.
+  // Count badge tracks plain values (the primary signal); callables are secondary.
+  var valueCount = 0;
+  for (var k = 0; k < lastVars.length; k++) {
+    if (lastVars[k].kind === 'value') valueCount++;
+  }
+  $('#variablesCount').text(valueCount ? '(' + valueCount + ')' : '');
+
   var shown = [];
-  for (var i = 0; i < vars.length; i++) {
-    if (vars[i].kind === 'value') shown.push(vars[i]);
+  for (var i = 0; i < lastVars.length; i++) {
+    if (lastVars[i].kind === 'value' || showCallables) shown.push(lastVars[i]);
   }
 
-  $('#variablesCount').text(shown.length ? '(' + shown.length + ')' : '');
-
   if (!shown.length) {
-    $body.html('<tr class="vars-empty"><td colspan="3">No variables yet — run your code.</td></tr>');
+    var msg = lastVars.length ? 'No variables to show.' : 'No variables yet — run your code.';
+    $body.html('<tr class="vars-empty"><td colspan="3">' + msg + '</td></tr>');
     return;
   }
 
   var html = '';
   for (var j = 0; j < shown.length; j++) {
     var v = shown[j];
-    html += '<tr class="var-row">'
-      + '<td class="var-name">' + escHtml(v.name) + '</td>'
-      + '<td class="var-type">' + escHtml(v.type) + '</td>'
-      + '<td class="var-value">' + escHtml(v.repr) + '</td>'
+    var typeCell = escHtml(v.type);
+    if (v.len != null && SIZED_TYPES[v.type]) {
+      typeCell += ' <span class="var-len">(' + v.len + ')</span>';
+    }
+    html += '<tr class="var-row var-kind-' + v.kind + '">'
+      + '<td class="var-name">' + kindIcon(v.kind) + escHtml(v.name) + '</td>'
+      + '<td class="var-type">' + typeCell + '</td>'
+      + '<td class="var-value"><span class="var-value-text">' + escHtml(v.repr) + '</span>'
+      + '<button type="button" class="var-copy" title="Copy value" aria-label="Copy value" tabindex="-1">'
+      + '<i class="fa fa-clone"></i></button></td>'
       + '</tr>';
   }
   $body.html(html);
@@ -661,6 +709,22 @@ window.TrinketAPI = {
     });
     $('#codeOutputTab, #instructionsTab').on('click', function() {
       hideVariables();
+    });
+
+    // Phase 2: re-render in place when the functions/classes toggle changes; no
+    // re-run needed since the last snapshot is cached.
+    $('#variables-show-callables').on('change', function() {
+      showCallables = $(this).is(':checked');
+      paintVariables();
+    });
+
+    // Copy a variable's repr; brief check-mark feedback.
+    $('#variables-table').on('click', '.var-copy', function() {
+      var $btn = $(this);
+      copyToClipboard($btn.closest('td').find('.var-value-text').text());
+      var $i = $btn.find('i');
+      $i.removeClass('fa-clone').addClass('fa-check');
+      setTimeout(function() { $i.removeClass('fa-check').addClass('fa-clone'); }, 900);
     });
 
     $(document).on('assets.change', function() {
