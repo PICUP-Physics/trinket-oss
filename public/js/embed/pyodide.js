@@ -343,6 +343,110 @@ function showRichHtml(html) {
   showGraphic();
 }
 
+// --- Variable explorer ------------------------------------------------------
+//
+// After each run we snapshot the user's top-level namespace and render it in a
+// read-only "Variables" tab. Because Pyodide is real CPython, we introspect
+// with Python itself (accurate type/repr/len) and hand back a JSON string, so
+// the JS side does a single JSON.parse and never juggles PyProxy lifetimes.
+//
+// The helper iterates `user_ns` (a reference to the user globals passed in via
+// a throwaway namespace) rather than globals(), so it injects nothing — not
+// even `json`/`types` — into the user's own namespace. It also filters dunders,
+// imported modules, and the non-user names the runner injects (__user_source__,
+// _plt, _vpy, _js_scene, _wrapped_rate).
+var VARS_HELPER = [
+  'import json, types',
+  "_SKIP = {'__user_source__', '_plt', '_vpy', '_js_scene', '_wrapped_rate'}",
+  '_out = []',
+  'for _name, _val in list(user_ns.items()):',
+  '    if _name in _SKIP: continue',
+  "    if _name.startswith('__') and _name.endswith('__'): continue",
+  '    if isinstance(_val, types.ModuleType): continue',
+  "    _kind = 'value'",
+  '    if isinstance(_val, (types.FunctionType, types.BuiltinFunctionType, types.LambdaType)):',
+  "        _kind = 'function'",
+  '    elif isinstance(_val, type):',
+  "        _kind = 'class'",
+  '    try:',
+  '        _r = repr(_val)',
+  '    except Exception as _e:',
+  "        _r = '<unrepresentable: %r>' % (_e,)",
+  "    if len(_r) > 300: _r = _r[:300] + '...'",
+  '    try:',
+  '        _n = len(_val)',
+  '    except Exception:',
+  '        _n = None',
+  "    _out.append({'name': _name, 'type': type(_val).__name__, 'kind': _kind, 'repr': _r, 'len': _n})",
+  "_out.sort(key=lambda d: (d['kind'] != 'value', d['name']))",
+  'json.dumps(_out)'
+].join('\n');
+
+function snapshotVariables() {
+  if (!pyodide || !pyodideReady) return [];
+  var ns = null;
+  try {
+    // user_ns is a live reference to the user globals; nothing is written back.
+    ns = pyodide.toPy({ user_ns: pyodide.globals });
+    var json = pyodide.runPython(VARS_HELPER, { globals: ns });
+    return JSON.parse(json);
+  } catch (e) {
+    return [];
+  } finally {
+    if (ns && typeof ns.destroy === 'function') {
+      try { ns.destroy(); } catch (e) {}
+    }
+  }
+}
+
+function escHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function renderVariables(vars) {
+  var $body = $('#variables-table tbody');
+  if (!$body.length) return; // no Variables panel (e.g. outputOnly embed)
+
+  // Phase 1: show plain values only; a functions/classes toggle comes in Phase 2.
+  var shown = [];
+  for (var i = 0; i < vars.length; i++) {
+    if (vars[i].kind === 'value') shown.push(vars[i]);
+  }
+
+  $('#variablesCount').text(shown.length ? '(' + shown.length + ')' : '');
+
+  if (!shown.length) {
+    $body.html('<tr class="vars-empty"><td colspan="3">No variables yet — run your code.</td></tr>');
+    return;
+  }
+
+  var html = '';
+  for (var j = 0; j < shown.length; j++) {
+    var v = shown[j];
+    html += '<tr class="var-row">'
+      + '<td class="var-name">' + escHtml(v.name) + '</td>'
+      + '<td class="var-type">' + escHtml(v.type) + '</td>'
+      + '<td class="var-value">' + escHtml(v.repr) + '</td>'
+      + '</tr>';
+  }
+  $body.html(html);
+}
+
+function showVariables() {
+  $('#outputContainer').addClass('hide');
+  $('#instructionsContainer').addClass('hide');
+  $('#variables-wrap').removeClass('hide');
+  $('#codeOutputTab, #instructionsTab').removeClass('active');
+  $('#variablesTab').addClass('active');
+}
+
+function hideVariables() {
+  $('#variables-wrap').addClass('hide');
+  $('#variablesTab').removeClass('active');
+}
+
 function finishRun(serializedCode, err) {
   running = false;
   window.readyForSnapshot = true;
@@ -354,6 +458,11 @@ function finishRun(serializedCode, err) {
   if (typeof api.collectErrorData === 'function') {
     api.collectErrorData(serializedCode, err ? (err.message || err.toString()) : undefined);
   }
+
+  // Refresh the Variables panel with the post-run namespace snapshot. Runs on
+  // both success and error so partial state is still visible. Never let a
+  // snapshot failure break run completion.
+  try { renderVariables(snapshotVariables()); } catch (e) {}
 
   // A Run was clicked while the previous (VPython) run was being cancelled;
   // now that it has stopped, start the fresh run.
@@ -542,6 +651,18 @@ window.TrinketAPI = {
       resetOutput(true);
     });
 
+    // Variables tab. Wired locally (not through the shared embed tab framework)
+    // so the explorer stays Pyodide-only and other trinket types are untouched.
+    // Switching to Result/Instructions hides the panel via their tab clicks.
+    $('#variablesTab').on('click keydown', function(e) {
+      if (e.type === 'keydown' && e.which !== 13 && e.which !== 32) return;
+      e.preventDefault();
+      showVariables();
+    });
+    $('#codeOutputTab, #instructionsTab').on('click', function() {
+      hideVariables();
+    });
+
     $(document).on('assets.change', function() {
       api.triggerChange();
     });
@@ -717,6 +838,7 @@ window.TrinketAPI = {
 
     $('#codeOutputTab').addClass('active');
     $('#instructionsTab').removeClass('active');
+    hideVariables();  // a run always returns focus to the Result pane
 
     runCode();
 

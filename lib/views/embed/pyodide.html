@@ -49,6 +49,65 @@
     padding: 0;
     overflow: visible;
   }
+
+  /* --- Variable explorer (Pyodide-only: this <style> loads only on this view,
+     so referencing the shared #embed_content_python IDs is safe). ----------- */
+  #embed_content_python #outputTabs #codeOutputTab,
+  #embed_content_python #outputTabs #instructionsTab,
+  #embed_content_python #outputTabs #variablesTab {
+    width: 33.3333%;
+  }
+  #embed_content_python #outputTabs #variablesTab {
+    float: left;
+    border-left: 1px solid #d4d4d4;
+    cursor: pointer;
+  }
+  #embed_content_python #variablesCount { color: #888; font-weight: normal; }
+
+  /* Keep the tab bar reachable even when the trinket has no instructions: show
+     the bar, hide only the Instructions tab, and split it Result/Variables. */
+  #embed_content_python #outputTabs.hideInstructions { display: block !important; }
+  #embed_content_python #outputTabs.hideInstructions #instructionsTab { display: none; }
+  #embed_content_python #outputTabs.hideInstructions #codeOutputTab,
+  #embed_content_python #outputTabs.hideInstructions #variablesTab { width: 50%; }
+  #embed_content_python #outputContainer.withoutTabs { top: 32px; }
+
+  #embed_content_python #variables-wrap {
+    position: absolute;
+    top: 32px; left: 0; right: 0; bottom: 0;
+    overflow: auto;
+    background: #fff;
+  }
+  #embed_content_python #variables-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: Menlo, Monaco, Consolas, "Courier New", monospace;
+    font-size: 12px;
+  }
+  #embed_content_python #variables-table th,
+  #embed_content_python #variables-table td {
+    border-bottom: 1px solid #eee;
+    padding: 4px 8px;
+    text-align: left;
+    vertical-align: top;
+  }
+  #embed_content_python #variables-table thead th {
+    position: sticky;
+    top: 0;
+    background: #f4f4f4;
+    border-bottom: 1px solid #d4d4d4;
+    font-family: Helvetica, Arial, sans-serif;
+    font-weight: bold;
+    z-index: 1;
+  }
+  #embed_content_python #variables-table td.var-name { color: #1a7f37; white-space: nowrap; }
+  #embed_content_python #variables-table td.var-type { color: #6f42c1; white-space: nowrap; }
+  #embed_content_python #variables-table td.var-value { color: #222; white-space: pre-wrap; word-break: break-word; }
+  #embed_content_python #variables-table tr.vars-empty td {
+    color: #888;
+    font-style: italic;
+    font-family: Helvetica, Arial, sans-serif;
+  }
 </style>
 
 {% endblock %}
@@ -120,6 +179,7 @@
     <div id="outputTabs" class="{% if hideInstructions or (not isOwner and not trinket.description) %}hideInstructions{% endif %}">
       <div class="{% if not showInstructions %}active {% endif %}menu-button" id="codeOutputTab" data-action="output.view">Result</div>
       <div class="{% if showInstructions %}active {% endif %}menu-button" id="instructionsTab" data-action="instructions.view"><i class="fa fa-list"></i> Instructions</div>
+      <div class="menu-button" id="variablesTab" role="button" tabindex="0" title="Variables defined by your program"><i class="fa fa-table"></i> Variables <span id="variablesCount"></span></div>
     </div>
 
     <div id="outputContainer" class="{% if hideInstructions or (not isOwner and not trinket.description) %}withoutTabs{% else %}withTabs{% endif %}">
@@ -133,6 +193,13 @@
         <div id="console-output" aria-live="assertive" aria-label="Code Output"></div>
         <a id="reset-output" title="clear output"><i class="fa fa-ban"></i></a>
       </div>
+    </div>
+
+    <div id="variables-wrap" class="hide" aria-live="polite" aria-label="Variables">
+      <table id="variables-table">
+        <thead><tr><th>Name</th><th>Type</th><th>Value</th></tr></thead>
+        <tbody></tbody>
+      </table>
     </div>
 
     {% include "includes/embed-instructions.html" %}
