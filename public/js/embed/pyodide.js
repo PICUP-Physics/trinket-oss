@@ -100,6 +100,9 @@ function ensurePyodide() {
     // text without its trailing newline, so we re-add it per write.
     py.setStdout({ batched: function(s) { writeOut(s + '\n'); } });
     py.setStderr({ batched: function(s) { writeOut(s + '\n'); } });
+    // Record the pristine namespace so the variable explorer can show only the
+    // names the user's program introduces, not Python built-ins / library imports.
+    try { py.runPython('__trinket_baseline__ = set(globals().keys())'); } catch (e) {}
     return py;
   });
 
@@ -163,6 +166,7 @@ var glowRate = null;          // original glow rate(), before our wrapper
 var cancelRequested = false;  // set true to make the next rate() reject
 var rerunQueued = false;      // a Run was clicked mid-run; re-run once it stops
 var runningIsVpython = false; // the in-flight run is a VPython program (cancellable)
+var vpythonBaselineCaptured = false; // folded vpython star-imports into the explorer baseline once
 
 // Wrap the global rate() so it rejects when cancellation is requested. Must run
 // before the vpython bridge does `from js import rate` (which binds at import
@@ -289,6 +293,14 @@ function runVpython(prog) {
       );
     }
   }).then(function() {
+    // Everything in globals now is library/bootstrap (the vpython/math/random
+    // star-imports, scene, rate, …). Fold it into the explorer baseline once so
+    // those names are hidden — but only once, so vars created by earlier runs
+    // stay visible on re-runs.
+    if (!vpythonBaselineCaptured) {
+      try { pyodide.runPython('__trinket_baseline__ |= set(globals().keys())'); } catch (e) {}
+      vpythonBaselineCaptured = true;
+    }
     var lines = prog.split('\n');
     if (/^\s*(Web\s+VPython|GlowScript)\b/i.test(lines[0])) {
       lines[0] = '#' + lines[0];
@@ -358,9 +370,11 @@ function showRichHtml(html) {
 var VARS_HELPER = [
   'import json, types',
   "_SKIP = {'__user_source__', '_plt', '_vpy', '_js_scene', '_wrapped_rate'}",
+  "_baseline = user_ns.get('__trinket_baseline__') or set()",
   '_out = []',
   'for _name, _val in list(user_ns.items()):',
   '    if _name in _SKIP: continue',
+  '    if _name in _baseline: continue',
   "    if _name.startswith('__') and _name.endswith('__'): continue",
   '    if isinstance(_val, types.ModuleType): continue',
   "    _kind = 'value'",
