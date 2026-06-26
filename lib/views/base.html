@@ -32,11 +32,12 @@
           {% if not config.features or not config.features.trinkets or config.features.trinkets.python %}
           { lang : 'python',     image : '{{config.aws.buckets.appassets.host}}/python.png',     label : 'Python'                                     },
           {% endif %}
-          {% if not config.features or not config.features.trinkets or config.features.trinkets.pyodide %}
-          { lang : 'pyodide',    image : '{{config.aws.buckets.appassets.host}}/python.png',     label : 'Python' },
-          {% endif %}
+          {# 'pyodide' is intentionally omitted from the New Trinket menu: new Python
+             trinkets are created as 'python3' (which also runs on Pyodide). The
+             pyodide feature flag stays enabled so existing lang=pyodide trinkets
+             still view/run — this is a menu-only choice, not a runtime change. #}
           {% if not config.features or not config.features.trinkets or config.features.trinkets.python3 %}
-          { lang : 'python3',    image : '{{config.aws.buckets.appassets.host}}/python.png',     label : 'Python3' },
+          { lang : 'python3',    image : '{{config.aws.buckets.appassets.host}}/python.png',     label : 'Python' },
           {% endif %}
           {% if not config.features or not config.features.trinkets or config.features.trinkets.pygame %}
           { lang : 'pygame',     image : '{{config.aws.buckets.appassets.host}}/python.png',     label : 'Pygame' },
@@ -151,11 +152,10 @@
                       {% if not config.features or not config.features.trinkets or config.features.trinkets.python %}
                       <li><a href="/library/trinkets/create?lang=python"><i class="lang-sprite lang-sprite-python"></i> Python</a></li>
                       {% endif %}
-                      {% if not config.features or not config.features.trinkets or config.features.trinkets.pyodide %}
-                      <li><a href="/library/trinkets/create?lang=pyodide"><i class="lang-sprite lang-sprite-python"></i> Python</a></li>
-                      {% endif %}
+                      {# 'pyodide' intentionally omitted here too — see the trinketTypes
+                         array above. New Python trinkets are created as 'python3'. #}
                       {% if not config.features or not config.features.trinkets or config.features.trinkets.python3 %}
-                      <li><a href="/library/trinkets/create?lang=python3"><i class="lang-sprite lang-sprite-python"></i> Python3</a></li>
+                      <li><a href="/library/trinkets/create?lang=python3"><i class="lang-sprite lang-sprite-python"></i> Python</a></li>
                       {% endif %}
                       {% if not config.features or not config.features.trinkets or config.features.trinkets.pygame %}
                       <li><a href="/library/trinkets/create?lang=pygame"><i class="lang-sprite lang-sprite-pygame"></i> Pygame</a></li>
