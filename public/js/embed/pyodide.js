@@ -13,6 +13,15 @@
 
 var PYODIDE_INDEX_URL = 'https://cdn.jsdelivr.net/pyodide/v0.27.2/full/';
 
+// VPython/GlowScript support (experimental). When a program is detected as
+// VPython, we load the GlowScript graphics library and a Python `vpython`
+// bridge package into Pyodide so real CPython can drive 3D objects (sphere,
+// box, rate(), …) — the approach proven by webvpython's wmWVPRunner. The glow
+// library is the same build the `glowscript` trinket uses; the bridge zip is
+// the webvpython `vpython` package.
+var GLOW_SRC = '/components/vpython-glowscript/package/glow.3.2.2.min.js';
+var VPYTHON_ZIP_URL = '/js/embed/wvpython/vpython.zip';
+
 var api;
 var codeRuns = {};
 var editor;
@@ -122,15 +131,175 @@ function usesMatplotlib(code) {
   return /(^|\n)\s*(import\s+matplotlib|from\s+matplotlib\b)/.test(code);
 }
 
+// Fraction of the output pane given to the graphic (vs. console). Default
+// 65/35; updated when the user drags the separator so the split survives
+// subsequent runs instead of resetting.
+var graphicSplit = 0.65;
+
 // Reveal the graphic pane (where matplotlib figures render) and split it with
-// the console below.
+// the console below, honoring any split the user dragged to.
 function showGraphic() {
   var wrap = document.getElementById('graphic-wrap');
   if (!wrap) return;
   wrap.classList.remove('hide');
-  $('#graphic-wrap').css('height', '65%');
-  $('#console-wrap').css('height', '35%');
+  $('#graphic-wrap').css('height', (graphicSplit * 100) + '%');
+  $('#console-wrap').css('height', ((1 - graphicSplit) * 100) + '%');
   $('#output-dragbar').removeClass('hide');
+}
+
+// --- VPython / GlowScript bridge -------------------------------------------
+
+var glowLoading = null;    // memoized GlowScript library load
+var vpythonLoading = null; // memoized vpython package install + import
+var glowScene = null;      // the GlowScript canvas/scene object
+
+// Cooperative cancellation for VPython animation loops. Pyodide can't preempt a
+// running coroutine, but VPython loops yield at rate(), so we wrap rate() to
+// reject (raising in Python) when a re-run is requested mid-run — the loop
+// unwinds at the next frame, then we start the fresh run. Loops with no rate()
+// yield point can't be cancelled this way (they also freeze the tab anyway).
+var CANCEL_MARKER = '__trinket_run_cancelled__';
+var glowRate = null;          // original glow rate(), before our wrapper
+var cancelRequested = false;  // set true to make the next rate() reject
+var rerunQueued = false;      // a Run was clicked mid-run; re-run once it stops
+var runningIsVpython = false; // the in-flight run is a VPython program (cancellable)
+
+// Wrap the global rate() so it rejects when cancellation is requested. Must run
+// before the vpython bridge does `from js import rate` (which binds at import
+// time); idempotent, so calling it every run is fine.
+function installRateCancellation() {
+  if (glowRate || typeof window.rate !== 'function') return;
+  glowRate = window.rate;
+  window.rate = function() {
+    if (cancelRequested) {
+      return Promise.reject(new Error(CANCEL_MARKER));
+    }
+    return glowRate.apply(this, arguments);
+  };
+}
+
+function isCancelError(err) {
+  var msg = (err && (err.message || err.toString())) || '';
+  return msg.indexOf(CANCEL_MARKER) >= 0;
+}
+
+// True when the program is a VPython/GlowScript program: either the classic
+// first-line version header ("Web VPython 3.2" / "GlowScript 3.2 VPython") or
+// an explicit vpython import.
+function usesVPython(code) {
+  return /^\s*(Web\s+VPython|GlowScript)\b/i.test(code)
+      || /(^|\n)\s*(import\s+vpython|from\s+vpython\b)/.test(code);
+}
+
+// Inject the GlowScript graphics library into the embed window (same realm as
+// Pyodide, so the bridge's `from js import sphere, …` resolves). Memoized.
+function ensureGlow() {
+  if (glowLoading) return glowLoading;
+  glowLoading = new Promise(function(resolve, reject) {
+    if (typeof window.canvas === 'function') { resolve(); return; }
+    var s = document.createElement('script');
+    s.src = GLOW_SRC;
+    s.onload = function() { resolve(); };
+    s.onerror = function() { reject(new Error('Failed to load the GlowScript library.')); };
+    document.head.appendChild(s);
+  });
+  return glowLoading;
+}
+
+// Build a fresh GlowScript scene inside a dedicated child of #graphic. Unlike
+// the glowscript trinket — which throws away its whole iframe each run — we
+// keep Pyodide and the glow library loaded (too expensive to reload) and
+// instead rebuild just the scene every run: resetOutput() empties #graphic
+// each run, destroying the old canvas DOM, so a memoized scene would be dead on
+// re-run. Tear down the previous scene first so its render loop stops, then
+// create a new canvas. GlowScript reads its container from
+// window.__context.glowscript_container; canvas() does not set window.scene on
+// this build, so we expose it explicitly for the bridge's `from js import scene`.
+function setupGlowScene() {
+  if (glowScene && typeof glowScene.remove === 'function') {
+    try { glowScene.remove(); } catch (e) {}
+  }
+  glowScene = null;
+
+  var graphic = document.getElementById('graphic');
+  var cont = document.createElement('div');
+  cont.id = 'glowscript';
+  cont.className = 'glowscript';
+  graphic.appendChild(cont);
+
+  window.__context = { glowscript_container: $(cont) };
+  glowScene = window.canvas();
+  window.scene = glowScene;
+  return glowScene;
+}
+
+// Fetch + unpack the vpython package into Pyodide's FS and import it (plus the
+// math/random star-imports VPython programs assume). Memoized; assumes Pyodide
+// is ready and GlowScript globals exist. Mirrors wmWVPRunner's run sequence.
+function ensureVpython() {
+  if (vpythonLoading) return vpythonLoading;
+  vpythonLoading = fetch(VPYTHON_ZIP_URL)
+    .then(function(r) { return r.arrayBuffer(); })
+    .then(function(buf) {
+      pyodide.unpackArchive(buf, 'zip');
+      return pyodide.runPythonAsync('from math import *');
+    })
+    .then(function() { return pyodide.runPythonAsync('from random import *'); })
+    .then(function() { return pyodide.runPythonAsync('from vpython import *'); });
+  return vpythonLoading;
+}
+
+// Run a VPython program: load glow + scene + bridge, comment out the version
+// header line (keeping line numbers stable), rewrite blocking rate()/sleep()
+// loops to async via the bridge's AST transformer, then execute.
+function runVpython(prog) {
+  writeOut('Loading VPython (GlowScript)…\n');
+  return ensureGlow().then(function() {
+    installRateCancellation();  // wrap rate() before the bridge imports it
+    setupGlowScene();
+    showGraphic();
+    return ensureVpython();
+  }).then(function() {
+    // The bridge binds `scene` and `rate` to window.* at import time (once).
+    // Re-point them in Python before the user code imports them:
+    //  - scene: the canvas was rebuilt above, so target the fresh one.
+    //  - rate:  bind to the cancellation-wrapped window.rate so a re-run can
+    //           interrupt the loop (the import-time binding caught the
+    //           unwrapped rate, defeating cancellation otherwise).
+    return pyodide.runPythonAsync(
+      'import vpython as _vpy\n' +
+      'from js import scene as _js_scene\n' +
+      'from js import rate as _wrapped_rate\n' +
+      '_vpy.scene = _vpy.canvas(jsObj=_js_scene)\n' +
+      '_vpy.rate = _wrapped_rate\n' +
+      'scene = _vpy.scene\n' +
+      'rate = _wrapped_rate\n'
+    );
+  }).then(function() {
+    // Load bundled packages the program imports (numpy, matplotlib, …).
+    return pyodide.loadPackagesFromImports(prog);
+  }).then(function() {
+    // A VPython program can also plot. Without this, matplotlib falls back to
+    // its default target and the figure floats loose in the page next to the
+    // 3D scene; point its canvas backend at the graphic pane instead.
+    if (usesMatplotlib(prog)) {
+      window.document.pyodideMplTarget = document.getElementById('graphic');
+      return pyodide.runPythonAsync(
+        "import matplotlib; matplotlib.use('module://matplotlib_pyodide.html5_canvas_backend')"
+      );
+    }
+  }).then(function() {
+    var lines = prog.split('\n');
+    if (/^\s*(Web\s+VPython|GlowScript)\b/i.test(lines[0])) {
+      lines[0] = '#' + lines[0];
+    }
+    pyodide.globals.set('__user_source__', lines.join('\n'));
+    var asyncProg = pyodide.runPython(
+      'from vpython._async_transform import transform_source\n' +
+      'transform_source(__user_source__)'
+    );
+    return pyodide.runPythonAsync(asyncProg);
+  });
 }
 
 // Jupyter-style rich display: if the value of the last top-level expression has
@@ -185,12 +354,36 @@ function finishRun(serializedCode, err) {
   if (typeof api.collectErrorData === 'function') {
     api.collectErrorData(serializedCode, err ? (err.message || err.toString()) : undefined);
   }
+
+  // A Run was clicked while the previous (VPython) run was being cancelled;
+  // now that it has stopped, start the fresh run.
+  if (rerunQueued) {
+    rerunQueued = false;
+    startRun();
+  }
 }
 
 function runCode() {
   $('.reveal-modal').foundation('reveal', 'close');
 
-  if (running) return;
+  if (running) {
+    // A run is already in flight. For a VPython program (which yields at rate())
+    // request cancellation and queue a fresh run, so clicking Run restarts a
+    // running animation. For anything else keep the old behavior (ignore).
+    if (runningIsVpython) {
+      cancelRequested = true;
+      rerunQueued = true;
+    }
+    return;
+  }
+
+  startRun();
+}
+
+function startRun() {
+  cancelRequested = false;
+  rerunQueued = false;
+  runningIsVpython = false;
 
   if (window.parent) {
     window.parent.postMessage("started", "*");
@@ -217,6 +410,13 @@ function runCode() {
   ensurePyodide().then(function() {
     var prog = syncFilesToFS(editor.getAllFiles(), mainFile);
 
+    // VPython/GlowScript programs take a separate path: glow library + the
+    // vpython bridge + async rewriting, rendering 3D into the graphic pane.
+    if (usesVPython(prog)) {
+      runningIsVpython = true;  // mark cancellable so Run-while-running restarts
+      return runVpython(prog);
+    }
+
     if (importsPackages(prog)) {
       writeOut('Loading packages…\n');
     }
@@ -233,6 +433,19 @@ function runCode() {
           "import matplotlib; matplotlib.use('module://matplotlib_pyodide.html5_canvas_backend')"
         ).then(function() {
           return pyodide.runPythonAsync(prog || '');
+        }).then(function(result) {
+          // Notebook-style auto-display: if the program created figures but
+          // never called plt.show(), show them. If a canvas already rendered
+          // (the user called show()), skip — so we never double-plot.
+          var g = document.getElementById('graphic');
+          if (g && g.querySelector('canvas')) {
+            return result;
+          }
+          return pyodide.runPythonAsync(
+            "import matplotlib.pyplot as _plt\n" +
+            "if _plt.get_fignums():\n" +
+            "    _plt.show()\n"
+          ).then(function() { return result; });
         });
       }
       return pyodide.runPythonAsync(prog || '');
@@ -241,6 +454,12 @@ function runCode() {
     renderRichResult(result);
     finishRun(serializedCode);
   }).catch(function(err) {
+    // Intentional cancellation (Run clicked mid-run): unwind quietly, then
+    // finishRun starts the queued re-run.
+    if (isCancelError(err)) {
+      finishRun(serializedCode);
+      return;
+    }
     // Python exceptions reject with a PythonError whose message is the traceback.
     var msg = (err && (err.message || err.toString())) || 'Error';
     if (jqconsole) {
@@ -365,6 +584,39 @@ window.TrinketAPI = {
     if (typeof api.draggable === 'function') {
       api.draggable(function() {});
     }
+
+    // Make the separator between the graphic/output pane and the console
+    // draggable to resize them (matplotlib figures, VPython scene, stdout).
+    $('#output-dragbar').mousedown(function(e) {
+      e.preventDefault();
+
+      var containerHeight = $('.trinket-content-wrapper').height();
+      var containerTop    = $('.trinket-content-wrapper').offset().top;
+      var dragbarHeight   = $('#output-dragbar').height();
+
+      $(document).on('mousemove.output-dragbar', function(e) {
+        var topHeight    = e.pageY - containerTop - dragbarHeight / 2;
+        var bottomHeight = containerHeight - topHeight - dragbarHeight / 2;
+        if (topHeight >= 20 && bottomHeight >= 20) {
+          $('#graphic-wrap').css('height', topHeight);
+          $('#console-wrap').css('height', bottomHeight);
+        }
+      });
+
+      $(document).on('mouseup.output-dragbar', function() {
+        $(document).off('mousemove.output-dragbar mouseup.output-dragbar');
+        // Remember the split so the next Run keeps it instead of resetting.
+        var gh = $('#graphic-wrap').height();
+        var ch = $('#console-wrap').height();
+        if (gh + ch > 0) {
+          graphicSplit = gh / (gh + ch);
+        }
+      });
+
+      if (typeof api.sendInterfaceAnalytics === 'function') {
+        api.sendInterfaceAnalytics(this);
+      }
+    });
 
     api.activityLog = new ActivityLog(function(type, count) {
       var action = type.replace(

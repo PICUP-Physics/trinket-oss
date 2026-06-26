@@ -353,4 +353,16 @@ const serverPromise = init().catch(err => {
   process.exit(1);
 });
 
+// Optionally register the bulk-export queue worker in this process. Used by the
+// local test stack (RUN_EXPORT_WORKER=true); production runs workers separately.
+// Loaded after init() resolves so config/app.config and the route layer are
+// already initialized — requiring the worker cold elsewhere mis-compiles their
+// validation schemas.
+if (process.env.RUN_EXPORT_WORKER === 'true') {
+  serverPromise.then(() => {
+    require('./lib/workers/exports');
+    console.log('[app] bulk-export worker registered in-process');
+  });
+}
+
 module.exports = serverPromise;
