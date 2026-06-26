@@ -8,12 +8,30 @@
 <link rel="stylesheet" type="text/css" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/8.0/styles/github.min.css" crossorigin="anonymous">
 {% endif %}
 
+{# GlowScript's canvas resize grip is a jQuery-UI .resizable() handle (glow's
+   canvas.js calls .wrapper.resizable()); without the jQuery-UI theme CSS the
+   handle is zero-size and invisible. Load the same redmond theme the glowscript
+   embed uses so the resize grip shows on VPython/GlowScript scenes. #}
+<link rel="stylesheet" type="text/css" href="{{ '/components/vpython-glowscript/css/redmond/jquery-ui.custom.css' | cachePrefix }}">
+
 {# VPython programs render GlowScript widgets (button, menu, slider, …) directly
    in the embed DOM (the glowscript trinket isolates them in its own iframe).
    Foundation's global `button{...}` reset in embed.css flattens them to plain
    text, so restore sensible widget styling scoped to the scene container. A
    single id beats the element-level reset on specificity. #}
 <style type="text/css">
+  /* GlowScript's canvas resize grip is a jQuery-UI .resizable() SE handle. The
+     redmond theme styles it from a sprite image that isn't served here, so draw
+     the grip with CSS (diagonal lines) — sprite-independent, and ensure it has a
+     grabbable size in the canvas's bottom-right corner. */
+  #glowscript .ui-resizable-se {
+    width: 16px;
+    height: 16px;
+    right: 2px;
+    bottom: 2px;
+    cursor: se-resize;
+    background: repeating-linear-gradient(135deg, #8a8a8a 0 1px, transparent 1px 3px);
+  }
   #glowscript button {
     -webkit-appearance: none;
     appearance: none;
