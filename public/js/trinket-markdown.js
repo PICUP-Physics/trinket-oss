@@ -133,7 +133,7 @@
         new RegExp(
           '^(https?\\:)?\\/\\/(www\\.)?'
           + '(' + trinket_hosts.join('|') + ')'
-          + '\\/embed\\/', 'i'
+          + '\\/(?:legacy\\/)?embed\\/', 'i'
         ),
       ]
     }

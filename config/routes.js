@@ -515,7 +515,13 @@ routes = [
     }
   },
   {
+    route : 'GET /legacy/embed/{lang}/{shortCode} trinket.legacyEmbedRedirect'
+  },
+  {
     route : 'GET /legacy/embed/{shortCode} trinket.legacyEmbedRedirect'
+  },
+  {
+    route : 'GET /legacy/{lang}/{shortCode} trinket.legacyRedirect'
   },
   {
     route : 'GET /legacy/{shortCode} trinket.legacyRedirect'
