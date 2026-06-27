@@ -61,3 +61,10 @@ public/_published
 *.loglti-private-key.pem
 lti-private-key.pem
 firestore-debug.log
+
+# local, untracked runbooks/notes
+*.local.md
+
+# never commit env backups (contain secrets)
+.env.bak
+*.env.bak

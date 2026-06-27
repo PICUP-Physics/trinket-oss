@@ -348,6 +348,19 @@ _LIVE_ADMIN_EMAILS=$(node -e "
 " 2>/dev/null || true)
 [[ -n "${_LIVE_ADMIN_EMAILS}" ]] && echo "    Preserved ADMIN_EMAILS from live service"
 
+# LTI_INSTRUCTOR_EMAILS is the approved-instructor allowlist for /lti/connect; like
+# ADMIN_EMAILS it is runtime/console-managed, so preserve it across deploys too.
+_LIVE_LTI_INSTRUCTOR_EMAILS=$(node -e "
+  var fs = require('fs');
+  var d; try { d = JSON.parse(fs.readFileSync('${_LIVE_ENV_FILE}', 'utf8')); } catch(e) { d = {}; }
+  var c = d && d.spec && d.spec.template && d.spec.template.spec &&
+          d.spec.template.spec.containers && d.spec.template.spec.containers[0];
+  var envs = (c && c.env) || [];
+  var e = envs.find(function(x){ return x.name === 'LTI_INSTRUCTOR_EMAILS'; });
+  process.stdout.write(e ? e.value : '');
+" 2>/dev/null || true)
+[[ -n "${_LIVE_LTI_INSTRUCTOR_EMAILS}" ]] && echo "    Preserved LTI_INSTRUCTOR_EMAILS from live service"
+
 _LIVE_SERVICE_URL=$(node -e "
   var fs = require('fs');
   var d; try { d = JSON.parse(fs.readFileSync('${_LIVE_ENV_FILE}', 'utf8')); } catch(e) { d = {}; }
@@ -389,6 +402,7 @@ if [[ "${NO_TRAFFIC}" =~ ^(1|true|yes)$ ]] || [[ -n "${_LIVE_SERVICE_URL}" ]]; t
   HOSTNAME="${HOSTNAME}" \
   FIREBASE_CLIENT_CONFIG="${FIREBASE_CLIENT_CONFIG}" \
   _LIVE_ADMIN_EMAILS="${_LIVE_ADMIN_EMAILS}" \
+  _LIVE_LTI_INSTRUCTOR_EMAILS="${_LIVE_LTI_INSTRUCTOR_EMAILS}" \
   node -e "
     var h = process.env.HOSTNAME;
     var lines = [];
@@ -397,6 +411,9 @@ if [[ "${NO_TRAFFIC}" =~ ^(1|true|yes)$ ]] || [[ -n "${_LIVE_SERVICE_URL}" ]]; t
     lines.push('FIREBASE_CLIENT_CONFIG: ' + JSON.stringify(process.env.FIREBASE_CLIENT_CONFIG));
     if (process.env._LIVE_ADMIN_EMAILS) {
       lines.push('ADMIN_EMAILS: ' + JSON.stringify(process.env._LIVE_ADMIN_EMAILS));
+    }
+    if (process.env._LIVE_LTI_INSTRUCTOR_EMAILS) {
+      lines.push('LTI_INSTRUCTOR_EMAILS: ' + JSON.stringify(process.env._LIVE_LTI_INSTRUCTOR_EMAILS));
     }
     process.stdout.write(lines.join('\n') + '\n');
   " >> "${ENV_VARS_FILE}"
