@@ -396,6 +396,14 @@ var VARS_HELPER = [
   'json.dumps(_out)'
 ].join('\n');
 
+// True when the Variables explorer is enabled via config
+// (features.variableExplorer, surfaced on the client as
+// trinket.config.variableExplorer). When off, the template omits the tab/panel,
+// and we skip the per-run snapshot and the tab wiring entirely.
+function variableExplorerEnabled() {
+  return !!(window.trinket && window.trinket.config && window.trinket.config.variableExplorer);
+}
+
 function snapshotVariables() {
   if (!pyodide || !pyodideReady) return [];
   var ns = null;
@@ -523,8 +531,10 @@ function finishRun(serializedCode, err) {
 
   // Refresh the Variables panel with the post-run namespace snapshot. Runs on
   // both success and error so partial state is still visible. Never let a
-  // snapshot failure break run completion.
-  try { renderVariables(snapshotVariables()); } catch (e) {}
+  // snapshot failure break run completion. Skipped when the explorer is off.
+  if (variableExplorerEnabled()) {
+    try { renderVariables(snapshotVariables()); } catch (e) {}
+  }
 
   // A Run was clicked while the previous (VPython) run was being cancelled;
   // now that it has stopped, start the fresh run.
@@ -716,30 +726,34 @@ window.TrinketAPI = {
     // Variables tab. Wired locally (not through the shared embed tab framework)
     // so the explorer stays Pyodide-only and other trinket types are untouched.
     // Switching to Result/Instructions hides the panel via their tab clicks.
-    $('#variablesTab').on('click keydown', function(e) {
-      if (e.type === 'keydown' && e.which !== 13 && e.which !== 32) return;
-      e.preventDefault();
-      showVariables();
-    });
-    $('#codeOutputTab, #instructionsTab').on('click', function() {
-      hideVariables();
-    });
+    // Only wired when the explorer is enabled (the template omits the markup
+    // otherwise, but skipping the bindings avoids dead handlers).
+    if (variableExplorerEnabled()) {
+      $('#variablesTab').on('click keydown', function(e) {
+        if (e.type === 'keydown' && e.which !== 13 && e.which !== 32) return;
+        e.preventDefault();
+        showVariables();
+      });
+      $('#codeOutputTab, #instructionsTab').on('click', function() {
+        hideVariables();
+      });
 
-    // Phase 2: re-render in place when the functions/classes toggle changes; no
-    // re-run needed since the last snapshot is cached.
-    $('#variables-show-callables').on('change', function() {
-      showCallables = $(this).is(':checked');
-      paintVariables();
-    });
+      // Phase 2: re-render in place when the functions/classes toggle changes; no
+      // re-run needed since the last snapshot is cached.
+      $('#variables-show-callables').on('change', function() {
+        showCallables = $(this).is(':checked');
+        paintVariables();
+      });
 
-    // Copy a variable's repr; brief check-mark feedback.
-    $('#variables-table').on('click', '.var-copy', function() {
-      var $btn = $(this);
-      copyToClipboard($btn.closest('td').find('.var-value-text').text());
-      var $i = $btn.find('i');
-      $i.removeClass('fa-clone').addClass('fa-check');
-      setTimeout(function() { $i.removeClass('fa-check').addClass('fa-clone'); }, 900);
-    });
+      // Copy a variable's repr; brief check-mark feedback.
+      $('#variables-table').on('click', '.var-copy', function() {
+        var $btn = $(this);
+        copyToClipboard($btn.closest('td').find('.var-value-text').text());
+        var $i = $btn.find('i');
+        $i.removeClass('fa-clone').addClass('fa-check');
+        setTimeout(function() { $i.removeClass('fa-check').addClass('fa-clone'); }, 900);
+      });
+    }
 
     $(document).on('assets.change', function() {
       api.triggerChange();

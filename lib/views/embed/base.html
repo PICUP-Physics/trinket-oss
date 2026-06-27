@@ -37,7 +37,8 @@
         logClientMetric   : {{config.app.embed.logClientMetric}},
         draftDebounce     : {{config.app.embed.draftDebounce}},
         autosaveDebounce  : {{config.app.embed.autosaveDebounce}},
-        assetsEnabled     : {{ 'true' if config.features.assets else 'false' }}
+        assetsEnabled     : {{ 'true' if config.features.assets else 'false' }},
+        variableExplorer  : {{ 'true' if config.features.variableExplorer else 'false' }}
       }
     };
     {% if config.isTest %}

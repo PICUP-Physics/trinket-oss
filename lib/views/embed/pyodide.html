@@ -69,6 +69,7 @@
     overflow: visible;
   }
 
+  {% if config.features.variableExplorer %}
   /* --- Variable explorer (Pyodide-only: this <style> loads only on this view,
      so referencing the shared #embed_content_python IDs is safe). ----------- */
   #embed_content_python #outputTabs #codeOutputTab,
@@ -181,6 +182,7 @@
   #embed_content_python #variables-table tr:hover .var-copy,
   #embed_content_python #variables-table .var-copy:focus { opacity: 1; }
   #embed_content_python #variables-table .var-copy:hover { color: #555; }
+  {% endif %}
 </style>
 
 {% endblock %}
@@ -252,7 +254,9 @@
     <div id="outputTabs" class="{% if hideInstructions or (not isOwner and not trinket.description) %}hideInstructions{% endif %}">
       <div class="{% if not showInstructions %}active {% endif %}menu-button" id="codeOutputTab" data-action="output.view">Result</div>
       <div class="{% if showInstructions %}active {% endif %}menu-button" id="instructionsTab" data-action="instructions.view"><i class="fa fa-list"></i> Instructions</div>
+      {% if config.features.variableExplorer %}
       <div class="menu-button" id="variablesTab" role="button" tabindex="0" title="Variables defined by your program"><i class="fa fa-table"></i> Variables <span id="variablesCount"></span></div>
+      {% endif %}
     </div>
 
     <div id="outputContainer" class="{% if hideInstructions or (not isOwner and not trinket.description) %}withoutTabs{% else %}withTabs{% endif %}">
@@ -268,6 +272,7 @@
       </div>
     </div>
 
+    {% if config.features.variableExplorer %}
     <div id="variables-wrap" class="hide" aria-label="Variables">
       <div id="variables-inner">
         <div id="variables-toolbar">
@@ -281,6 +286,7 @@
         </div>
       </div>
     </div>
+    {% endif %}
 
     {% include "includes/embed-instructions.html" %}
     {% endif %}
