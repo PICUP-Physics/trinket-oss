@@ -84,15 +84,16 @@
   #embed_content_python #variablesCount { color: #888; font-weight: normal; }
 
   /* The Variables tab lives in the existing output tab bar, so the bar must be
-     reachable. When a trinket has no instructions the base template hides the
-     whole bar (.hideInstructions) — force it back so Variables is available.
-     And when there's no description, suppress the now-empty Instructions tab
-     (in any owner/viewer state) so it isn't a dead tab, and split the bar
-     Result/Variables 50/50. With a description, all three tabs stay at 33%. */
+     reachable. In the cases where the base template would hide the whole bar
+     (.hideInstructions = explicitly hidden, or a non-owner viewing a trinket
+     with no description) force it back so Variables is available — and suppress
+     the now-empty Instructions tab there, splitting the bar Result/Variables
+     50/50. Owners (and any trinket with a description) keep the Instructions tab
+     and all three tabs at 33%, so the owner can still author instructions. */
   #embed_content_python #outputTabs.hideInstructions { display: block !important; }
-  #embed_content_python #outputTabs.noDescription #instructionsTab { display: none !important; }
-  #embed_content_python #outputTabs.noDescription #codeOutputTab,
-  #embed_content_python #outputTabs.noDescription #variablesTab { width: 50%; }
+  #embed_content_python #outputTabs.hideInstructions #instructionsTab { display: none !important; }
+  #embed_content_python #outputTabs.hideInstructions #codeOutputTab,
+  #embed_content_python #outputTabs.hideInstructions #variablesTab { width: 50%; }
   /* Bar is always visible in this view now, so the output pane always starts
      below it — even when the template marked the container "withoutTabs". */
   #embed_content_python #outputContainer.withoutTabs { top: 32px; }
@@ -248,7 +249,7 @@
 
     {% else %}
 
-    <div id="outputTabs" class="{% if hideInstructions or (not isOwner and not trinket.description) %}hideInstructions{% endif %}{% if not trinket.description %} noDescription{% endif %}">
+    <div id="outputTabs" class="{% if hideInstructions or (not isOwner and not trinket.description) %}hideInstructions{% endif %}">
       <div class="{% if not showInstructions %}active {% endif %}menu-button" id="codeOutputTab" data-action="output.view">Result</div>
       <div class="{% if showInstructions %}active {% endif %}menu-button" id="instructionsTab" data-action="instructions.view"><i class="fa fa-list"></i> Instructions</div>
       <div class="menu-button" id="variablesTab" role="button" tabindex="0" title="Variables defined by your program"><i class="fa fa-table"></i> Variables <span id="variablesCount"></span></div>
