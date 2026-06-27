@@ -108,13 +108,11 @@ if [[ ${#SESSION_PASSWORD} -lt 32 ]]; then
   exit 1
 fi
 
-if [[ -z "${GOOGLE_CLIENT_ID:-}" ]]; then
-  read -r -p "GOOGLE_CLIENT_ID (OAuth 2.0 client ID, blank to skip): " GOOGLE_CLIENT_ID
-fi
-if [[ -n "${GOOGLE_CLIENT_ID}" && -z "${GOOGLE_CLIENT_SECRET:-}" ]]; then
-  read -r -s -p "GOOGLE_CLIENT_SECRET: " GOOGLE_CLIENT_SECRET
-  echo
-fi
+# Server-side Google OAuth is OPTIONAL — Firebase Auth is the primary login, and the
+# app only registers GoogleStrategy when a clientID is present (lib/auth/passport.js).
+# Use whatever is in env/.env; if unset, it's silently skipped. No interactive prompts.
+GOOGLE_CLIENT_ID="${GOOGLE_CLIENT_ID:-}"
+GOOGLE_CLIENT_SECRET="${GOOGLE_CLIENT_SECRET:-}"
 
 GOOGLE_CLOUD_REGION="${GOOGLE_CLOUD_REGION:-us-central1}"
 SERVICE_NAME="${SERVICE_NAME:-trinket}"
