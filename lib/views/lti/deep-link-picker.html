@@ -3,61 +3,107 @@
 <div class="row"><div class="small-12 medium-8 columns small-centered">
   {% if contentMode %}
   <h3>Add Trinket Content to Your LMS</h3>
-  <p>Choose a whole course or a specific topic below. Your LMS will add it as a link that launches directly into Trinket.</p>
+  <p>Open a course, then choose the whole course or a specific topic. Your LMS adds it as a link that launches directly into Trinket.</p>
   {% else %}
   <h3>Add a Trinket Assignment to Your LMS</h3>
-  <p>Select an assignment below. Your LMS will add it as a graded link that launches directly into Trinket.</p>
+  <p>Open a course, then choose an assignment. Your LMS adds it as a graded link that launches directly into Trinket.</p>
   {% endif %}
 
   {% if not courses or courses | length == 0 %}
     <p class="panel">You don't have any Trinket courses yet. Create a course or assignment in Trinket first, then return here.</p>
-  {% elif contentMode %}
-    {% for course in courses %}
-      <h4>{{ course.name }}</h4>
-      <ul class="no-bullet">
-        <li style="margin-bottom: 0.5rem;">
-          <form method="POST" action="/lti/deep-link/select" style="display:inline;">
-            <input type="hidden" name="targetType" value="course">
-            <input type="hidden" name="courseId" value="{{ course.id }}">
-            <input type="hidden" name="title" value="{{ course.name }}">
-            <button type="submit" class="button small">Whole course: {{ course.name }}</button>
-          </form>
-        </li>
-        {% for topic in course.topics %}
-        <li style="margin-bottom: 0.5rem;">
-          <form method="POST" action="/lti/deep-link/select" style="display:inline;">
-            <input type="hidden" name="targetType" value="topic">
-            <input type="hidden" name="courseId" value="{{ course.id }}">
-            <input type="hidden" name="targetId" value="{{ topic.lessonId }}">
-            <input type="hidden" name="title" value="{{ course.name }} — {{ topic.title }}">
-            <button type="submit" class="button small secondary">Topic: {{ topic.title }}</button>
-          </form>
-        </li>
-        {% endfor %}
-      </ul>
-    {% endfor %}
   {% else %}
-    {% for course in courses %}
-      {% if course.assignments and course.assignments | length > 0 %}
-        <h4>{{ course.name }}</h4>
-        <ul class="no-bullet">
-          {% for assignment in course.assignments %}
-          <li style="margin-bottom: 0.5rem;">
+    <input type="text" id="dl-filter"
+           placeholder="Filter courses and {% if contentMode %}topics{% else %}assignments{% endif %}…"
+           style="width:100%; box-sizing:border-box; margin-bottom:1rem; padding:0.5rem;"
+           oninput="dlFilter(this.value)">
+
+    {% if contentMode %}
+      {% for course in courses %}
+      <details class="dl-course" data-name="{{ course.name }}"
+               style="margin-bottom:0.5rem; border:1px solid #ddd; border-radius:3px; padding:0.5rem 0.75rem;">
+        <summary style="cursor:pointer; font-weight:bold;">{{ course.name }}</summary>
+        <ul class="no-bullet" style="margin:0.5rem 0 0;">
+          <li class="dl-item" data-name="{{ course.name }} whole course" style="margin-bottom:0.5rem;">
             <form method="POST" action="/lti/deep-link/select" style="display:inline;">
-              <input type="hidden" name="targetType" value="assignment">
-              <input type="hidden" name="targetId" value="{{ assignment.materialId }}">
-              <input type="hidden" name="courseId" value="{{ course.id }}"/>
-              <input type="hidden" name="title" value="{{ assignment.title }}">
-              <button type="submit" class="button small">{{ assignment.title }}</button>
+              <input type="hidden" name="targetType" value="course">
+              <input type="hidden" name="courseId" value="{{ course.id }}">
+              <input type="hidden" name="title" value="{{ course.name }}">
+              <button type="submit" class="button small">Whole course: {{ course.name }}</button>
+            </form>
+          </li>
+          {% for topic in course.topics %}
+          <li class="dl-item" data-name="{{ topic.title }}" style="margin-bottom:0.5rem;">
+            <form method="POST" action="/lti/deep-link/select" style="display:inline;">
+              <input type="hidden" name="targetType" value="topic">
+              <input type="hidden" name="courseId" value="{{ course.id }}">
+              <input type="hidden" name="targetId" value="{{ topic.lessonId }}">
+              <input type="hidden" name="title" value="{{ course.name }} — {{ topic.title }}">
+              <button type="submit" class="button small secondary">Topic: {{ topic.title }}</button>
             </form>
           </li>
           {% endfor %}
         </ul>
+      </details>
+      {% endfor %}
+    {% else %}
+      {% for course in courses %}
+        {% if course.assignments and course.assignments | length > 0 %}
+        <details class="dl-course" data-name="{{ course.name }}"
+                 style="margin-bottom:0.5rem; border:1px solid #ddd; border-radius:3px; padding:0.5rem 0.75rem;">
+          <summary style="cursor:pointer; font-weight:bold;">{{ course.name }}</summary>
+          <ul class="no-bullet" style="margin:0.5rem 0 0;">
+            {% for assignment in course.assignments %}
+            <li class="dl-item" data-name="{{ assignment.title }}" style="margin-bottom:0.5rem;">
+              <form method="POST" action="/lti/deep-link/select" style="display:inline;">
+                <input type="hidden" name="targetType" value="assignment">
+                <input type="hidden" name="targetId" value="{{ assignment.materialId }}">
+                <input type="hidden" name="courseId" value="{{ course.id }}"/>
+                <input type="hidden" name="title" value="{{ assignment.title }}">
+                <button type="submit" class="button small">{{ assignment.title }}</button>
+              </form>
+            </li>
+            {% endfor %}
+          </ul>
+        </details>
+        {% endif %}
+      {% endfor %}
+      {% if not anyAssignments %}
+      <p class="panel">None of your courses have assignments yet. Create an assignment in Trinket first, then return here.</p>
       {% endif %}
-    {% endfor %}
-    {% if not anyAssignments %}
-    <p class="panel">None of your courses have assignments yet. Create an assignment in Trinket first, then return here.</p>
     {% endif %}
+
+    <p id="dl-no-match" class="panel" style="display:none;">No courses or items match your filter.</p>
   {% endif %}
 </div></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Client-side filter for the deep-link picker: hide non-matching courses/items as you type,
+// auto-expand courses with a match, collapse all when the box is cleared. No dependencies.
+function dlFilter(q) {
+  q = (q || '').trim().toLowerCase();
+  var courses = document.querySelectorAll('.dl-course');
+  var anyVisible = false;
+  for (var i = 0; i < courses.length; i++) {
+    var course = courses[i];
+    var cname = (course.getAttribute('data-name') || '').toLowerCase();
+    var courseMatch = !q || cname.indexOf(q) >= 0;
+    var items = course.querySelectorAll('.dl-item');
+    var anyItem = false;
+    for (var j = 0; j < items.length; j++) {
+      var iname = (items[j].getAttribute('data-name') || '').toLowerCase();
+      var match = courseMatch || iname.indexOf(q) >= 0;
+      items[j].style.display = match ? '' : 'none';
+      if (match) anyItem = true;
+    }
+    var show = courseMatch || anyItem;
+    course.style.display = show ? '' : 'none';
+    course.open = !!(q && anyItem);
+    if (show) anyVisible = true;
+  }
+  var none = document.getElementById('dl-no-match');
+  if (none) none.style.display = (courses.length && !anyVisible) ? '' : 'none';
+}
+</script>
 {% endblock %}
