@@ -20,7 +20,7 @@
     <div class="label info last-saved">last saved <span id="material-last-saved">{{ material.lastUpdated | formatDate }}</span></div>
   </div>
 </div>
-<div ng-show="material" id="material-edit" ng-file-drop="assetsEnabled && onFileSelect($files)">
+<div ng-show="material" id="material-edit" ngf-drop="assetsEnabled && onFileSelect($files)">
   <div id="hidden-editor" class="hide"></div>
   <div class="toolbar" ng-controller="toolbarControl">
     <a ng-click="inline('**', '**', 'strong text')" title="Bold">
@@ -74,17 +74,17 @@
   </div>
   <div class="content">
     <div class="dropzone"
-         ng-file-drag-over-class="overDropzone"
+         ngf-drag-over-class="'overDropzone'"
          ng-show="dropSupported"
-         ng-file-drop="onFileSelect($files,true)"
+         ngf-drop="onFileSelect($files,true)"
          style="width:100%; height:200px;">
         <i class="fa fa-cloud-upload"></i>
         <h3>Drag &amp; drop your files here</h3>
     </div>
-    <div ng-file-drop-available="dropSupported=true" ng-show="!dropSupported">HTML5 Drop File is not supported!</div>
+    <div ngf-drop-available="dropSupported" ng-show="!dropSupported">HTML5 Drop File is not supported!</div>
     <div class="browse">
       <p>or browse your files</p>
-      <input type="file" ng-file-select="onFileSelect($files,true)">
+      <input type="file" ngf-select="onFileSelect($files,true)">
       <p>Maximum file size allowed is 10MB.</p>
     </div>
   </div>
