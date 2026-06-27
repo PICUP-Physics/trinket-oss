@@ -69,3 +69,8 @@ firestore-debug.log
 # never commit env backups (contain secrets)
 .env.bak
 *.env.bak
+
+# per-deploy config overlay — lives in each deploy worktree, never committed.
+# (Un-ignored in .gcloudignore so it still reaches the Cloud Build image.)
+config/local-production.yaml
+config/local-production-cloudrun.yaml

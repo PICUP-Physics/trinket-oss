@@ -409,8 +409,9 @@ db:
 gcs:
   buckets:
     snapshots:
-      name: 'trinket-snapshots'
-      host: 'https://storage.googleapis.com/trinket-snapshots'
+      # deploy-specific → set in config/local-production.yaml (placeholder default)
+      name: 'your-snapshots-bucket'
+      host: 'https://your-snapshots-bucket.example.com'
 
 aws:
   key: ''

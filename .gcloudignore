@@ -1,6 +1,9 @@
 # Rules from .gitignore apply
 #!include:.gitignore
 
+# ...but the per-deploy config overlay (gitignored) MUST reach the build image.
+!config/local-production.yaml
+
 # Not needed to build the image
 test/
 *.md

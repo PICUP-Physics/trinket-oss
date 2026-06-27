@@ -1,22 +1,20 @@
-# Cloud Run production instance configuration.
+# Cloud Run production DEFAULTS — shared across all deploys (committed).
 # Loaded by node-config when NODE_ENV=production and NODE_APP_INSTANCE=cloudrun.
 #
-# Secrets: SESSION_PASSWORD is injected from Google Secret Manager.
-# app.url.hostname: injected via NODE_CONFIG env var by deploy-cloudrun.sh after
-#   the service URL is known. No manual editing required.
+# Per-deploy values (app.url.knownHosts, aws/gcs buckets, auth.firebase.projectId,
+# lti.instructorAuthority, extra features.trinkets) live in a gitignored
+# config/local-production.yaml in each deploy worktree, which node-config loads
+# AFTER this file. Keep this file deploy-neutral.
+#
+# Secrets: SESSION_PASSWORD from Secret Manager; app.url.hostname, adminEmails and
+# firebase.clientConfig are injected via NODE_CONFIG env by deploy-cloudrun.sh.
 
 app:
   url:
     protocol: https
     hostname: ''   # Overridden at runtime via NODE_CONFIG — see deploy-cloudrun.sh
     port:
-    # All hostnames this deployment is reachable under (custom domain, .run.app URL,
-    # tagged candidate URLs). Used by trinket-markdown and material-parser to
-    # recognise embed URLs in stored content regardless of which host created them.
-    knownHosts:
-      - trinket.matterandinteractions.org
-      - trinket-661552644165.us-central1.run.app
-      - trinket-ev5jxhvyya-uc.a.run.app
+    # knownHosts is deploy-specific → set in config/local-production.yaml.
   hostname: 0.0.0.0
   plugins:
     session:
@@ -32,36 +30,16 @@ db:
   backend: firestore   # No MongoDB required
   redis:
     enabled: false
-  # db.firestore.projectId is not set here; the Firestore SDK reads
-  # GOOGLE_CLOUD_PROJECT automatically on Cloud Run.
+  # db.firestore.projectId not set here; the Firestore SDK reads GOOGLE_CLOUD_PROJECT.
 
 storage:
   backend: gcs
 
-# features.assets requires gs://trinket-materials to exist with the Cloud Run
-# service account having roles/storage.objectAdmin on that bucket.
 features:
   assets: true
 
-aws:
-  buckets:
-    materials:
-      name: trinket-materials
-      host: https://storage.googleapis.com/trinket-materials
-    userassets:
-      name: trinket-user-assets
-      host: https://storage.googleapis.com/trinket-user-assets
-    useravatars:
-      name: trinket-user-assets
-      host: https://storage.googleapis.com/trinket-user-assets
-    snapshots:
-      name: trinket-snapshots
-      host: https://storage.googleapis.com/trinket-snapshots
-
 # adminEmails and firebase.clientConfig are injected via NODE_CONFIG env var at deploy time.
-# See deploy-cloudrun.sh and .env (ADMIN_EMAILS, FIREBASE_CLIENT_CONFIG).
 auth:
   adminEmails: []
   firebase:
-    projectId: trinket-gcr-test
     clientConfig: {}
