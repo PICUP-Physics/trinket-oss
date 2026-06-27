@@ -1163,7 +1163,8 @@ $('document').ready(function() {
             // remove comments
             // code is either a JSON array of file objects or a plain source
             // string (single-file trinkets); only the array form carries
-            // per-file comments to strip
+            // per-file comments to strip. JSON.parse on a plain string throws,
+            // which previously aborted the save/remix before it completed.
             if (key === "code") {
               try {
                 original_code = JSON.parse(cloneable[key]);

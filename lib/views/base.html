@@ -32,6 +32,9 @@
           {% if not config.features or not config.features.trinkets or config.features.trinkets.python %}
           { lang : 'python',     image : '{{config.aws.buckets.appassets.host}}/python.png',     label : 'Python'                                     },
           {% endif %}
+          {% if not config.features or not config.features.trinkets or config.features.trinkets.pyodide %}
+          { lang : 'pyodide',    image : '{{config.aws.buckets.appassets.host}}/python.png',     label : 'Pyodide' },
+          {% endif %}
           {% if not config.features or not config.features.trinkets or config.features.trinkets.python3 %}
           { lang : 'python3',    image : '{{config.aws.buckets.appassets.host}}/python.png',     label : 'Python3' },
           {% endif %}

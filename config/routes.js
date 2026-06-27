@@ -190,6 +190,13 @@ routes = [
     }
   },
   {
+    route : 'POST /admin/lti-registrations/activate admin.activateLtiRegistration',
+    config : {
+      auth : 'session',
+      pre  : ['isAdmin(user)']
+    }
+  },
+  {
     route : 'GET /account users.account',
     html  : 'users/account.html',
     config : {
@@ -409,6 +416,73 @@ routes = [
     },
     fail: {
       redirect: '/signup'
+    },
+    config : {
+      auth : false
+    }
+  },
+  // ── LTI 1.3 — Connect your LMS (instructor-gated) ───────────────────────────
+  // Approved instructors mint a Dynamic Registration link to hand to their LMS admin.
+  {
+    route : 'GET /lti/connect connectLms.page',
+    html  : 'lti/connect-lms.html',
+    config : { auth : 'session', pre : [ 'canInitiateLtiRegistration(user)' ] }
+  },
+  {
+    route : 'POST /lti/connect/token connectLms.createToken',
+    config : { auth : 'session', pre : [ 'canInitiateLtiRegistration(user)' ] }
+  },
+  // ── LTI 1.3 (Tool) ──────────────────────────────────────────────────────────
+  // Public (no session); the launch establishes the session. See LTI-SPEC.md.
+  {
+    route : 'GET /lti/jwks lti.jwks',
+    config : {
+      auth : false
+    }
+  },
+  {
+    route : 'GET /lti/login lti.loginInit',
+    config : {
+      auth : false
+    }
+  },
+  {
+    route : 'POST /lti/login lti.loginInit',
+    config : {
+      auth : false
+    }
+  },
+  {
+    route : 'POST /lti/launch lti.launch',
+    config : {
+      auth : false
+    }
+  },
+  {
+    route : 'GET /lti/deep-link lti.deepLinkPicker',
+    html  : 'lti/deep-link-picker.html',
+    config: { auth: 'session' }
+  },
+  {
+    route : 'POST /lti/deep-link/select lti.deepLinkSelect',
+    html  : 'lti/deep-link-response.html',
+    config: { auth: 'session' }
+  },
+  {
+    route : 'GET /lti/register lti.registerInit',
+    html  : 'lti/register-confirm.html',
+    fail  : {
+      html : 'lti/register-error.html'
+    },
+    config : {
+      auth : false
+    }
+  },
+  {
+    route : 'POST /lti/register lti.registerComplete',
+    html  : 'lti/register-close.html',
+    fail  : {
+      html : 'lti/register-error.html'
     },
     config : {
       auth : false

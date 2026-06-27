@@ -1,0 +1,19 @@
+{% set shareTitle = "Put Python Anywhere on the Web" %}
+{% set shareUrl   = config.url + "/pyodide/" + trinket.shortCode %}
+
+{% extends "trinket/python/base.html" %}
+
+{% block title %}{{ trinket.name if trinket.name else "Your Pyodide Trinket" }}{% endblock %}
+{% block trinket_heading %}Put Interactive Python (Pyodide) Anywhere on the Web{% endblock %}
+{% block trinket_category %}pyodide{% endblock %}
+{% block trinket_share_type %}pyodide{% endblock %}
+{% block trinket_type %}pyodide{% endblock %}
+
+{% block trinket_subheading %}
+{% endblock %}
+
+{% block trinket_height %}500{% endblock %}
+
+{% block python3_plug %}{% endblock %}
+
+{% block signup_block %}{% endblock %}

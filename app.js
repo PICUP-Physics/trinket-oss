@@ -115,6 +115,12 @@ const init = async () => {
     });
   }
 
+  // The session cookie is SameSite=None;Secure in any HTTPS context — production (config isSecure:true)
+  // or a tunnel where app.url.protocol=https — so it is sent when trinket is embedded cross-site in an
+  // LMS iframe (LTI). Over plain http, SameSite=None is invalid (it requires Secure), so fall back to Lax.
+  const sessionSecure = config.app.plugins.session.cookieOptions.isSecure !== false
+    || !!(config.app.url && config.app.url.protocol === 'https');
+
   // Register plugins
   await server.register([
     Inert,  // Static file serving
@@ -125,8 +131,8 @@ const init = async () => {
         storeBlank: false,
         cookieOptions: {
           password: config.app.plugins.session.cookieOptions.password,
-          isSecure: config.app.plugins.session.cookieOptions.isSecure !== false,
-          isSameSite: 'Lax'
+          isSecure: sessionSecure,
+          isSameSite: sessionSecure ? 'None' : 'Lax'
         },
         // Store sessions in the cookie when they fit (most cases), fall
         // back to the server-side cache for anything that exceeds the
@@ -242,8 +248,8 @@ const init = async () => {
     return h.continue;
   });
 
-  // Add onPreResponse extension for cookie expiration
-  const cookieIsSecure = config.app.plugins.session.cookieOptions.isSecure !== false;
+  // Add onPreResponse extension for cookie expiration (SameSite/Secure are set on the cookie by
+  // Yar's cookieOptions above, driven by sessionSecure).
   server.ext('onPreResponse', (request, h) => {
     // if this is a cookie-setting request and we have a _header method
     if (request.cookie && request.response && typeof request.response._header === "function") {
@@ -265,10 +271,6 @@ const init = async () => {
               // add a custom expires if an expires is not already present
               if (!value[i].match(/;\s*Expires=/i)) {
                 value[i] += "; Expires=" + nextYear.toUTCString();
-              }
-              // Only add Secure flag if isSecure is true in config
-              if (cookieIsSecure) {
-                value[i] += "; SameSite=None; Secure";
               }
             }
           }

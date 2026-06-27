@@ -554,6 +554,17 @@ window.TrinketAPI = {
   captureAndSaveSnapshot : function(done) {
     var doneCalled = false;
 
+    // The snapshot iframe (#glowscriptOutput) only exists after the program
+    // has been run. If the user saves without running first, skip the snapshot
+    // rather than throwing on undefined.contentWindow — an unhandled throw here
+    // aborts the post-save callback, so the trinket saves on the server but the
+    // UI never completes (no navigation/feedback), looking like "save failed".
+    var output = $('#glowscriptOutput')[0];
+    if (!output || !output.contentWindow) {
+      done();
+      return;
+    }
+
     var snapshotHandler = function(event) {
       var data;
 

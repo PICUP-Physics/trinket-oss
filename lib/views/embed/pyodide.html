@@ -1,0 +1,217 @@
+{% import "includes/embed-settings.html" as settings_block %}
+
+{% extends "embed/base.html" %}
+
+{% block head_styles %}
+
+{% if not outputOnly %}
+<link rel="stylesheet" type="text/css" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/8.0/styles/github.min.css" crossorigin="anonymous">
+{% endif %}
+
+{# GlowScript's canvas resize grip is a jQuery-UI .resizable() handle (glow's
+   canvas.js calls .wrapper.resizable()); without the jQuery-UI theme CSS the
+   handle is zero-size and invisible. Load the same redmond theme the glowscript
+   embed uses so the resize grip shows on VPython/GlowScript scenes. #}
+<link rel="stylesheet" type="text/css" href="{{ '/components/vpython-glowscript/css/redmond/jquery-ui.custom.css' | cachePrefix }}">
+
+{# VPython programs render GlowScript widgets (button, menu, slider, …) directly
+   in the embed DOM (the glowscript trinket isolates them in its own iframe).
+   Foundation's global `button{...}` reset in embed.css flattens them to plain
+   text, so restore sensible widget styling scoped to the scene container. A
+   single id beats the element-level reset on specificity. #}
+<style type="text/css">
+  /* GlowScript's canvas resize grip is a jQuery-UI .resizable() SE handle. The
+     redmond theme styles it from a sprite image that isn't served here, so draw
+     the grip with CSS (diagonal lines) — sprite-independent, and ensure it has a
+     grabbable size in the canvas's bottom-right corner. */
+  #glowscript .ui-resizable-se {
+    width: 16px;
+    height: 16px;
+    right: 2px;
+    bottom: 2px;
+    cursor: se-resize;
+    background: repeating-linear-gradient(135deg, #8a8a8a 0 1px, transparent 1px 3px);
+  }
+  #glowscript button {
+    -webkit-appearance: none;
+    appearance: none;
+    border: 1px solid #adadad;
+    border-radius: 3px;
+    background: #f0f0f0;
+    color: #222;
+    font-family: Helvetica, Arial, sans-serif;
+    font-weight: normal;
+    font-size: 13px;
+    line-height: 1.4;
+    width: auto;
+    margin: 2px;
+    padding: 3px 12px;
+    cursor: pointer;
+  }
+  #glowscript button:hover  { background: #e6e6e6; }
+  #glowscript button:active { background: #dadada; }
+  /* Other GlowScript widgets: keep native rendering rather than the trinket UI's. */
+  #glowscript select,
+  #glowscript input {
+    -webkit-appearance: auto;
+    appearance: auto;
+  }
+  /* GlowScript's fast graph (fast=True) draws on a base canvas with a
+     transparent <canvas class="overlay"> on top for mouse interaction. That
+     class collides with the trinket UI's generic .overlay (a full-size white
+     modal panel: background #fff, z-index 500), which paints an opaque white
+     rectangle over the graph. Restore the GlowScript overlay to transparent so
+     the graph shows and the canvas+graph flow as with fast=False. */
+  #glowscript canvas.overlay {
+    background: transparent;
+    padding: 0;
+    overflow: visible;
+  }
+</style>
+
+{% endblock %}
+
+{% block body_data -%}
+{%- endblock %}
+
+{# Reuse the python embed CSS: the stylesheet scopes editor/console layout under
+   #embed_content_python (shared with python3/java/R/pygame). The body id is
+   CSS-only — no JS keys off it — so pointing embed_lang at "python" gives the
+   Pyodide editor its sizing and console styling without a separate stylesheet. #}
+{% block embed_lang %}python{% endblock %}
+
+{% block trinket_label %}
+<section class="trinket-label">
+  <i class="icon-python"></i>
+  <label class="show-for-large-up">Pyodide</label>
+</section>
+{% endblock %}
+
+{% block toolbar_options %}
+{% if outputOnly %}
+  {% include "embed/default-toolbar.html" %}
+{% else %}
+<a class="edit-it menu-button item allow-original {{'' if toggleCode else 'show-for-small-only'}}" data-action="code.edit" title="Edit the code.">
+  <i class="fa fa-pencil"></i>
+  <label class="show-for-large-up">Code</label>
+</a>
+<a class="button run-it menu-button item allow-original"
+   data-action="code.run"
+   title="View the result."
+   role="button" aria-label="Run Button" tabindex="0">
+  <i class="fa fa-play"></i>
+  <label class="show-for-large-up">Run</label>
+</a>
+{% endif %}
+{% endblock %}
+
+{% block settings_modal %}
+{{ settings_block.settings(user.settings.pythonTab, "Pyodide", false, user, trinket, draft) }}
+{% endblock %}
+
+{% block embed_content %}
+  <input id="honeypot" type='text' tabindex="-1"/>
+  <input id="start-value" type='hidden' value='{{start if start else "code"}}'/>
+  <input id="runOption-value" type='hidden' value='{{runOption if runOption else "run"}}'/>
+  <input id="runMode-value" type='hidden' value='{{"console" if runMode}}'/>
+  <div id="imageAssets"></div>
+  <div id="editor" class="code-editor hide" data-interface="editor"></div>
+
+  {% if not outputOnly %}
+  <div id="dragbar"></div>
+  {% endif %}
+
+  <div id="codeOutput" class="codeOutput hide" data-interface="output">
+
+    {% if outputOnly %}
+    <div id="graphic-wrap" class="hide {% if snapshot %}snapshot{% endif %}">
+      <div id="graphic"></div>
+    </div>
+
+    <div id="output-dragbar" class="hide" data-action="resize"></div>
+    <div id="console-wrap" class="hide">
+      <div id="console-output" aria-live="polite" aria-label="Code Output"></div>
+    </div>
+
+    {% else %}
+
+    <div id="outputTabs" class="{% if hideInstructions or (not isOwner and not trinket.description) %}hideInstructions{% endif %}">
+      <div class="{% if not showInstructions %}active {% endif %}menu-button" id="codeOutputTab" data-action="output.view">Result</div>
+      <div class="{% if showInstructions %}active {% endif %}menu-button" id="instructionsTab" data-action="instructions.view"><i class="fa fa-list"></i> Instructions</div>
+    </div>
+
+    <div id="outputContainer" class="{% if hideInstructions or (not isOwner and not trinket.description) %}withoutTabs{% else %}withTabs{% endif %}">
+      <div id="graphic-wrap" class="hide">
+        <div id="graphic" aria-label="Visual Output" role="application" tabindex="0"></div>
+      </div>
+
+      <div id="output-dragbar" class="hide" data-action="resize"></div>
+
+      <div id="console-wrap" class="hide">
+        <div id="console-output" aria-live="assertive" aria-label="Code Output"></div>
+        <a id="reset-output" title="clear output"><i class="fa fa-ban"></i></a>
+      </div>
+    </div>
+
+    {% include "includes/embed-instructions.html" %}
+    {% endif %}
+
+  </div>
+{% endblock %}
+
+{% block body_scripts %}
+  {% if not outputOnly %}
+  <script src="//cdnjs.cloudflare.com/ajax/libs/sockjs-client/0.3.4/sockjs.min.js"></script>
+  {% if not aceOff %}
+  {{ component('ace-builds', 'src-min-noconflict/ace.js') | safe }}
+  {{ component('ace-builds', 'src-min-noconflict/ext-modelist.js') | safe }}
+  {{ component('ace-builds', 'src-min-noconflict/ext-language_tools.js') | safe }}
+  {% endif %}
+
+  <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/diff_match_patch/20121119/diff_match_patch.js"></script>
+  <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/dropzone/4.0.1/min/dropzone.min.js"></script>
+  {% endif %}
+
+  {# Pyodide: real CPython compiled to WASM, loaded from the jsDelivr CDN (proof of concept). #}
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js"></script>
+
+  {% if not outputOnly %}
+  <script src="{{ '/components/marked/lib/marked.js' | cachePrefix }}"></script>
+  {% endif %}
+
+  {{ component('jquery-ui', 'jquery-ui.min.js') | safe }}
+
+  {% if outputOnly %}
+
+  {% set js = extra_js.concat([
+       '/components/jq-console/jqconsole.min.js',
+       '/js/plugins/asset-browser.js',
+       '/js/plugins/code-editor.js',
+       '/js/util/guid.js',
+       '/js/embed/analytics/activity-log.js',
+       '/js/embed/pyodide.js'
+     ])
+  %}
+  {{ cachify_js('embed-pyodide-output', js) | safe }}
+
+  {% else %}
+
+  <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/8.0/highlight.min.js"></script>
+  <script src="{{ '/js/trinket-config.js' | cachePrefix }}"></script>
+  <script src="{{ '/js/trinket-markdown.js' | cachePrefix }}"></script>
+  <script src="{{ '/js/util/html-to-image.js' | cachePrefix }}"></script>
+
+  {% set js = extra_js.concat([
+       '/components/jq-console/jqconsole.min.js',
+       '/js/util/guid.js',
+       '/js/plugins/asset-browser.js',
+       '/js/plugins/code-editor.js',
+       '/js/embed/analytics/activity-log.js',
+       '/js/embed/pyodide.js'
+     ])
+  %}
+  {{ cachify_js('embed-pyodide', js) | safe }}
+
+  {% endif %}
+
+{% endblock %}
