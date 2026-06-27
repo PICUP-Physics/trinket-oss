@@ -100,6 +100,9 @@ function ensurePyodide() {
     // text without its trailing newline, so we re-add it per write.
     py.setStdout({ batched: function(s) { writeOut(s + '\n'); } });
     py.setStderr({ batched: function(s) { writeOut(s + '\n'); } });
+    // Record the pristine namespace so the variable explorer can show only the
+    // names the user's program introduces, not Python built-ins / library imports.
+    try { py.runPython('__trinket_baseline__ = set(globals().keys())'); } catch (e) {}
     return py;
   });
 
@@ -163,6 +166,7 @@ var glowRate = null;          // original glow rate(), before our wrapper
 var cancelRequested = false;  // set true to make the next rate() reject
 var rerunQueued = false;      // a Run was clicked mid-run; re-run once it stops
 var runningIsVpython = false; // the in-flight run is a VPython program (cancellable)
+var vpythonBaselineCaptured = false; // folded vpython star-imports into the explorer baseline once
 
 // Wrap the global rate() so it rejects when cancellation is requested. Must run
 // before the vpython bridge does `from js import rate` (which binds at import
@@ -289,6 +293,14 @@ function runVpython(prog) {
       );
     }
   }).then(function() {
+    // Everything in globals now is library/bootstrap (the vpython/math/random
+    // star-imports, scene, rate, …). Fold it into the explorer baseline once so
+    // those names are hidden — but only once, so vars created by earlier runs
+    // stay visible on re-runs.
+    if (!vpythonBaselineCaptured) {
+      try { pyodide.runPython('__trinket_baseline__ |= set(globals().keys())'); } catch (e) {}
+      vpythonBaselineCaptured = true;
+    }
     var lines = prog.split('\n');
     if (/^\s*(Web\s+VPython|GlowScript)\b/i.test(lines[0])) {
       lines[0] = '#' + lines[0];
@@ -343,6 +355,168 @@ function showRichHtml(html) {
   showGraphic();
 }
 
+// --- Variable explorer ------------------------------------------------------
+//
+// After each run we snapshot the user's top-level namespace and render it in a
+// read-only "Variables" tab. Because Pyodide is real CPython, we introspect
+// with Python itself (accurate type/repr/len) and hand back a JSON string, so
+// the JS side does a single JSON.parse and never juggles PyProxy lifetimes.
+//
+// The helper iterates `user_ns` (a reference to the user globals passed in via
+// a throwaway namespace) rather than globals(), so it injects nothing — not
+// even `json`/`types` — into the user's own namespace. It also filters dunders,
+// imported modules, and the non-user names the runner injects (__user_source__,
+// _plt, _vpy, _js_scene, _wrapped_rate).
+var VARS_HELPER = [
+  'import json, types',
+  "_SKIP = {'__user_source__', '_plt', '_vpy', '_js_scene', '_wrapped_rate'}",
+  "_baseline = user_ns.get('__trinket_baseline__') or set()",
+  '_out = []',
+  'for _name, _val in list(user_ns.items()):',
+  '    if _name in _SKIP: continue',
+  '    if _name in _baseline: continue',
+  "    if _name.startswith('__') and _name.endswith('__'): continue",
+  '    if isinstance(_val, types.ModuleType): continue',
+  "    _kind = 'value'",
+  '    if isinstance(_val, (types.FunctionType, types.BuiltinFunctionType, types.LambdaType)):',
+  "        _kind = 'function'",
+  '    elif isinstance(_val, type):',
+  "        _kind = 'class'",
+  '    try:',
+  '        _r = repr(_val)',
+  '    except Exception as _e:',
+  "        _r = '<unrepresentable: %r>' % (_e,)",
+  "    if len(_r) > 300: _r = _r[:300] + '...'",
+  '    try:',
+  '        _n = len(_val)',
+  '    except Exception:',
+  '        _n = None',
+  "    _out.append({'name': _name, 'type': type(_val).__name__, 'kind': _kind, 'repr': _r, 'len': _n})",
+  "_out.sort(key=lambda d: (d['kind'] != 'value', d['name']))",
+  'json.dumps(_out)'
+].join('\n');
+
+// True when the Variables explorer is enabled via config
+// (features.variableExplorer, surfaced on the client as
+// trinket.config.variableExplorer). When off, the template omits the tab/panel,
+// and we skip the per-run snapshot and the tab wiring entirely.
+function variableExplorerEnabled() {
+  return !!(window.trinket && window.trinket.config && window.trinket.config.variableExplorer);
+}
+
+function snapshotVariables() {
+  if (!pyodide || !pyodideReady) return [];
+  var ns = null;
+  try {
+    // user_ns is a live reference to the user globals; nothing is written back.
+    ns = pyodide.toPy({ user_ns: pyodide.globals });
+    var json = pyodide.runPython(VARS_HELPER, { globals: ns });
+    return JSON.parse(json);
+  } catch (e) {
+    return [];
+  } finally {
+    if (ns && typeof ns.destroy === 'function') {
+      try { ns.destroy(); } catch (e) {}
+    }
+  }
+}
+
+function escHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+var lastVars = [];          // most recent full snapshot (all kinds)
+var showCallables = false;  // toggle: also list functions & classes
+
+// A repr length is meaningful only for sized containers; show it for these so
+// users see "list (1000)" without the repr having to spell it out.
+var SIZED_TYPES = { list:1, tuple:1, dict:1, set:1, frozenset:1, str:1, bytes:1, bytearray:1, range:1 };
+
+function kindIcon(kind) {
+  if (kind === 'function') return '<i class="fa fa-superscript var-kind-icon" title="function"></i> ';
+  if (kind === 'class') return '<i class="fa fa-cube var-kind-icon" title="class"></i> ';
+  return '';
+}
+
+function copyToClipboard(text) {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text);
+      return;
+    }
+  } catch (e) { /* fall through */ }
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); } catch (e) {}
+  document.body.removeChild(ta);
+}
+
+// Store the latest snapshot, then paint. Painting is split out so the
+// functions/classes toggle can re-render without re-running the program.
+function renderVariables(vars) {
+  lastVars = vars || [];
+  paintVariables();
+}
+
+function paintVariables() {
+  var $body = $('#variables-table tbody');
+  if (!$body.length) return; // no Variables panel (e.g. outputOnly embed)
+
+  // Count badge tracks plain values (the primary signal); callables are secondary.
+  var valueCount = 0;
+  for (var k = 0; k < lastVars.length; k++) {
+    if (lastVars[k].kind === 'value') valueCount++;
+  }
+  $('#variablesCount').text(valueCount ? '(' + valueCount + ')' : '');
+
+  var shown = [];
+  for (var i = 0; i < lastVars.length; i++) {
+    if (lastVars[i].kind === 'value' || showCallables) shown.push(lastVars[i]);
+  }
+
+  if (!shown.length) {
+    var msg = lastVars.length ? 'No variables to show.' : 'No variables yet — run your code.';
+    $body.html('<tr class="vars-empty"><td colspan="3">' + msg + '</td></tr>');
+    return;
+  }
+
+  var html = '';
+  for (var j = 0; j < shown.length; j++) {
+    var v = shown[j];
+    var typeCell = escHtml(v.type);
+    if (v.len != null && SIZED_TYPES[v.type]) {
+      typeCell += ' <span class="var-len">(' + v.len + ')</span>';
+    }
+    html += '<tr class="var-row var-kind-' + v.kind + '">'
+      + '<td class="var-name">' + kindIcon(v.kind) + escHtml(v.name) + '</td>'
+      + '<td class="var-type">' + typeCell + '</td>'
+      + '<td class="var-value"><span class="var-value-text">' + escHtml(v.repr) + '</span>'
+      + '<button type="button" class="var-copy" title="Copy value" aria-label="Copy value" tabindex="-1">'
+      + '<i class="fa fa-clone"></i></button></td>'
+      + '</tr>';
+  }
+  $body.html(html);
+}
+
+function showVariables() {
+  $('#outputContainer').addClass('hide');
+  $('#instructionsContainer').addClass('hide');
+  $('#variables-wrap').removeClass('hide');
+  $('#codeOutputTab, #instructionsTab').removeClass('active');
+  $('#variablesTab').addClass('active');
+}
+
+function hideVariables() {
+  $('#variables-wrap').addClass('hide');
+  $('#variablesTab').removeClass('active');
+}
+
 function finishRun(serializedCode, err) {
   running = false;
   window.readyForSnapshot = true;
@@ -353,6 +527,13 @@ function finishRun(serializedCode, err) {
 
   if (typeof api.collectErrorData === 'function') {
     api.collectErrorData(serializedCode, err ? (err.message || err.toString()) : undefined);
+  }
+
+  // Refresh the Variables panel with the post-run namespace snapshot. Runs on
+  // both success and error so partial state is still visible. Never let a
+  // snapshot failure break run completion. Skipped when the explorer is off.
+  if (variableExplorerEnabled()) {
+    try { renderVariables(snapshotVariables()); } catch (e) {}
   }
 
   // A Run was clicked while the previous (VPython) run was being cancelled;
@@ -542,6 +723,38 @@ window.TrinketAPI = {
       resetOutput(true);
     });
 
+    // Variables tab. Wired locally (not through the shared embed tab framework)
+    // so the explorer stays Pyodide-only and other trinket types are untouched.
+    // Switching to Result/Instructions hides the panel via their tab clicks.
+    // Only wired when the explorer is enabled (the template omits the markup
+    // otherwise, but skipping the bindings avoids dead handlers).
+    if (variableExplorerEnabled()) {
+      $('#variablesTab').on('click keydown', function(e) {
+        if (e.type === 'keydown' && e.which !== 13 && e.which !== 32) return;
+        e.preventDefault();
+        showVariables();
+      });
+      $('#codeOutputTab, #instructionsTab').on('click', function() {
+        hideVariables();
+      });
+
+      // Phase 2: re-render in place when the functions/classes toggle changes; no
+      // re-run needed since the last snapshot is cached.
+      $('#variables-show-callables').on('change', function() {
+        showCallables = $(this).is(':checked');
+        paintVariables();
+      });
+
+      // Copy a variable's repr; brief check-mark feedback.
+      $('#variables-table').on('click', '.var-copy', function() {
+        var $btn = $(this);
+        copyToClipboard($btn.closest('td').find('.var-value-text').text());
+        var $i = $btn.find('i');
+        $i.removeClass('fa-clone').addClass('fa-check');
+        setTimeout(function() { $i.removeClass('fa-check').addClass('fa-clone'); }, 900);
+      });
+    }
+
     $(document).on('assets.change', function() {
       api.triggerChange();
     });
@@ -717,6 +930,7 @@ window.TrinketAPI = {
 
     $('#codeOutputTab').addClass('active');
     $('#instructionsTab').removeClass('active');
+    hideVariables();  // a run always returns focus to the Result pane
 
     runCode();
 

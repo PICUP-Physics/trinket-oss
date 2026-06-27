@@ -67,6 +67,121 @@
     padding: 0;
     overflow: visible;
   }
+
+  {% if config.features.variableExplorer %}
+  /* --- Variable explorer (Pyodide-only: this <style> loads only on this view,
+     so referencing the shared #embed_content_python IDs is safe). ----------- */
+  #embed_content_python #outputTabs #codeOutputTab,
+  #embed_content_python #outputTabs #instructionsTab,
+  #embed_content_python #outputTabs #variablesTab {
+    width: 33.3333%;
+  }
+  #embed_content_python #outputTabs #variablesTab {
+    float: left;
+    border-left: 1px solid #d4d4d4;
+    cursor: pointer;
+  }
+  #embed_content_python #variablesCount { color: #888; font-weight: normal; }
+
+  /* The Variables tab lives in the existing output tab bar, so the bar must be
+     reachable. In the cases where the base template would hide the whole bar
+     (.hideInstructions = explicitly hidden, or a non-owner viewing a trinket
+     with no description) force it back so Variables is available — and suppress
+     the now-empty Instructions tab there, splitting the bar Result/Variables
+     50/50. Owners (and any trinket with a description) keep the Instructions tab
+     and all three tabs at 33%, so the owner can still author instructions. */
+  #embed_content_python #outputTabs.hideInstructions { display: block !important; }
+  #embed_content_python #outputTabs.hideInstructions #instructionsTab { display: none !important; }
+  #embed_content_python #outputTabs.hideInstructions #codeOutputTab,
+  #embed_content_python #outputTabs.hideInstructions #variablesTab { width: 50%; }
+  /* Bar is always visible in this view now, so the output pane always starts
+     below it — even when the template marked the container "withoutTabs". */
+  #embed_content_python #outputContainer.withoutTabs { top: 32px; }
+
+  #embed_content_python #variables-wrap {
+    position: absolute;
+    top: 32px; left: 0; right: 0; bottom: 0;
+    background: #fff;
+  }
+  /* Flex layout lives on an inner element so #variables-wrap itself carries no
+     `display` rule, and therefore hides via the embed `.hide` class exactly
+     like #outputContainer / #instructionsContainer instead of fighting it. */
+  #embed_content_python #variables-inner {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  #embed_content_python #variables-toolbar {
+    flex: 0 0 auto;
+    padding: 5px 8px;
+    border-bottom: 1px solid #e4e4e4;
+    background: #fafafa;
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: 12px;
+    color: #444;
+  }
+  #embed_content_python #variables-toolbar label { cursor: pointer; }
+  #embed_content_python #variables-toolbar input { vertical-align: middle; margin: 0 4px 0 0; }
+  #embed_content_python #variables-scroll {
+    flex: 1 1 auto;
+    overflow: auto;
+  }
+  #embed_content_python #variables-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: Menlo, Monaco, Consolas, "Courier New", monospace;
+    font-size: 12px;
+  }
+  #embed_content_python #variables-table th,
+  #embed_content_python #variables-table td {
+    border-bottom: 1px solid #eee;
+    padding: 4px 8px;
+    text-align: left;
+    vertical-align: top;
+  }
+  #embed_content_python #variables-table thead th {
+    position: sticky;
+    top: 0;
+    background: #f4f4f4;
+    border-bottom: 1px solid #d4d4d4;
+    font-family: Helvetica, Arial, sans-serif;
+    font-weight: bold;
+    z-index: 1;
+  }
+  #embed_content_python #variables-table td.var-name { color: #1a7f37; white-space: nowrap; }
+  #embed_content_python #variables-table td.var-type { color: #6f42c1; white-space: nowrap; }
+  #embed_content_python #variables-table td.var-value { color: #222; white-space: pre-wrap; word-break: break-word; }
+  #embed_content_python #variables-table tr.vars-empty td {
+    color: #888;
+    font-style: italic;
+    font-family: Helvetica, Arial, sans-serif;
+  }
+  #embed_content_python #variables-table .var-len { color: #999; }
+  #embed_content_python #variables-table .var-kind-icon { color: #999; }
+  /* Functions & classes are secondary: muted rows so plain values stand out. */
+  #embed_content_python #variables-table tr.var-kind-function td,
+  #embed_content_python #variables-table tr.var-kind-class td { color: #999; }
+  #embed_content_python #variables-table tr.var-kind-function td.var-name,
+  #embed_content_python #variables-table tr.var-kind-class td.var-name { color: #555; }
+  /* Copy button: revealed on row hover or keyboard focus. */
+  #embed_content_python #variables-table td.var-value { position: relative; padding-right: 28px; }
+  #embed_content_python #variables-table .var-copy {
+    position: absolute;
+    top: 2px; right: 4px;
+    border: none;
+    background: transparent;
+    color: #bbb;
+    cursor: pointer;
+    padding: 2px 4px;
+    opacity: 0;
+    font-size: 12px;
+    line-height: 1;
+  }
+  #embed_content_python #variables-table tr:hover .var-copy,
+  #embed_content_python #variables-table .var-copy:focus { opacity: 1; }
+  #embed_content_python #variables-table .var-copy:hover { color: #555; }
+  {% endif %}
 </style>
 
 {% endblock %}
@@ -138,6 +253,9 @@
     <div id="outputTabs" class="{% if hideInstructions or (not isOwner and not trinket.description) %}hideInstructions{% endif %}">
       <div class="{% if not showInstructions %}active {% endif %}menu-button" id="codeOutputTab" data-action="output.view">Result</div>
       <div class="{% if showInstructions %}active {% endif %}menu-button" id="instructionsTab" data-action="instructions.view"><i class="fa fa-list"></i> Instructions</div>
+      {% if config.features.variableExplorer %}
+      <div class="menu-button" id="variablesTab" role="button" tabindex="0" title="Variables defined by your program"><i class="fa fa-table"></i> Variables <span id="variablesCount"></span></div>
+      {% endif %}
     </div>
 
     <div id="outputContainer" class="{% if hideInstructions or (not isOwner and not trinket.description) %}withoutTabs{% else %}withTabs{% endif %}">
@@ -152,6 +270,22 @@
         <a id="reset-output" title="clear output"><i class="fa fa-ban"></i></a>
       </div>
     </div>
+
+    {% if config.features.variableExplorer %}
+    <div id="variables-wrap" class="hide" aria-label="Variables">
+      <div id="variables-inner">
+        <div id="variables-toolbar">
+          <label><input type="checkbox" id="variables-show-callables"> Show functions &amp; classes</label>
+        </div>
+        <div id="variables-scroll" aria-live="polite">
+          <table id="variables-table">
+            <thead><tr><th scope="col">Name</th><th scope="col">Type</th><th scope="col">Value</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    {% endif %}
 
     {% include "includes/embed-instructions.html" %}
     {% endif %}
