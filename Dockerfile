@@ -1,5 +1,5 @@
-# Use Node 16 LTS (compatible with updated packages)
-FROM node:16-bullseye
+# Use Node 20 LTS (compatible with updated packages)
+FROM node:20-bullseye
 
 SHELL ["/bin/bash", "-c"]
 
