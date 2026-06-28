@@ -72,6 +72,7 @@
     "chai-as-promised": "^6.0.0",
     "cheerio": "~0.22.0",
     "mocha": "^3.4.1",
+    "mongodb-memory-server": "^10.4.3",
     "redis-mock": "~0.2.0",
     "sass": "^1.57.0",
     "should": "~3.0.0",
