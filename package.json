@@ -67,6 +67,7 @@
     "winston": "^3.8.0"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "^2.1.9",
     "chai": "^3.5.0",
     "chai-as-promised": "^6.0.0",
     "cheerio": "~0.22.0",
@@ -77,13 +78,16 @@
     "sinon": "~1.7.3",
     "sinon-chai": "^2.5.0",
     "supertest": "~0.8.3",
-    "vite": "^4.5.14"
+    "vite": "^4.5.14",
+    "vitest": "^2.1.9"
   },
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "test": "mocha",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "build:css": "vite build",
     "watch:css": "vite build --watch",
     "build": "npm run build:css",

@@ -54,3 +54,4 @@ public/_published
 *.swp
 
 .agignore
+coverage
