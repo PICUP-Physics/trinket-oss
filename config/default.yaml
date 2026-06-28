@@ -23,6 +23,16 @@ features:
 
 app:
   siteName: 'Trinket'
+  # Per-deploy brand theming. These values are injected as CSS custom properties
+  # in lib/views/base.html (:root { --brand-* }) and consumed by the SCSS via
+  # var(--brand-*, <fallback>). The defaults below are the current PICUP palette,
+  # so the site looks identical out of the box. Each institution can override
+  # these in config/local-production.yaml (or config/local.yaml) without forking
+  # the shared SCSS. Leave a value blank to fall back to the SCSS default.
+  theme:
+    pageBg: '#F4F3F3'    # page (body) background  (was $picup-page-bg)
+    heading: '#006400'   # h1/h2/h3 heading color  (was $picup-dark-green)
+    navItem: '#E0E6C6'   # nav dropdown item background (was $picup-nav-item)
   siteUrl: ''
   supportEmail: ''
   adminEmail: ''
