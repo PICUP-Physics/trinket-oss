@@ -51,6 +51,7 @@ app:
     pageBg: '#ffffff'    # page (body) background
     heading: '#222222'   # h1/h2/h3 heading color
     navItem: '#eeeeee'   # nav dropdown item background
+    primary: '#008AFF'   # dominant brand color: hero banner, primary/success buttons (was $primary-color / $blue)
   siteUrl: ''
   supportEmail: ''
   adminEmail: ''
