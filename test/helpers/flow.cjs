@@ -19,7 +19,10 @@
 process.env.NODE_CONFIG_PERSIST_ON_CHANGE = 'N';
 
 var url      = require('url');
+var path     = require('path');
+var fs       = require('fs');
 var querystring = require('querystring');
+var FormData = require('form-data');
 var defaults = require('./defaults');
 
 var config;
@@ -82,6 +85,12 @@ var flow = {
       throw err;
     }
 
+    return this._record(res);
+  },
+
+  // Map a Hapi inject result onto the legacy response shape the tests read.
+  // Shared by the JSON (_inject) and multipart (injectMultipart) paths.
+  _record(res) {
     // Persist the session cookie for the active user across injects.
     if (res.headers['set-cookie']) {
       this.cookies[this.activeUser] = res.headers['set-cookie'];
@@ -100,6 +109,36 @@ var flow = {
     this.lastRedirect    = res.headers.location ? url.parse(res.headers.location) : null;
 
     return this.lastResponse;
+  },
+
+  // Multipart upload over server.inject: build a fully-encoded multipart body
+  // with form-data, then pass its buffer + headers (plus the active cookie)
+  // to inject. supertest's .field()/.attach() aren't available without a port.
+  async injectMultipart(urlPath, type, filePath) {
+    var form = new FormData();
+    if (type !== undefined) form.append('type', type);
+    form.append('upload', fs.readFileSync(filePath), { filename: path.basename(filePath) });
+
+    var server = await getServer();
+    var headers = form.getHeaders();
+    if (this.cookies[this.activeUser]) {
+      headers.cookie = cookieHeader(this.cookies[this.activeUser]);
+    }
+
+    try {
+      var res = await server.inject({
+        method  : 'POST',
+        url     : urlPath,
+        payload : form.getBuffer(),
+        headers : headers,
+      });
+    } catch (err) {
+      this.lastError = err;
+      this.wasOk = false;
+      throw err;
+    }
+
+    return this._record(res);
   },
 
   // --- generic verbs ---
@@ -175,10 +214,8 @@ var flow = {
     return this.put('/api/courses/' + courseId + '/lessons/' + lessonId + '/materials/' + materialId + '/draft', { isDraft: true });
   },
 
-  // Multipart uploads are harder over inject (need a multipart payload). Not
-  // needed by login/logout — deferred to 2c-b.
-  uploadFile()  { throw new Error('multipart upload: implement in 2c-b'); },
-  uploadIpynb() { throw new Error('multipart upload: implement in 2c-b'); },
+  uploadFile()  { return this.injectMultipart('/file', defaults.file.type, defaults.file.upload); },
+  uploadIpynb() { return this.injectMultipart('/file', defaults.ipynb.type, defaults.ipynb.upload); },
 
   downloadFile(fileId) { return this.get('/api/files/' + fileId + '/download'); },
 
