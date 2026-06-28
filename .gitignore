@@ -74,3 +74,6 @@ firestore-debug.log
 # (Un-ignored in .gcloudignore so it still reaches the Cloud Build image.)
 config/local-production.yaml
 config/local-production-cloudrun.yaml
+
+# Per-deploy brand assets (logos) — each worktree carries its own; never shared
+public/img/brand/
