@@ -17,7 +17,9 @@ beforeAll(async () => {
   const config = require('config');
   config.db.mongo.host = u.hostname;
   config.db.mongo.port = u.port;
-  config.db.mongo.database = (u.pathname || '/test').slice(1) || 'test';
+  // Give each test FILE its own unique database so parallel workers don't
+  // clobber each other's data via afterEach dropDatabase().
+  config.db.mongo.database = 'test_' + Math.random().toString(36).slice(2);
 
   // app.js exits(1) if the session cookie password is < 32 chars. Provide one.
   config.app.plugins.session.cookieOptions.password =
