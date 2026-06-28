@@ -6,7 +6,7 @@
 <section id="hero" style="padding: 40px 0;">
   <div class="row">
     <div class="small-12 columns text-center">
-      <img src="{{ '/img/trinket-logo-white.png' | cachePrefix }}" alt="M&I Trinket" style="max-width: 240px;" />
+      <img src="{{ '/img/trinket-logo-white.png' | cachePrefix }}" alt="{{ config.app.siteName }}" style="max-width: 240px;" />
       <p style="color: white; font-size: 1.2rem; margin: 15px 0 0;">Code in Your Browser</p>
     </div>
   </div>
@@ -17,7 +17,7 @@
 <div class="row" style="padding: 40px 0;">
   <div class="small-12 columns text-center">
     <p class="lead" style="margin-bottom: 0.5rem;">
-      Matter and Interactions (M&I) Trinket is an open source browser-based coding platform.
+      {{ config.app.branding.lead }}
     </p>
     <p style="color: #666; margin-bottom: 0;">
       Write and run Web-VPython programs in interactive courses. No downloads required.
@@ -34,7 +34,7 @@
     </ul>
   </div>
   <div class="small-12 medium-5 columns end">
-    <h4 style="margin-bottom: 0.5rem;">For Matter and Interactions Instructors</h4>
+    <h4 style="margin-bottom: 0.5rem;">{{ config.app.branding.instructorHeading }}</h4>
     <ul style="margin-bottom: 0;">
       <li>Create interactive coding courses</li>
       <li>Track student progress</li>

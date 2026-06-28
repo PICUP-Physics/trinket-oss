@@ -35,7 +35,12 @@ auth:
       appId: ''
 
 app:
-  siteName: 'M&I-Trinket'
+  siteName: 'Trinket'
+  # Landing-page branding text (lib/views/index.html). Generic here; per-deploy
+  # overrides go in config/local-production.yaml (e.g. MANDI restores the M&I wording).
+  branding:
+    lead: 'Trinket is an open source browser-based coding platform.'
+    instructorHeading: 'For Instructors'
   siteUrl: ''
   supportEmail: ''
   adminEmail: ''
