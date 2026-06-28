@@ -2,12 +2,15 @@ html, body {
   height: 100%;
 }
 
+// Brand theming via CSS custom properties (injected in base.html from
+// config.app.theme). Fallbacks are the current PICUP palette, so the look is
+// unchanged when no theme config is supplied.
 body {
-  background-color: $picup-page-bg;
+  background-color: var(--brand-page-bg, #F4F3F3);
 }
 
 h1, h2, h3 {
-  color: $picup-dark-green;
+  color: var(--brand-heading, #006400);
 }
 
 .site-message {
