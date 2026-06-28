@@ -289,7 +289,7 @@ function runVpython(prog) {
     if (usesMatplotlib(prog)) {
       window.document.pyodideMplTarget = document.getElementById('graphic');
       return pyodide.runPythonAsync(
-        "import matplotlib; matplotlib.use('module://matplotlib_pyodide.html5_canvas_backend')"
+        "import matplotlib; matplotlib.use('module://matplotlib_pyodide.html5_canvas_backend'); matplotlib.rcParams['figure.autolayout'] = True"
       );
     }
   }).then(function() {
@@ -611,7 +611,7 @@ function startRun() {
         window.document.pyodideMplTarget = document.getElementById('graphic');
         showGraphic();
         return pyodide.runPythonAsync(
-          "import matplotlib; matplotlib.use('module://matplotlib_pyodide.html5_canvas_backend')"
+          "import matplotlib; matplotlib.use('module://matplotlib_pyodide.html5_canvas_backend'); matplotlib.rcParams['figure.autolayout'] = True"
         ).then(function() {
           return pyodide.runPythonAsync(prog || '');
         }).then(function(result) {
