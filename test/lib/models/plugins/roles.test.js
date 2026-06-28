@@ -14,12 +14,12 @@ describe('roles plugin', () => {
 
     afterEach(() => vi.restoreAllMocks());
 
-    describe('hasRole trinket-code before grant', () => {
-      it.skip('should return true', () => {
-        // TODO(slice-2b): asserted hasRole('trinket-code') === true but code now grants 'user'
-        // role by default (not 'trinket-code'); 'trinket-code' is a legacy alias that is no
-        // longer assigned to new users in the OSS roles config.
-        expect(user.hasRole('trinket-code')).toBe(true);
+    describe('hasRole user before any explicit grant', () => {
+      it('should return true', () => {
+        // New users get the 'user' role by default (set in user.js pre-save hook).
+        // 'trinket-code' is a legacy alias that is never granted to new users.
+        expect(user.hasRole('user')).toBe(true);
+        expect(user.hasRole('trinket-code')).toBe(false);
       });
     });
 
@@ -37,12 +37,11 @@ describe('roles plugin', () => {
     });
 
     describe('grant site-wide role', () => {
-      it.skip('should grant user roles and permissions', async () => {
-        // TODO(slice-2b): asserted hasRole('trinket-code') === true after granting
-        // 'trinket-connect', but 'trinket-code' is never in the roles list — the default
-        // role is now 'user', not 'trinket-code'.
+      it('should grant user roles and permissions', async () => {
+        // After granting trinket-connect, user retains the default 'user' role and gains
+        // 'trinket-connect'. 'trinket-code' is never in play — it is a legacy alias only.
         const updated = await user.grant('trinket-connect', 'site');
-        expect(updated.hasRole('trinket-code')).toBe(true);
+        expect(updated.hasRole('user')).toBe(true);
         expect(updated.hasRole('trinket-connect')).toBe(true);
         expect(updated.hasPermission('create-python-trinket')).toBe(true);
       });
@@ -81,12 +80,11 @@ describe('roles plugin', () => {
         await user.grant('trinket-connect', 'site');
       });
 
-      it.skip('should revoke user roles and permissions', async () => {
-        // TODO(slice-2b): asserted hasRole('trinket-code') === true after revoking
-        // 'trinket-connect', but 'trinket-code' is never granted — default role is now
-        // 'user'; 'trinket-code' is a legacy alias no longer assigned to new users.
+      it('should revoke user roles and permissions', async () => {
+        // After revoking trinket-connect, the default 'user' role remains and the user
+        // retains create-python-trinket permission. trinket-connect is gone.
         const updated = await user.revoke('trinket-connect', 'site');
-        expect(updated.hasRole('trinket-code')).toBe(true);
+        expect(updated.hasRole('user')).toBe(true);
         expect(updated.hasRole('trinket-connect')).toBe(false);
         expect(updated.hasPermission('create-python-trinket')).toBe(true);
       });
@@ -116,25 +114,25 @@ describe('roles plugin', () => {
       // NOTE: original had a nested before() that revoked trinket-connect to clean up from prior
       // tests; with beforeEach per test, each test starts with a fresh user — no cleanup needed.
 
-      it.skip('should grant user roles and permissions for trinket-connect', async () => {
-        // TODO(slice-2b): asserted hasRole('trinket-code') === true but 'trinket-code' is
-        // never assigned — default role is 'user'; 'trinket-code' is a legacy alias.
+      it('should grant user roles and permissions for trinket-connect', async () => {
+        // After granting trinket-connect with a future thru, user retains the default
+        // 'user' role and trinket-connect is active (thru is in the future).
         const thru = new Date();
         thru.setHours(thru.getHours() + 1);
 
         const updated = await user.grant('trinket-connect', 'site', { thru });
-        expect(updated.hasRole('trinket-code')).toBe(true);
+        expect(updated.hasRole('user')).toBe(true);
         expect(updated.hasRole('trinket-connect')).toBe(true);
       });
 
-      it.skip('should grant user roles and permissions for trinket-codeplus', async () => {
-        // TODO(slice-2b): asserted hasRole('trinket-code') === true but 'trinket-code' is
-        // never assigned — default role is 'user'; 'trinket-code' is a legacy alias.
+      it('should grant user roles and permissions for trinket-codeplus', async () => {
+        // trinket-codeplus is an actively-checked role (trinket.js:1609). After granting
+        // it with a future thru, user retains 'user' role and gains all codeplus permissions.
         const thru = new Date();
         thru.setHours(thru.getHours() + 1);
 
         const updated = await user.grant('trinket-codeplus', 'site', { thru });
-        expect(updated.hasRole('trinket-code')).toBe(true);
+        expect(updated.hasRole('user')).toBe(true);
         expect(updated.hasRole('trinket-codeplus')).toBe(true);
         expect(updated.hasPermission('create-python3-trinket')).toBe(true);
         expect(updated.hasPermission('create-python-trinket')).toBe(true);
@@ -149,11 +147,11 @@ describe('roles plugin', () => {
         await user.grant('trinket-codeplus', 'site', { thru });
       });
 
-      it.skip('should revoke user roles and permissions for trinket-connect only', async () => {
-        // TODO(slice-2b): asserted hasRole('trinket-code') === true after revoking
-        // 'trinket-connect', but 'trinket-code' is never assigned — default role is 'user'.
+      it('should revoke user roles and permissions for trinket-connect only', async () => {
+        // After revoking trinket-connect (one of two granted roles), 'user' and
+        // 'trinket-codeplus' remain; trinket-connect is gone and permissions are recomputed.
         const updated = await user.revoke('trinket-connect', 'site');
-        expect(updated.hasRole('trinket-code')).toBe(true);
+        expect(updated.hasRole('user')).toBe(true);
         expect(updated.hasRole('trinket-codeplus')).toBe(true);
         expect(updated.hasRole('trinket-connect')).toBe(false);
         expect(updated.hasPermission('create-python3-trinket')).toBe(true);
