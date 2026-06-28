@@ -4,6 +4,10 @@
 # ...but the per-deploy config overlay (gitignored) MUST reach the build image.
 !config/local-production.yaml
 
+# ...and the per-deploy brand logo (gitignored) MUST be baked into the image.
+!public/img/brand/
+!public/img/brand/**
+
 # Not needed to build the image
 test/
 *.md
