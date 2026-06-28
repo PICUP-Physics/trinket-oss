@@ -33,6 +33,7 @@ app:
     pageBg: '#F4F3F3'    # page (body) background  (was $picup-page-bg)
     heading: '#006400'   # h1/h2/h3 heading color  (was $picup-dark-green)
     navItem: '#E0E6C6'   # nav dropdown item background (was $picup-nav-item)
+    primary: '#75BF48'   # dominant brand color: hero banner + primary/success buttons (was $picup-green)
   siteUrl: ''
   supportEmail: ''
   adminEmail: ''

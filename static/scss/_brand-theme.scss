@@ -1,0 +1,32 @@
+// =============================================================================
+// Config-driven brand overrides.
+//
+// Imported LAST (see base.scss) so these win over Foundation's compile-time
+// colors. Every value falls back to picup's stock color, so with no app.theme
+// config present the rendering is unchanged.
+//
+// Driven by --brand-* CSS custom properties injected in lib/views/base.html
+// from config.app.theme. See config/default.yaml `app.theme`.
+// =============================================================================
+
+$_brand-primary: #75BF48;   // = $picup-green / $primary-color
+
+// Hero banner (homepage masthead) — the dominant brand surface.
+// Match the `body#home #hero` specificity from _homepage.scss so this wins.
+body#home #hero,
+#hero {
+  background: var(--brand-primary, #{$_brand-primary});
+}
+
+// Filled primary / success buttons (e.g. the Sign Up CTA). Hollow / secondary /
+// alert buttons keep their own styling.
+.button.primary,
+.button.success {
+  background-color: var(--brand-primary, #{$_brand-primary});
+  border-color: var(--brand-primary, #{$_brand-primary});
+  &:hover,
+  &:focus {
+    background-color: var(--brand-primary, #{$_brand-primary});
+    filter: brightness(0.93);
+  }
+}
