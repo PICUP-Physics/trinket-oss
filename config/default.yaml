@@ -41,6 +41,16 @@ app:
   branding:
     lead: 'Trinket is an open source browser-based coding platform.'
     instructorHeading: 'For Instructors'
+  # Per-deploy brand theming. These values are injected as CSS custom properties
+  # in lib/views/base.html (:root { --brand-* }) and consumed by the SCSS via
+  # var(--brand-*, <fallback>). The defaults below reproduce the stock Trinket
+  # appearance; override per deploy in config/local-production.yaml (and
+  # config/local.yaml so local dev matches). Leave a value blank to fall back to
+  # the SCSS default for that surface.
+  theme:
+    pageBg: '#ffffff'    # page (body) background
+    heading: '#222222'   # h1/h2/h3 heading color
+    navItem: '#eeeeee'   # nav dropdown item background
   siteUrl: ''
   supportEmail: ''
   adminEmail: ''

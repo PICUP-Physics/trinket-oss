@@ -2,9 +2,9 @@
 	border-bottom: 1px solid #d4d4d4; 
 	@media #{$small-only} { border: none; }
 }
-.top-bar-section .dropdown li:not(.has-form) a:not(.button) {  
-	background: #EEE; 
-	&:hover { 
+.top-bar-section .dropdown li:not(.has-form) a:not(.button) {
+	background: var(--brand-nav-item, #EEE);
+	&:hover {
 		background: $primary-color;
 	}
 }
@@ -43,7 +43,7 @@ nav.top-bar {
 			border-left: 1px solid #d4d4d4;
 			border-bottom: 1px solid #d4d4d4;
 			li:not(.has-form) a:not(.button) {
-				background: #EEE;
+				background: var(--brand-nav-item, #EEE);
 				&:hover {
 					background: $primary-color;
 				}

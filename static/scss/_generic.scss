@@ -2,6 +2,17 @@ html, body {
   height: 100%;
 }
 
+// Per-deploy brand theming via CSS custom properties (injected in base.html
+// from config.app.theme). Fallbacks reproduce the stock Trinket appearance, so
+// with no config the look is unchanged.
+body {
+  background-color: var(--brand-page-bg, #fff);
+}
+
+h1, h2, h3 {
+  color: var(--brand-heading, #222);
+}
+
 .site-message {
   margin-bottom: 0;
 }
