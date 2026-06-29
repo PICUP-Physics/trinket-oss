@@ -24,8 +24,8 @@ describe('roles plugin', () => {
     });
 
     describe('hasPermission create-python-trinket before grant', () => {
-      // NOTE: legacy description says "should return false" but assertion was .be.true
-      it('should return false', () => {
+      // NOTE: all users get create-python-trinket by default (base 'user' role).
+      it('should return true', () => {
         expect(user.hasPermission('create-python-trinket')).toBe(true);
       });
     });

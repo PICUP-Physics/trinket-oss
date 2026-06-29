@@ -28,7 +28,7 @@ RUN curl -L --silent -o ./public-components.tgz \
     && tar xzf public-components.tgz \
     && rm public-components.tgz
 
-RUN npm install --legacy-peer-deps
+RUN npm ci --legacy-peer-deps
 
 RUN npm run build
 
