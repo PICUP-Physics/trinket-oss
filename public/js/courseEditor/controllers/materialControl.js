@@ -154,10 +154,12 @@
     self.$scope.uploadProgress = 0;
     for (var i = 0; i < files.length; i++) {
       self.Upload.upload({
-        url:              '/file',
-        method:           'POST',
-        file:             files[i],
-        fileFormDataName: 'upload'
+        url:    '/file',
+        method: 'POST',
+        // ng-file-upload 12.x: name the multipart field via the data key. The
+        // old `file:` + `fileFormDataName:` shorthand is ignored in v12 and the
+        // field defaults to "file", which the server (expects "upload") rejects.
+        data:   { upload: files[i] }
       }).then(function(response) {
         var data = response.data;
         self.$scope.uploadStarted = false;
