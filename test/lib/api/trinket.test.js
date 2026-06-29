@@ -32,8 +32,19 @@ describe('Trinket Creation', () => {
       vi.spyOn(mailer, 'send').mockResolvedValue(undefined);
     });
 
+    // The HTML view/embed routes (/{lang}/{shortCode}, /embed/{lang}/{id}) are
+    // gated by the trinketTypeEnabled pre-handler, which 404s when the lang's
+    // feature flag is off. default.yaml ships features.trinkets.python = false
+    // (Skulpt superseded by pyodide). Enable it at runtime so these routes serve.
+    let pythonWasEnabled;
+    beforeEach(() => {
+      pythonWasEnabled = config.features.trinkets.python;
+      config.features.trinkets.python = true;
+    });
+
     afterEach(() => {
       vi.restoreAllMocks();
+      config.features.trinkets.python = pythonWasEnabled;
     });
 
     // Recreate the user + trinket fixture for every test (DB is wiped per test).
@@ -75,37 +86,25 @@ describe('Trinket Creation', () => {
       });
     });
 
-    // The next 3 tests exercise non-API (HTML) routes. All three are skipped because
-    // the default config disables the python trinket type:
-    //   default.yaml: features.trinkets.python = false
-    // The trinketTypeEnabled pre-handler returns 404 before the DB is even queried.
-    // Fix: add `features: { trinkets: { python: true } }` to test.yaml, or create
-    // trinkets with an enabled lang (e.g. python3).
+    // The next 3 tests exercise non-API (HTML) routes, served once the python
+    // feature flag is enabled (see beforeEach above). They render the
+    // trinket/python and embed/python nunjucks views (200 + text/html).
 
-    it.skip('should allow me to load the trinket', async () => {
-      // TODO(slice-2c-b): python trinket type disabled in features config
-      // (default.yaml features.trinkets.python = false); GET /{lang}/{shortCode}
-      // returns 404 via trinketTypeEnabled pre-handler.
+    it('should allow me to load the trinket', async () => {
       await flow.getTrinket(trinketShortCode, trinketLang);
       expect(flow.wasOk).toBe(true);
       expect(flow.lastResponse.statusCode).toEqual(200);
       expect(flow.lastContentType).toContain('text/html');
     });
 
-    it.skip('should allow me to embed the trinket', async () => {
-      // TODO(slice-2c-b): python trinket type disabled in features config
-      // (default.yaml features.trinkets.python = false); GET /embed/{lang}/{id}
-      // returns 404 via trinketTypeEnabled pre-handler.
+    it('should allow me to embed the trinket', async () => {
       await flow.getEmbeddedTrinket(trinketId, trinketLang);
       expect(flow.wasOk).toBe(true);
       expect(flow.lastResponse.statusCode).toEqual(200);
       expect(flow.lastContentType).toContain('text/html');
     });
 
-    it.skip('should allow me to embed the trinket with result showing', async () => {
-      // TODO(slice-2c-b): python trinket type disabled in features config
-      // (default.yaml features.trinkets.python = false); GET /embed/{lang}/{id}
-      // returns 404 via trinketTypeEnabled pre-handler.
+    it('should allow me to embed the trinket with result showing', async () => {
       // validating that the query param start is accepted
       await flow.getEmbeddedTrinket(trinketId, trinketLang, { start: 'result' });
       expect(flow.wasOk).toBe(true);
@@ -129,18 +128,22 @@ describe('Trinket Creation', () => {
       expect(mailer.send).toHaveBeenCalledOnce();
     });
 
-    it.skip('should not allow me to share the trinket without a token', async () => {
-      // TODO(slice-2c-b): createTrinket sets 'emailToken:{shortCode}' in the yar
-      // session; emailTrinket without a payload token reads the session token and
-      // validates it OK, returning 200 instead of the expected 400. In the legacy
-      // test (supertest-based flow.js) the session token was not present at this
-      // point. To fix: isolate the session before this call or clear the yar key.
+    // verifyEmailToken (lib/util/helpers.js) accepts a payload token OR, as a
+    // fallback, an 'emailToken:{shortCode}' value in the yar session — which
+    // createTrinket sets for the creator. So the creator's own session can email
+    // without re-supplying a token (covered by the "with a token" test above and
+    // implicitly by the session fallback). The contract this test asserts is the
+    // negative case: a fresh session that has neither a payload token nor the
+    // session fallback is rejected with 400. We switch to the anonymous cookie
+    // jar (no emailToken in its session) to get that fresh session; the email
+    // route is public (no auth: 'session'), so it reaches verifyEmailToken.
+    it('should not allow me to share the trinket without a token', async () => {
+      flow.switchUser('');  // fresh anonymous session: no emailToken in yar
       await flow.emailTrinket(trinketId, {
         email:   defaults.user.email,
         name:    defaults.user.fullname,
         replyTo: defaults.user.email,
       });
-      expect(flow.wasOk).toBe(true);
       expect(flow.lastResponse.statusCode).toEqual(400);
     });
 

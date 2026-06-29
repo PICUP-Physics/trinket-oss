@@ -92,10 +92,17 @@ describe('Course Creation', () => {
         expect(flow.lastResponse.body.course).toHaveProperty('slug', 'foo-bar');
       });
 
-      // TODO(slice-2c-b): courseBySlug pre-handler calls reply().redirect(url).permanent().takeover()
-      // The routeParser fakeReply wrapper resolves the Promise with null on the first reply()
-      // call (no args), so the .takeover() in the redirect chain is a no-op (Promise already
-      // settled). request.pre.course = null, viewClass crashes with TypeError (500 instead of 301).
+      // TODO(app-bug): genuine app bug, NOT an inject artifact — verified 500 over a
+      // real HTTP listener (server.start() on port 0), not just server.inject().
+      // courseBySlug (lib/util/helpers.js) does reply().redirect(url).permanent().takeover()
+      // for an aliased (old) slug. The routeParser fakeReply wrapper
+      // (lib/util/routeParser.js convertPreHandlers) resolves the pre-handler Promise on
+      // the first reply() call — reply() is invoked with no args, so it resolves with null —
+      // and the later .takeover() resolve is a no-op (Promise already settled). So pre.course
+      // becomes null and classes.viewClass crashes with
+      // "TypeError: Cannot read properties of null (reading 'archived')" → 500 instead of 301.
+      // Cannot fix from test/ (the defect is in lib/routeParser.js's redirect-takeover
+      // handling). Asserting 301 requires a lib/ fix.
       it.skip('should redirect me to the current course if I use the original course slug', async () => {
         const originalSlug = course.slug;
         // Rename the course so the slug changes, then verify the old slug redirects.
@@ -236,11 +243,18 @@ describe('Course Creation', () => {
         }
       });
 
-      // TODO(slice-2c-b): moveMaterial returns 500 because the 'parent' pre-handler
-      // is registered as 'parent(payload.parent, pre.lesson)'. When payload.parent is
-      // absent, findById(id=undefined, optional=lessonDoc) returns Promise.reject(lessonDoc)
-      // which Hapi treats as a 500 error. The routeParser's fakeReply wrapper does not
-      // handle this optional-fallback pattern from the legacy Hapi 4 server method convention.
+      // TODO(app-bug): genuine app bug, NOT an inject artifact — verified 500 over a
+      // real HTTP listener (server.start() on port 0), not just server.inject().
+      // The move route's pre is the string 'parent(payload.parent,pre.lesson)'
+      // (config/api_routes.js). Legacy Hapi 4 appended a `next` callback as the final arg,
+      // so internals.findById(id, optional, next) (lib/util/helpers.js) could fall back to
+      // the lesson when no parent was supplied. The Hapi-20 routeParser instead calls the
+      // server method with exactly the two resolved args (no next), so findById treats the
+      // fallback lesson DOC as `next`, hits `if (!id) return next(err)`, and throws
+      // "next is not a function" (confirmed by directly invoking server.methods.parent
+      // with (undefined, lessonDoc)) → 500. This breaks BOTH same-lesson reorder (no parent)
+      // AND cross-lesson transfer (parent present), since `next` is never a function here.
+      // Cannot fix from test/ (defect is the lib/ server-method calling convention).
       it.skip('should allow me to reorder material', async () => {
         await flow.addNewMaterial(courseId, lessonId);
         await flow.moveMaterial(courseId, lessonId, materialId, 1);

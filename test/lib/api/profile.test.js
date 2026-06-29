@@ -36,20 +36,29 @@ describe('User Profile', () => {
       }
     });
 
-    // TODO(slice-2c-b): avatar update resets to default in the test env because
-    // config.cloud.containers.userAvatars.host is absent from test.yaml — the
-    // app validates avatar URLs against the CDN host and ignores unknown origins.
-    // Re-enable once test.yaml carries a cloud.containers stub.
-    it.skip('should allow me to update my avatar', async () => {
+    // Avatar storage is governed by User#normalizeAvatar (lib/models/user.js):
+    // a full http(s) URL that is not a placeholder (does not contain
+    // 'example.com') is stored verbatim. The original skip referenced a
+    // config.cloud.containers.userAvatars.host stub, but no such config path
+    // exists — the real contract is the normalizeAvatar pass-through, asserted
+    // here with a clean CDN URL.
+    it('should allow me to update my avatar', async () => {
       await flow.switchUser('user');
       const user = await new Promise((resolve, reject) => {
         User.findByLogin(defaults.login.email, (err, doc) =>
           err ? reject(err) : resolve(doc)
         );
       });
-      const config = require('config');
-      const avatarUrl = config.cloud.containers.userAvatars.host + '/franz';
-      await flow.updateProfile(user.id, { avatar: avatarUrl });
+      const avatarUrl = 'https://cdn.trinket.io/avatars/franz.png';
+      // username is required by the updateProfile Joi schema; send the existing
+      // one so validation passes and the controller reaches the avatar update.
+      await flow.updateProfile(user.id, {
+        username: user.username,
+        name: user.name,
+        avatar: avatarUrl,
+      });
+      expect(flow.wasOk).toBe(true);
+      expect(flow.lastResponse.statusCode).toEqual(200);
       expect(flow.lastResponse.body).toHaveProperty('user.avatar', avatarUrl);
     });
   });
