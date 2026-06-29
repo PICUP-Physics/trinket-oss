@@ -55,7 +55,7 @@ function makeInMemoryRedisClient() {
     setEx: async (key, seconds, val) => {
       store.set(key, String(val));
       clearTimer(key);
-      timers.set(key, setTimeout(() => { store.delete(key); timers.delete(key); }, seconds * 1000));
+      timers.set(key, setTimeout(() => { store.delete(key); timers.delete(key); }, seconds * 1000).unref());
       return 'OK';
     },
     del: async (key) => {
@@ -67,7 +67,7 @@ function makeInMemoryRedisClient() {
     expire: async (key, seconds) => {
       if (!store.has(key)) return 0;
       clearTimer(key);
-      timers.set(key, setTimeout(() => { store.delete(key); timers.delete(key); }, seconds * 1000));
+      timers.set(key, setTimeout(() => { store.delete(key); timers.delete(key); }, seconds * 1000).unref());
       return 1;
     },
     ttl: async (key) => (store.has(key) ? (timers.has(key) ? 1 : -1) : -2),
@@ -204,6 +204,10 @@ function makeInMemoryRedisClient() {
 // model.js exposes its config (Lesson.plugins etc.) under the 'test' env.
 process.env.NODE_ENV = 'test';
 
+// Holds the in-memory redis client created during beforeAll so afterEach can
+// flush it, clearing login rate-limit counters between tests file-wide.
+let _redisClient;
+
 beforeAll(async () => {
   // 1) Point config at the memory server BEFORE config/db (app.js) is required.
   //    config/db.js connects at require-time, so this must run first.
@@ -237,7 +241,7 @@ beforeAll(async () => {
   // breaks Store under v4 in CI (no real redis to fall back on). This in-memory
   // client implements the v4 promise API Store/the rate-limiter actually use.
   const redis = require('redis');
-  redis.createClient = () => makeInMemoryRedisClient();
+  redis.createClient = () => (_redisClient = makeInMemoryRedisClient());
 
   // 3) Boot the app: registers model globals (Lesson, etc.) + connects via
   //    config/db. app.js exports the init() promise; await it so the globals
@@ -249,9 +253,25 @@ beforeAll(async () => {
 });
 
 afterEach(async () => {
+  // NOTE: dropDatabase() removes indexes along with data, so DB-level unique
+  // constraints (e.g. on username/email) are NOT enforced after the first test
+  // in a file. Tests must rely on app-level uniqueness checks instead.
   if (mongoose.connection.readyState === 1) {
     await mongoose.connection.db.dropDatabase();
   }
+  // Clear rate-limit counters from the Store's backing client between tests.
+  // When redis is disabled (test env), lib/util/store.js uses InMemoryClient —
+  // a module-level singleton whose state persists across DB drops. After 10
+  // login attempts the rate limiter returns 429 → switchUser throws. We clear
+  // all rate:* keys here so every test starts with a clean rate-limit slate.
+  // Store is required lazily (not at module level) so it loads AFTER beforeAll
+  // has set config.db.redis.enabled=false and registered the redis mock.
+  const Store = require('../../lib/util/store');
+  const storeClient = await Store.getClient();
+  const rateKeys = await storeClient.keys('rate:*');
+  for (const k of rateKeys) await storeClient.del(k);
+  // Also flush the redis mock client if one was created (when redis IS enabled).
+  if (_redisClient) await _redisClient.flushAll();
 });
 
 afterAll(async () => {
