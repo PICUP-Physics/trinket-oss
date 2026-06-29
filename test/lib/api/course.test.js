@@ -1,16 +1,11 @@
 const flow     = require('../../helpers/flow.cjs');
 const defaults = require('../../helpers/defaults');
-const Store    = require('../../../lib/util/store');
 
-// Reset the cookie jar AND the login rate-limit counters before every test.
-// The in-memory Store (used when Redis is disabled) persists across DB drops,
-// so the rate limiter accumulates across tests. After 10 attempts with the same
-// email, the handler returns 429 → switchUser throws "Failed to log in".
-// Deleting the rate-limit keys before each test prevents the cascade.
-beforeEach(async () => {
+// Reset the cookie jar before every test.
+// Login rate-limit counters are now flushed globally by the harness afterEach
+// (vitest-setup.cjs flushAll on the in-memory redis client).
+beforeEach(() => {
   flow.cookies = {};
-  await Store.del('rate:login:ip:127.0.0.1');
-  await Store.del('rate:login:acct:' + defaults.user.email);
 });
 
 describe('Course Creation', () => {
@@ -47,16 +42,14 @@ describe('Course Creation', () => {
         }
       });
 
-      // TODO(slice-2c-b): getCourseBySlug renders a Nunjucks/Angular SPA shell
-      // whose initial HTML does not embed the course name server-side; the course
-      // data is fetched by the Angular frontend after page load. The legacy mocha
-      // assertion text.contain('test course') is not achievable via server.inject
-      // on this SPA route.
-      it.skip('should allow me to get the course using slugs', async () => {
+      // getCourseBySlug renders a Nunjucks/Angular SPA shell; the course name
+      // is fetched client-side by Angular, not embedded in the initial HTML.
+      // Assert the SPA shell is served (200 + HTML content-type).
+      it('should allow me to get the course using slugs', async () => {
         await flow.getCourseBySlug(defaults.user.username, course.slug);
         expect(flow.wasOk).toBe(true);
         expect(flow.lastResponse.statusCode).toBe(200);
-        expect(flow.lastResponse.text).toContain(defaults.course.name);
+        expect(flow.lastContentType).toContain('text/html');
       });
     });
 
@@ -152,26 +145,22 @@ describe('Course Creation', () => {
         );
       });
 
-      // TODO(slice-2c-b): deleteMaterial now returns lesson.materials = [] (empty array)
-      // instead of null after removing all materials. Legacy mocha asserted
-      // lesson.materials === null (strict equality). Behavior change: the controller
-      // now returns an empty array rather than null for an empty materials list.
-      it.skip('should allow me to delete materials', async () => {
+      // The controller now returns an empty array (not null) for an empty
+      // materials/lessons list after deletion.
+      it('should allow me to delete materials', async () => {
         await flow.deleteMaterial(
           course.id, course.lessons[0].id, course.lessons[0].materials[0].id
         );
         expect(flow.wasOk).toBe(true);
         expect(flow.lastResponse.statusCode).toBe(200);
-        expect(flow.lastResponse.body.lesson.materials == null).toBe(true);
+        expect(flow.lastResponse.body.lesson.materials).toEqual([]);
       });
 
-      // TODO(slice-2c-b): deleteLesson now returns course.lessons = [] (empty array)
-      // instead of null after removing all lessons. Same pattern as deleteMaterial above.
-      it.skip('should allow me to delete lessons', async () => {
+      it('should allow me to delete lessons', async () => {
         await flow.deleteLesson(course.id, course.lessons[0].id);
         expect(flow.wasOk).toBe(true);
         expect(flow.lastResponse.statusCode).toBe(200);
-        expect(flow.lastResponse.body.course.lessons == null).toBe(true);
+        expect(flow.lastResponse.body.course.lessons).toEqual([]);
       });
     });
 
@@ -347,35 +336,27 @@ describe('Course Creation', () => {
       }
     });
 
-    // TODO(slice-2c-b): Unauthenticated requests to /api/* routes now return 401
-    // (JSON error) instead of 302 (redirect to /login). The onPreResponse handler
-    // in app.js only redirects non-API routes (request.path.startsWith('/api/')
-    // is excluded from the 401→302 conversion). Legacy mocha expected 302.
-    it.skip('should not allow me to create a course', async () => {
+    // Unauthenticated requests to /api/* routes return 401 (JSON error).
+    // The onPreResponse handler in app.js excludes /api/ paths from the
+    // 401→302 redirect conversion, so anonymous API callers get 401 directly.
+    it('should not allow me to create a course', async () => {
       await flow.createCourse();
-      expect(flow.wasOk).toBe(true);
-      expect(flow.lastResponse.statusCode).toBe(302);
-      expect(flow.lastRedirect.pathname).toBe('/login');
+      expect(flow.lastResponse.statusCode).toBe(401);
     });
 
-    it.skip('should not allow me to add a lesson to a course', async () => {
+    it('should not allow me to add a lesson to a course', async () => {
       await flow.addNewLesson(courseId);
-      expect(flow.wasOk).toBe(true);
-      expect(flow.lastResponse.statusCode).toBe(302);
-      expect(flow.lastRedirect.pathname).toBe('/login');
+      expect(flow.lastResponse.statusCode).toBe(401);
     });
 
-    it.skip('should not allow me to add material to a course lesson', async () => {
+    it('should not allow me to add material to a course lesson', async () => {
       await flow.addNewMaterial(courseId, lessonId);
-      expect(flow.wasOk).toBe(true);
-      expect(flow.lastResponse.statusCode).toBe(302);
-      expect(flow.lastRedirect.pathname).toBe('/login');
+      expect(flow.lastResponse.statusCode).toBe(401);
     });
 
-    it.skip('should not allow me to delete a course', async () => {
-      // TODO(slice-2c-b): same 401 vs 302 behavior change as above
+    it('should not allow me to delete a course', async () => {
       await flow.deleteCourse(courseId);
-      expect(flow.lastResponse.statusCode).toBe(302);
+      expect(flow.lastResponse.statusCode).toBe(401);
     });
   });
 });

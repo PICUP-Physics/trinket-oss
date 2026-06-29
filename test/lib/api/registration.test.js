@@ -53,14 +53,13 @@ describe('User Registration', () => {
       expect(flow.lastRedirect.pathname).toBe('/welcome');
     });
 
-    it.skip('should include a link to the default course on the welcome page', async () => {
-      // TODO(slice-2c-b): the /welcome route now immediately redirects to /home
-      // (pages.welcome controller: reply().redirect('/home')) and renders no
-      // HTML body; the sample-course link is no longer present in the response.
+    it('should redirect the welcome page to /home', async () => {
+      // The /welcome route now immediately redirects to /home; it renders no
+      // HTML body, so the sample-course link is no longer present in the response.
       await flow.welcome();
-      expect(flow.lastResponse.text).toContain(
-        '/' + libraryUser.username + '/courses/' + sampleCourse.slug + '/copy'
-      );
+      expect(flow.wasOk).toBe(true);
+      expect(flow.lastResponse.statusCode).toBe(302);
+      expect(flow.lastRedirect.pathname).toBe('/home');
     });
 
     it('should allow the sample course to be copied', async () => {
