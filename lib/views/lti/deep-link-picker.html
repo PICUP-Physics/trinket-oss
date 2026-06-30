@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="row"><div class="small-12 medium-8 columns small-centered">
+<div class="row"><div class="small-12 medium-8 columns small-centered" ng-non-bindable>
   {% if bothMode %}
   {# Single-entry LMS (Moodle/D2L): offer BOTH modes as tabs. The Assignment tab is only
      rendered when the launch allows a line item (assignmentAllowed). The Course/Topic tab is
