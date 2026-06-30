@@ -184,6 +184,9 @@
                   </li>
                   <li class="divider" role="presentation"></li>
                   <li><a href="/account"><i class="fa fa-gear"></i> My Settings</a></li>
+                  {% if user.isInstructor %}
+                  <li><a href="/lti/connect"><i class="fa fa-plug"></i> Connect LMS</a></li>
+                  {% endif %}
                   {% if user.hasRole("admin") or user.loggedInAs() %}
                   <li><a href="/admin"><i class="fa fa-lock"></i> Admin</a></li>
                   {% endif %}
