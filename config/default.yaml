@@ -23,6 +23,12 @@ features:
 
 app:
   siteName: 'Trinket'
+  # Landing-page branding text (lib/views/index.html). Per-deploy overrides go
+  # in config/local-production.yaml.
+  branding:
+    lead: 'Trinket is an open source browser-based coding platform.'
+    subtitle: 'Write and run Python, HTML, Java, and more. Create interactive courses. No downloads required.'
+    instructorHeading: 'For Educators'
   # Per-deploy brand theming. These values are injected as CSS custom properties
   # in lib/views/base.html (:root { --brand-* }) and consumed by the SCSS via
   # var(--brand-*, <fallback>). The defaults below are the current PICUP palette,
