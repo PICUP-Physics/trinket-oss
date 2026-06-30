@@ -40,6 +40,7 @@ app:
   # overrides go in config/local-production.yaml (e.g. MANDI restores the M&I wording).
   branding:
     lead: 'Trinket is an open source browser-based coding platform.'
+    subtitle: 'Write and run Python and Web VPython programs in interactive courses. No downloads required.'
     instructorHeading: 'For Instructors'
   # Per-deploy brand theming. These values are injected as CSS custom properties
   # in lib/views/base.html (:root { --brand-* }) and consumed by the SCSS via
