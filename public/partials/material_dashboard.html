@@ -9,6 +9,14 @@
       </nav>
     </section>
     <div class="right">
+      <a ng-if="lmsGrading"
+         ng-href="{{ lmsGrading.url }}"
+         target="_blank"
+         rel="noopener noreferrer"
+         class="button small secondary"
+         title="Open the course gradebook in {{ lmsGrading.name }} to enter grades">
+        <i class="fa fa-external-link"></i> Grade in {{ lmsGrading.name }}
+      </a>
       <a ng-href="/api/courses/{{course.id}}/materials/{{material.id}}/feedback.csv"
          ng-if="course.id && material.id"
          class="button small secondary"
@@ -54,7 +62,7 @@
     <div class="small-12 columns" id="student-row-{{ user.userId }}">
       <div class="row user-info">
         <div class="small-6 columns" ng-click="toggleStudent(user)">
-          <img class="avatar" ng-src="{{ user.avatar }}" /> <span class="student-name">{{ user.displayName }}</span>
+          <img class="avatar" ng-src="{{ user.avatar }}" onerror="this.src='/img/avatar-default.svg'" /> <span class="student-name">{{ user.displayName }}</span>
           <span ng-if="user.deleted" class="secondary-label label round" title="This user deleted their account.">deleted</span>
         </div>
         <div class="small-5 columns" ng-click="toggleStudent(user)">
@@ -67,6 +75,9 @@
           <ul id="user-{{ user.username }}" class="f-dropdown" data-options='align:left' data-dropdown-content>
             <li>
               <a ng-click="viewStudent(user)">View Student</a>
+            </li>
+            <li ng-if="user.lmsStudentUrl">
+              <a ng-href="{{ user.lmsStudentUrl }}" target="_blank" rel="noopener noreferrer">Grade in {{ lmsGrading.name }} <i class="fa fa-external-link"></i></a>
             </li>
           </ul>
         </div>
@@ -92,7 +103,7 @@
             <div class="small-12 columns" id="student-row-{{ user.userId }}">
               <div class="row user-info">
                 <div class="small-6 columns" ng-click="toggleStudent(user)">
-                  <img class="avatar" ng-src="{{ user.avatar }}" /> <span class="student-name">{{ user.displayName }}</span>
+                  <img class="avatar" ng-src="{{ user.avatar }}" onerror="this.src='/img/avatar-default.svg'" /> <span class="student-name">{{ user.displayName }}</span>
                   <span ng-if="user.deleted" class="secondary-label label round" title="This user deleted their account.">deleted</span>
                 </div>
                 <div class="small-6 columns" ng-click="toggleStudent(user)">
