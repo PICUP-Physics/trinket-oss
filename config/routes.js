@@ -469,6 +469,13 @@ routes = [
     config: { auth: 'session' }
   },
   {
+    // DEV-ONLY: preview the deep-link picker with mock data (no LMS launch). Handler 404s
+    // outside NODE_ENV=development. ?mode=both|content|assignment. For fast local UI iteration.
+    route : 'GET /lti/_preview-picker lti.deepLinkPreview',
+    html  : 'lti/deep-link-picker.html',
+    config: { auth: false }
+  },
+  {
     route : 'GET /lti/register lti.registerInit',
     html  : 'lti/register-confirm.html',
     fail  : {
