@@ -1343,6 +1343,13 @@ $('document').ready(function() {
             done(self._trinket);
           }
         });
+      })
+      .fail(function(xhr) {
+        if (xhr.status === 401) {
+          showStatusBar('<a href="/login">Log in</a> to save and share your changes.', null, null, 'warning');
+        } else if (xhr.status === 403) {
+          showStatusBar('Your account needs instructor approval before you can save or share.', null, null, 'warning');
+        }
       });
     },
     create : function(data, options, done) {
