@@ -2,6 +2,7 @@ features:
   courses: true   # Enable/disable courses feature entirely
   assets: false   # Enable/disable asset uploads (requires S3 or compatible storage)
   accessibilityToggle: false  # Show accessibility toggle in embed toolbar (for screen reader mode)
+  requireAuthToFork: false  # Require login to fork/share a trinket; false = allow anonymous forks (trinket.io default)
   trinkets:
     # Client-side languages - work out of the box
     python: true       # Skulpt-based Python 2/3 (enabled by default)

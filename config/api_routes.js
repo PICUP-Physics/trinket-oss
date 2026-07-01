@@ -922,7 +922,7 @@ module.exports = [
   {
     route : 'POST /api/trinkets/{trinketId}/forks trinket.createFork',
     config : {
-      pre : ['trinket(params.trinketId)'],
+      pre : (config.features.requireAuthToFork ? ['isApproved(user)'] : []).concat(['trinket(params.trinketId)']),
       payload : {
         maxBytes : 10 * (1024 * 1024) // 10MB
       },
