@@ -20,6 +20,7 @@ features:
     java: false        # Requires Java backend
     pygame: false      # Requires Pygame backend
     R: false           # Requires R backend
+  pyodideVersion: '0.28.1'  # Pyodide CDN version — single source of truth for bootstrap script and indexURL
 
 auth:
   # Emails that bypass the instructor/roster check and have full admin access

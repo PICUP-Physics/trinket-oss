@@ -11,7 +11,8 @@
 // input()/stdin, the interactive console REPL, drafts autosave hooks, hints,
 // and the unittest checker.
 
-var PYODIDE_INDEX_URL = 'https://cdn.jsdelivr.net/pyodide/v0.27.2/full/';
+// Injected by the embed template from config.features.pyodideVersion; fallback for non-template contexts.
+var PYODIDE_INDEX_URL = window.__PYODIDE_INDEX_URL__ || 'https://cdn.jsdelivr.net/pyodide/v0.28.1/full/';
 
 // VPython/GlowScript support (experimental). When a program is detected as
 // VPython, we load the GlowScript graphics library and a Python `vpython`
@@ -21,6 +22,19 @@ var PYODIDE_INDEX_URL = 'https://cdn.jsdelivr.net/pyodide/v0.27.2/full/';
 // the webvpython `vpython` package.
 var GLOW_SRC = '/components/vpython-glowscript/package/glow.3.2.2.min.js';
 var VPYTHON_ZIP_URL = '/js/embed/wvpython/vpython.zip';
+
+// Python code injected before user code runs each time a matplotlib program
+// executes.  Pyodide 0.28+ ships a Pyodide-patched WebAgg backend that reads
+// document.pyodideMplTarget (set by JS below) so figures land in #graphic,
+// and wires the full interactive toolbar + 3D mouse-orbit automatically.
+// plt.close('all') ensures stale figures from a previous run don't resurface.
+var MATPLOTLIB_SETUP_CODE = [
+  "import matplotlib",
+  "matplotlib.use('webagg')",
+  "import matplotlib.pyplot as _plt",
+  "_plt.close('all')",
+  "del _plt",
+].join('\n');
 
 var api;
 var codeRuns = {};
@@ -288,9 +302,7 @@ function runVpython(prog) {
     // 3D scene; point its canvas backend at the graphic pane instead.
     if (usesMatplotlib(prog)) {
       window.document.pyodideMplTarget = document.getElementById('graphic');
-      return pyodide.runPythonAsync(
-        "import matplotlib; matplotlib.use('module://matplotlib_pyodide.html5_canvas_backend'); matplotlib.rcParams['figure.autolayout'] = True"
-      );
+      return pyodide.runPythonAsync(MATPLOTLIB_SETUP_CODE);
     }
   }).then(function() {
     // Everything in globals now is library/bootstrap (the vpython/math/random
@@ -610,9 +622,7 @@ function startRun() {
         // select that backend before the user's code imports pyplot.
         window.document.pyodideMplTarget = document.getElementById('graphic');
         showGraphic();
-        return pyodide.runPythonAsync(
-          "import matplotlib; matplotlib.use('module://matplotlib_pyodide.html5_canvas_backend'); matplotlib.rcParams['figure.autolayout'] = True"
-        ).then(function() {
+        return pyodide.runPythonAsync(MATPLOTLIB_SETUP_CODE).then(function() {
           return pyodide.runPythonAsync(prog || '');
         }).then(function(result) {
           // Notebook-style auto-display: if the program created figures but

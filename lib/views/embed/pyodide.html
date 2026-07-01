@@ -306,8 +306,10 @@
   <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/dropzone/4.0.1/min/dropzone.min.js"></script>
   {% endif %}
 
-  {# Pyodide: real CPython compiled to WASM, loaded from the jsDelivr CDN (proof of concept). #}
-  <script type="text/javascript" src="https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js"></script>
+  {# Pyodide: real CPython compiled to WASM, loaded from the jsDelivr CDN.
+     Version is the single source of truth from config.features.pyodideVersion. #}
+  <script>window.__PYODIDE_INDEX_URL__ = 'https://cdn.jsdelivr.net/pyodide/v{{ config.features.pyodideVersion }}/full/';</script>
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/pyodide/v{{ config.features.pyodideVersion }}/full/pyodide.js"></script>
 
   {% if not outputOnly %}
   <script src="{{ '/components/marked/lib/marked.js' | cachePrefix }}"></script>
