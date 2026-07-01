@@ -3,6 +3,7 @@ features:
   assets: false   # Enable/disable asset uploads (requires S3 or compatible storage)
   accessibilityToggle: false  # Show accessibility toggle in embed toolbar (for screen reader mode)
   variableExplorer: false  # Show the Variables tab (namespace inspector) in Pyodide/Python3 trinkets
+  requireAuthToFork: false  # Require login to fork/share a trinket; false = allow anonymous forks (trinket.io default)
   trinkets:
     # Client-side languages - work out of the box
     python: false      # Skulpt-based Python 2/3 (disabled; superseded by pyodide, which is shown as "Python")
