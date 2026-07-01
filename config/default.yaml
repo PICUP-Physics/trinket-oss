@@ -5,6 +5,7 @@ features:
   courses: true   # Enable/disable courses feature entirely
   assets: false   # Enable/disable asset uploads (requires S3 or compatible storage)
   accessibilityToggle: false  # Show accessibility toggle in embed toolbar (for screen reader mode)
+  requireAuthToFork: true   # Require login to fork/share a trinket; false = allow anonymous forks
   variableExplorer: false  # Show the Variables tab (namespace inspector) in Pyodide/Python3 trinkets
   trinkets:
     # Client-side languages - work out of the box
