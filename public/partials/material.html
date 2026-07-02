@@ -41,7 +41,7 @@
     <a ng-click="block('```python.run', '```', 'runnable code goes here')" title="Insert Interactive Python">
       <i class="fa fa-code"></i>
     </a>
-    <a ng-if="assetsEnabled" data-reveal-id="fileUploadModal" data-reveal title="Upload File">
+    <a ng-if="assetsEnabled" ng-click="openUploadDialog($event)" title="Upload File">
       <i class="fa fa-cloud-upload"></i>
     </a>
     <a ng-click="inline('![', '](http://example.com/image.png)', 'image description goes here')" title="Insert Image">
