@@ -141,22 +141,15 @@ function syncFilesToFS(files, main) {
   return prog;
 }
 
-// Heuristics on the source so we can show a "loading packages" hint and decide
-// whether to set up matplotlib's render target. The package name can appear
-// anywhere on an import line, not just first — e.g. `import numpy, matplotlib`
-// or `from matplotlib import pyplot` — so match the whole (comment-stripped)
-// line, not only the token right after import/from. Missing matplotlib here
-// skips the render-target setup, so the figure falls back to document.body
-// instead of the #graphic pane (see issue #21).
-function importsMatch(code, names) {
-  var re = new RegExp('(^|\\n)\\s*(import|from)\\s+[^\\n#]*\\b(' + names + ')\\b');
-  return re.test(code);
-}
-function importsPackages(code) {
-  return importsMatch(code, 'numpy|matplotlib|pandas|scipy|sympy|PIL|sklearn|micropip');
-}
+// Detect a matplotlib import so we can point its render target at #graphic
+// before the user's code runs. The package name can appear anywhere on an
+// import line, not just first — e.g. `import numpy, matplotlib` or
+// `from matplotlib import pyplot` — so match the whole (comment-stripped) line,
+// not only the token right after import/from. Missing it here skips the
+// render-target setup, so the figure falls back to document.body instead of the
+// #graphic pane (see issue #21).
 function usesMatplotlib(code) {
-  return importsMatch(code, 'matplotlib');
+  return /(^|\n)\s*(import|from)\s+[^\n#]*\bmatplotlib\b/.test(code);
 }
 
 // Fraction of the output pane given to the graphic (vs. console). Default
@@ -282,7 +275,8 @@ function ensureVpython() {
 // header line (keeping line numbers stable), rewrite blocking rate()/sleep()
 // loops to async via the bridge's AST transformer, then execute.
 function runVpython(prog) {
-  writeOut('Loading VPython (GlowScript)…\n');
+  // Completed with "ready" once the library + bridge have loaded (see #27).
+  writeOut('Loading VPython (GlowScript)… ');
   return ensureGlow().then(function() {
     installRateCancellation();  // wrap rate() before the bridge imports it
     setupGlowScene();
@@ -305,6 +299,9 @@ function runVpython(prog) {
       'rate = _wrapped_rate\n'
     );
   }).then(function() {
+    // The GlowScript library + vpython bridge are ready now; complete the
+    // loading line before Pyodide narrates any package installs below (#27).
+    writeOut('ready\n');
     // Load bundled packages the program imports (numpy, matplotlib, …).
     return pyodide.loadPackagesFromImports(prog);
   }).then(function() {
@@ -605,13 +602,20 @@ function startRun() {
   $('#output-dragbar').addClass('hide');
   $('#console-wrap').css('height', '100%');
 
-  if (!pyodideReady) {
-    writeOut('Loading Python (Pyodide)…\n');
+  var showedRuntimeLoading = !pyodideReady;
+  if (showedRuntimeLoading) {
+    // No trailing newline: the line is completed with "ready" once the runtime
+    // has loaded, so the "…" never lingers in the output as if it were still
+    // working after the program's results have already printed (#27).
+    writeOut('Loading Python (Pyodide)… ');
   }
 
   running = true;
 
   ensurePyodide().then(function() {
+    if (showedRuntimeLoading) {
+      writeOut('ready\n');
+    }
     var prog = syncFilesToFS(editor.getAllFiles(), mainFile);
 
     // VPython/GlowScript programs take a separate path: glow library + the
@@ -621,12 +625,11 @@ function startRun() {
       return runVpython(prog);
     }
 
-    if (importsPackages(prog)) {
-      writeOut('Loading packages…\n');
-    }
-
     // Auto-install any Pyodide-bundled packages the code imports (numpy,
-    // matplotlib, pandas, …) from the CDN before running.
+    // matplotlib, pandas, …) from the CDN before running. Pyodide narrates this
+    // itself ("Loading …" then "Loaded …"), which already reads as complete, so
+    // we no longer add our own "Loading packages…" line — that one had no
+    // matching completion and lingered as if still working (#27).
     return pyodide.loadPackagesFromImports(prog).then(function() {
       if (usesMatplotlib(prog)) {
         // Point matplotlib's canvas backend at the trinket graphic pane, then
