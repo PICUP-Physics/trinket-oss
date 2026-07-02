@@ -94,6 +94,13 @@ app:
       - '/components/marked/lib/marked.js'
       - '//cdnjs.cloudflare.com/ajax/libs/highlight.js/8.0/highlight.min.js'
       - '/components/src-min-noconflict/ace.js'
+      # Ace markdown mode + github theme for the course-page editor. The bundled
+      # src-min-noconflict/ set (public-components.tgz) ships only the trinket
+      # language modes, so Ace 404s lazy-loading these two from that dir. Preload
+      # them from a version-matched CDN (bundled Ace is v1.4.14) so the course
+      # markdown editor gets highlighting + theme (see issue #23).
+      - '//cdnjs.cloudflare.com/ajax/libs/ace/1.4.14/mode-markdown.min.js'
+      - '//cdnjs.cloudflare.com/ajax/libs/ace/1.4.14/theme-github.min.js'
       - '/components/foundation/js/foundation.min.js'
       - '/partials/directives/flash.js'
       - '/partials/directives/trinket.js'
