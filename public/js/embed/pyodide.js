@@ -28,9 +28,11 @@ var VPYTHON_ZIP_URL = '/js/embed/wvpython/vpython.zip';
 // document.pyodideMplTarget (set by JS below) so figures land in #graphic,
 // and wires the full interactive toolbar + 3D mouse-orbit automatically.
 // plt.close('all') ensures stale figures from a previous run don't resurface.
+// figure.autolayout keeps axis labels/titles from clipping (picup PR #18).
 var MATPLOTLIB_SETUP_CODE = [
   "import matplotlib",
   "matplotlib.use('webagg')",
+  "matplotlib.rcParams['figure.autolayout'] = True",
   "import matplotlib.pyplot as _plt",
   "_plt.close('all')",
   "del _plt",
