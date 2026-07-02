@@ -41,7 +41,13 @@
       return '/u/' + userSlug + '/classes/' + courseSlug;
     },
     getPublishedTrinketUrl : function(userSlug, trinketSlug) {
-      return config.protocol + '://' + config.apphostname + '/u/' + userSlug + '/sites/' + trinketSlug;
+      // Derive the host from the page the user is actually on (like embed share
+      // URLs via qualifyUrl) rather than config.apphostname, so a misconfigured
+      // app.url.hostname can't point the published link off this instance (#2).
+      var origin = (typeof window !== 'undefined' && window.location && window.location.host)
+        ? window.location.protocol + '//' + window.location.host
+        : config.protocol + '://' + config.apphostname;
+      return origin + '/u/' + userSlug + '/sites/' + trinketSlug;
     }
   };
 })(window.trinket.config);
