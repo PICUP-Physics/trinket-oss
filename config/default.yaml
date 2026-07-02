@@ -36,6 +36,13 @@ auth:
       messagingSenderId: ''
       appId: ''
 
+lti:
+  # Display name this deployment registers under in the LMS (client_name -> the
+  # Developer Keys / Apps entry name). Set per deploy in the production overlay so
+  # multiple Trinket servers in one LMS are distinguishable (e.g. 'UIndy Trinket',
+  # 'M&I Trinket'). Defaults to 'Trinket'.
+  toolName: 'Trinket'
+
 app:
   siteName: 'Trinket'
   # Landing-page branding text (lib/views/index.html). Generic here; per-deploy
