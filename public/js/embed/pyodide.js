@@ -142,12 +142,21 @@ function syncFilesToFS(files, main) {
 }
 
 // Heuristics on the source so we can show a "loading packages" hint and decide
-// whether to set up matplotlib's render target.
+// whether to set up matplotlib's render target. The package name can appear
+// anywhere on an import line, not just first — e.g. `import numpy, matplotlib`
+// or `from matplotlib import pyplot` — so match the whole (comment-stripped)
+// line, not only the token right after import/from. Missing matplotlib here
+// skips the render-target setup, so the figure falls back to document.body
+// instead of the #graphic pane (see issue #21).
+function importsMatch(code, names) {
+  var re = new RegExp('(^|\\n)\\s*(import|from)\\s+[^\\n#]*\\b(' + names + ')\\b');
+  return re.test(code);
+}
 function importsPackages(code) {
-  return /(^|\n)\s*(import|from)\s+(numpy|matplotlib|pandas|scipy|sympy|PIL|sklearn|micropip)\b/.test(code);
+  return importsMatch(code, 'numpy|matplotlib|pandas|scipy|sympy|PIL|sklearn|micropip');
 }
 function usesMatplotlib(code) {
-  return /(^|\n)\s*(import\s+matplotlib|from\s+matplotlib\b)/.test(code);
+  return importsMatch(code, 'matplotlib');
 }
 
 // Fraction of the output pane given to the graphic (vs. console). Default
