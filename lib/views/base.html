@@ -156,6 +156,13 @@
                       My Trinkets
                     </a>
                   </li>
+                  {% if config.features.courses != false %}
+                  <li role="menuitem">
+                    <a href="/library/courses">
+                      My Courses
+                    </a>
+                  </li>
+                  {% endif %}
                   <li class="has-dropdown" role="menuitem" >
                     <a role="button" aria-controls="new_trinket_list">New Trinket</a>
                     <ul id="new_trinket_list" class="dropdown" role="group" role="menu">

@@ -197,6 +197,22 @@
     margin-right: 0.6em;
   }
 }
+
+// Scoped to the My Courses page (body id) so these don't affect the
+// trinkets library page, which shares this partial.
+#course-library {
+  #listview-menus {
+    margin-left: 0.75rem;
+  }
+
+  #course-sort-options {
+    min-width: 180px;
+
+    li a {
+      white-space: nowrap;
+    }
+  }
+}
 #trinkets-list, .trinkets-list {
   ul {
     margin: 0 auto;
