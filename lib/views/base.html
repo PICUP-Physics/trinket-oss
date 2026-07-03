@@ -130,7 +130,11 @@
         <section class="top-bar-section">
           {% if user %}
           <ul>
-            <li><a href="/home" aria-label="Go Home"><i class="fa fa-home"></i> Home </a>
+            <li><a href="/home" aria-label="Go Home"><i class="fa fa-home"></i> Home </a></li>
+            <li><a href="/library/trinkets"><i class="trinket-key"></i> My Trinkets </a></li>
+            {% if config.features.courses != false %}
+            <li><a href="/library/courses" target="_self"><i class="fa fa-graduation-cap"></i> My Courses </a></li>
+            {% endif %}
           </ul>
           {% endif %}
           <ul class="right">
@@ -158,7 +162,7 @@
                   </li>
                   {% if config.features.courses != false %}
                   <li role="menuitem">
-                    <a href="/library/courses">
+                    <a href="/library/courses" target="_self">
                       My Courses
                     </a>
                   </li>
