@@ -5,6 +5,63 @@
   <span id="importSuccessMsg"></span>
 </div>
 
+<!-- Course (the main path: self-contained zips bundle trinkets + assets) -->
+<div class="row">
+  <div class="small-12 columns">
+    <h5>Import Course</h5>
+    <p>Upload the <code>*-md.zip</code> course file. Bundled trinkets and images are
+       imported automatically and embed links are rewritten to point to this server.</p>
+    <p><em>For older zips that don't bundle their trinkets, any unresolved links are
+       flagged so you can import those trinkets below and retry — or continue anyway
+       (the old links are patched automatically once those trinkets are imported).</em></p>
+  </div>
+</div>
+
+<div class="row">
+  <div class="small-12 columns">
+    <label>Course name (optional — defaults to "Imported Course")
+      <input type="text" id="courseNameInput" placeholder="e.g. Introduction to Physics">
+    </label>
+    <label>Course zip file
+      <input type="file" id="courseZipInput" accept=".zip">
+    </label>
+    <button id="importCourseBtn" class="button primary" disabled>Import Course</button>
+    <span id="courseSpinner" style="display:none; margin-left:10px;">Uploading…</span>
+  </div>
+</div>
+
+<!-- Missing-refs warning (shown when refs aren't resolved) -->
+<div id="missingRefsWarning" style="display:none; margin-top:15px;">
+  <div class="alert-box warning">
+    <strong>Some trinket links could not be resolved:</strong>
+    <ul id="missingRefsList" style="margin-top:8px;"></ul>
+    <p style="margin-top:10px;">
+      Import the missing trinkets below and try again, or
+      <button id="forceImportBtn" class="button tiny alert" style="margin:0 4px;">Import anyway</button>
+      to leave old trinket.io URLs intact (they will be patched automatically once those trinkets are imported).
+    </p>
+  </div>
+</div>
+
+<div id="courseResult" style="display:none; margin-top:15px;">
+  <div class="alert-box success">
+    Course imported successfully!
+    <a id="courseLink" href="#">View course →</a>
+  </div>
+</div>
+
+<div id="assetWarnings" style="display:none; margin-top:10px;">
+  <div class="alert-box warning">
+    <strong>Image hosting warning:</strong>
+    <ul id="assetWarningList" style="margin-top:6px;"></ul>
+    <p style="margin-top:6px; margin-bottom:0;">
+      Re-export from the original server and re-import to pick up a self-contained zip with embedded images.
+    </p>
+  </div>
+</div>
+
+<hr style="margin:30px 0;">
+
 <!-- Optional: pre-import trinkets (for older, non-bundled exports) -->
 <div class="row">
   <div class="small-12 columns">
@@ -12,7 +69,7 @@
     <p>Only needed for older exports that don't bundle their trinkets. A course
        <code>*-md.zip</code> exported with embedded trinkets imports them
        automatically, so you can usually skip straight to <strong>Import Course</strong>
-       below.</p>
+       above.</p>
     <p>Upload a <code>trinket-export-*.zip</code> to pre-import trinkets by author.
        You can run this multiple times; already-imported trinkets are skipped
        automatically.</p>
@@ -49,63 +106,6 @@
         </tbody>
       </table>
     </div>
-  </div>
-</div>
-
-<hr style="margin:30px 0;">
-
-<!-- Course (the main path: self-contained zips bundle trinkets + assets) -->
-<div class="row">
-  <div class="small-12 columns">
-    <h5>Import Course</h5>
-    <p>Upload the <code>*-md.zip</code> course file. Bundled trinkets and images are
-       imported automatically and embed links are rewritten to point to this server.</p>
-    <p><em>For older zips that don't bundle their trinkets, any unresolved links are
-       flagged so you can import those trinkets above and retry — or continue anyway
-       (the old links are patched automatically once those trinkets are imported).</em></p>
-  </div>
-</div>
-
-<div class="row">
-  <div class="small-12 columns">
-    <label>Course name (optional — defaults to "Imported Course")
-      <input type="text" id="courseNameInput" placeholder="e.g. Introduction to Physics">
-    </label>
-    <label>Course zip file
-      <input type="file" id="courseZipInput" accept=".zip">
-    </label>
-    <button id="importCourseBtn" class="button primary" disabled>Import Course</button>
-    <span id="courseSpinner" style="display:none; margin-left:10px;">Uploading…</span>
-  </div>
-</div>
-
-<!-- Missing-refs warning (shown when refs aren't resolved) -->
-<div id="missingRefsWarning" style="display:none; margin-top:15px;">
-  <div class="alert-box warning">
-    <strong>Some trinket links could not be resolved:</strong>
-    <ul id="missingRefsList" style="margin-top:8px;"></ul>
-    <p style="margin-top:10px;">
-      Import the missing trinkets above and try again, or
-      <button id="forceImportBtn" class="button tiny alert" style="margin:0 4px;">Import anyway</button>
-      to leave old trinket.io URLs intact (they will be patched automatically once those trinkets are imported).
-    </p>
-  </div>
-</div>
-
-<div id="courseResult" style="display:none; margin-top:15px;">
-  <div class="alert-box success">
-    Course imported successfully!
-    <a id="courseLink" href="#">View course →</a>
-  </div>
-</div>
-
-<div id="assetWarnings" style="display:none; margin-top:10px;">
-  <div class="alert-box warning">
-    <strong>Image hosting warning:</strong>
-    <ul id="assetWarningList" style="margin-top:6px;"></ul>
-    <p style="margin-top:6px; margin-bottom:0;">
-      Re-export from the original server and re-import to pick up a self-contained zip with embedded images.
-    </p>
   </div>
 </div>
 

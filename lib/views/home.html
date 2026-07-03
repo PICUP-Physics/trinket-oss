@@ -101,7 +101,7 @@
 
       <div ng-cloak ng-show="courses" class="row">
         <div class="small-12 columns">
-          {% endraw %}{% if canCreateCourse %}<a class="button" href="/courses/new"><i class="fa fa-plus-circle"></i> New Course</a>{% endif %}{% raw %}
+          {% endraw %}{% if canCreateCourse %}<a class="button" href="/courses/new"><i class="fa fa-plus-circle"></i> New Course</a>{% if config.features.courseImport %} <a class="button secondary" href="/account/import"><i class="fa fa-upload"></i> Import a Course</a>{% endif %}{% endif %}{% raw %}
           <join-course courses-by-id="coursesById" courses="courses"></join-course>
         </div>
       </div>
