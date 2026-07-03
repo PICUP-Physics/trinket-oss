@@ -150,38 +150,20 @@
                       My Trinkets
                     </a>
                   </li>
+                  {% set newTrinketTypes = enabledNewTrinketTypes(config.features) %}
+                  {% if newTrinketTypes.length == 1 %}
+                  {# Only one trinket type enabled — skip the dropdown, offer a direct create button #}
+                  <li role="menuitem"><a href="/library/trinkets/create?lang={{ newTrinketTypes[0].lang }}">New {{ newTrinketTypes[0].label }} Trinket</a></li>
+                  {% elif newTrinketTypes.length > 1 %}
                   <li class="has-dropdown" role="menuitem" >
                     <a role="button" aria-controls="new_trinket_list">New Trinket</a>
                     <ul id="new_trinket_list" class="dropdown" role="group" role="menu">
-                      {% if not config.features or not config.features.trinkets or config.features.trinkets.python %}
-                      <li><a href="/library/trinkets/create?lang=python"><i class="lang-sprite lang-sprite-python"></i> Python</a></li>
-                      {% endif %}
-                      {% if not config.features or not config.features.trinkets or config.features.trinkets.python3 %}
-                      <li><a href="/library/trinkets/create?lang=python3"><i class="lang-sprite lang-sprite-python"></i> Python3</a></li>
-                      {% endif %}
-                      {% if not config.features or not config.features.trinkets or config.features.trinkets.pygame %}
-                      <li><a href="/library/trinkets/create?lang=pygame"><i class="lang-sprite lang-sprite-pygame"></i> Pygame</a></li>
-                      {% endif %}
-                      {% if not config.features or not config.features.trinkets or config.features.trinkets.R %}
-                      <li><a href="/library/trinkets/create?lang=R"><i class="lang-sprite lang-sprite-R"></i> R</a></li>
-                      {% endif %}
-                      {% if not config.features or not config.features.trinkets or config.features.trinkets.blocks %}
-                      <li><a href="/library/trinkets/create?lang=blocks"><i class="lang-sprite lang-sprite-blocks"></i> Blocks</a></li>
-                      {% endif %}
-                      {% if not config.features or not config.features.trinkets or config.features.trinkets.html %}
-                      <li><a href="/library/trinkets/create?lang=html"><i class="lang-sprite lang-sprite-html"></i> HTML</a></li>
-                      {% endif %}
-                      {% if not config.features or not config.features.trinkets or config.features.trinkets.glowscript %}
-                      <li><a href="/library/trinkets/create?lang=glowscript"><i class="lang-sprite lang-sprite-glowscript"></i> Web VPython</a></li>
-                      {% endif %}
-                      {% if not config.features or not config.features.trinkets or config.features.trinkets.java %}
-                      <li><a href="/library/trinkets/create?lang=java"><i class="lang-sprite lang-sprite-java"></i> Java</a></li>
-                      {% endif %}
-                      {% if not config.features or not config.features.trinkets or config.features.trinkets.music %}
-                      <li><a href="/library/trinkets/create?lang=music"><i class="lang-sprite lang-sprite-music"></i> Music</a></li>
-                      {% endif %}
+                      {% for t in newTrinketTypes %}
+                      <li><a href="/library/trinkets/create?lang={{ t.lang }}"><i class="lang-sprite {{ t.icon }}"></i> {{ t.label }}</a></li>
+                      {% endfor %}
                     </ul>
                   </li>
+                  {% endif %}
                   <li class="divider" role="presentation"></li>
                   <li><a href="/account"><i class="fa fa-gear"></i> My Settings</a></li>
                   {% if user.isInstructor %}

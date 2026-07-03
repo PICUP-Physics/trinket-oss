@@ -1,6 +1,8 @@
 <div class="dropdown-wrapper">
-  <a class="small button primary dropdown" data-dropdown="{{id}}"><span class="show-for-large-up">New Trinket</span><i class="hide-for-large-up trinket-key"></i></a>
-  <ul id="{{id}}" class="tiny f-dropdown" data-dropdown-content>
+  <!-- Only one trinket type enabled: a direct create button instead of a 1-item dropdown -->
+  <a ng-if="items.length === 1" class="small button primary" ng-click="create(items[0].lang)"><span class="show-for-large-up">New {{items[0].label}} Trinket</span><i class="hide-for-large-up trinket-key"></i></a>
+  <a ng-if="items.length > 1" class="small button primary dropdown" data-dropdown="{{id}}"><span class="show-for-large-up">New Trinket</span><i class="hide-for-large-up trinket-key"></i></a>
+  <ul ng-if="items.length > 1" id="{{id}}" class="tiny f-dropdown" data-dropdown-content>
     <li ng-repeat="item in items">
       <a ng-click="create(item.lang)"><i class="lang-sprite lang-sprite-{{item.lang}}"></i>{{item.label}} <i ng-show="item.icon" class="{{item.icon}}"></i></a>
     </li>
