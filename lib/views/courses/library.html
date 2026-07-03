@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block body_id %}course-library{% endblock %}
+{% block content %}
+{% if user and user.roles %}
+  <input id="roles" type='hidden' value='{{ user.roles | encrypt }}'>
+{% endif %}
+{% raw %}
+<section ng-controller="CoursesController">
+  <div class="library-subnav clearfix row gutterless" data-magellan-expedition="fixed">
+    <section class="left">
+      <nav class="title breadcrumbs">
+        <a href="/home"><i class="fa fa-home"></i></a>
+        <a class="current">My Courses</a>
+      </nav>
+      <section id="listview-options">
+        <button id="course-search-icon" class="button small" ng-click="toggleCourseSearch()" title="Search">
+          <i class="fa fa-search fa-fw"></i>
+        </button>
+        <div class="search-input" ng-class="{focus: courseSearchOpen}">
+          <input type="text" id="course-search-input" ng-model="courseSearch" placeholder="search by name">
+        </div>
+        <section id="listview-menus" ng-show="!courseSearchOpen" class="fade-in-out">
+          <label>Sort:</label>
+          <button class="button small" data-dropdown="course-sort-options">
+            <i class="{{ sortOptions[sortBy].class }}"></i> <span class="show-for-xlarge-up">{{ sortOptions[sortBy].label }}</span> <i class="fa fa-caret-down"></i>
+          </button>
+          <ul id="course-sort-options" class="tiny f-dropdown" data-dropdown-content>
+            <li ng-repeat="(key, option) in sortOptions">
+              <a ng-click="initSort(key)"><i class="{{ option.class }}"></i> {{ option.label }}</a>
+            </li>
+          </ul>
+        </section>
+      </section>
+    </section>
+    <section class="right">
+      <join-course courses-by-id="coursesById" courses="courses" button-class="small"></join-course>
+      <a ng-show="canCreateCourse" class="button" href="/courses/new">
+        <i class="fa fa-plus-circle"></i> New Course
+      </a>
+    </section>
+  </div>
+
+  <div class="row" ng-show="!courses"><h2><i class="fa fa-spinner fa-spin"></i>&nbsp;Loading...</h2></div>
+
+  <div class="row" ng-cloak ng-show="courses && !courses.length && !(featuredCourses && featuredCourses.length)">
+    <div class="small-12 columns">
+      <h2>You have no courses!</h2>
+    </div>
+  </div>
+
+  <div class="row" ng-cloak ng-show="courses && courses.length === 0 && featuredCourses && featuredCourses.length">
+    <div class="small-12 columns">
+      <p>Get started with Trinket Courses by trying one of our featured courses!</p>
+    </div>
+  </div>
+
+  <div class="row" ng-cloak ng-show="courses && courses.length">
+    <div class="small-12 medium-8 columns">
+      <ul class="trinkets-list list-view">
+        <li ng-repeat="course in courses | filter:courseMatchesSearch | orderBy:courseSortValue:sortOptions[sortBy].reverse" ng-click="gotoCourse(course); $event.stopPropagation()" title="{{course.name}}">
+          <a class="snapshot titled">
+            <h3 class="title list-view trinketLabel">{{ course.name }}</h3>
+          </a>
+          <div class="trinket-stats" ng-show="course.role">
+            <span class="secondary-label label round">{{ course.role }}</span>
+          </div>
+        </li>
+      </ul>
+    </div>
+
+    <div ng-cloak ng-show="featuredCourses && featuredCourses.length" class="small-12 medium-4 columns">
+      <h2>Featured Courses</h2>
+      <div class="row">
+        <div class="small-12 columns featured-course">
+          <ul class="no-bullet featured-course-list">
+            <li ng-repeat="course in featuredCourses">
+              <div class="row course-title collapse">
+                <div class="small-12">
+                  <a href="{{ course.courseUrl }}"><strong>{{ course.name }}</strong></a>
+                </div>
+              </div>
+              <div class="row course-description">
+                <div class="small-12 columns">
+                  {{ course.description }}
+                </div>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row" ng-cloak ng-show="archived && archived.length">
+    <div class="small-12 medium-8 columns">
+      <a ng-click="showArchived=!showArchived" style="display: inline-block; margin-bottom: 8px">
+        {{ showArchived ? "Hide" : "Show" }} Archived Courses ({{ archived.length }})
+      </a>
+      <ul ng-show="showArchived" class="trinkets-list list-view">
+        <li ng-repeat="course in archived | orderBy:'name'" ng-click="gotoCourse(course); $event.stopPropagation()" title="{{course.name}}">
+          <a class="snapshot titled">
+            <h3 class="title list-view trinketLabel">{{ course.name }}</h3>
+          </a>
+          <div class="trinket-stats" ng-show="course.role">
+            <span class="secondary-label label round">{{ course.role }}</span>
+          </div>
+        </li>
+      </ul>
+    </div>
+  </div>
+</section>
+{% endraw %}
+{% endblock %}
