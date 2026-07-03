@@ -1289,10 +1289,20 @@ $('document').ready(function() {
       }
       // preserve the original by creating a clone of the trinket
       this._trinket = $.extend(true, {}, trinket);
+      // Track the last-saved/loaded code as the modification baseline. Every
+      // canonical change (init, load, fork/create save, revert) flows through
+      // setTrinket, so the baseline advances with them. The client-side draft
+      // RESTORE, however, writes _trinket.code directly (bypassing setTrinket),
+      // so a restored-but-unsaved edit still reads as modified. See isModified().
+      this._savedCode = this._trinket.code;
     },
     isModified : function() {
       var value = this.getValue();
-      var modified = value !== (this._trinket.code || '') || this.settingsModified();
+      // Compare against the last-saved baseline, NOT _trinket.code: the draft
+      // restore overwrites _trinket.code with the cached edit, which would make
+      // a genuinely-modified restored session read as unmodified — so Share would
+      // return the original URL instead of forking the edit. See setTrinket().
+      var modified = value !== (this._savedCode || '') || this.settingsModified();
       return modified;
     },
     settingsModified : function() {
@@ -1334,7 +1344,12 @@ $('document').ready(function() {
         url += '?library=true';
       }
 
-      $.post(url, data)
+      // POST as JSON, not form-encoded: the payload includes assets (array) and
+      // settings (object), which $.post's form encoding flattens to strings —
+      // failing the route's Joi validation (assets must be array / settings must
+      // be object). That returns 200 with no data, and the client would then
+      // fabricate a dead MD5(undefined) share URL. JSON preserves the types.
+      $.ajax({ url : url, type : 'POST', contentType : 'application/json', data : JSON.stringify(data) })
       .done(function(result) {
         self.setTrinket(result.data);
         $('#emailToken').val('');
@@ -1367,7 +1382,9 @@ $('document').ready(function() {
 
       data.lang = this.getType();
 
-      $.post(url, data)
+      // POST as JSON (see fork() above): assets/settings must keep their array/
+      // object types through validation, which form encoding would break.
+      $.ajax({ url : url, type : 'POST', contentType : 'application/json', data : JSON.stringify(data) })
       .done(function(result) {
         self.setTrinket(result.data);
         $('#emailToken').val('');
