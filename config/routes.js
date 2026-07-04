@@ -19,21 +19,6 @@ routes = [
     enable : true
   },
   {
-    route : 'GET /signup auth.loginPage',
-    html  : 'login.html'
-  },
-  {
-    route : 'GET /login auth.loginPage',
-    html  : 'login.html',
-    config : {
-      validate : {
-        query : {
-          next : Joi.string().optional()
-        }
-      }
-    }
-  },
-  {
     route  : 'GET /welcome pages.welcome',
     config : { auth: 'session' }
   },
@@ -41,11 +26,6 @@ routes = [
     route  : 'GET /home pages.home',
     html   : 'home.html',
     config : { auth: 'session' }
-  },
-  {
-    route    : 'GET /logout auth.logout',
-    cookie   : true,
-    redirect : '/'
   },
   {
     route : 'GET /account-deleted users.deleted'
@@ -429,25 +409,6 @@ routes = [
     route : 'GET /docs/colors pages.index',
     html  : 'docs/colors.html'
   },
-  {
-    route : 'GET /auth/google auth.google',
-    config : {
-      auth : false
-    }
-  },
-  {
-    route : 'GET /auth/google/callback auth.googleCallback',
-    cookie  : true,
-    success: {
-      redirect:  '{redirectTo}'
-    },
-    fail: {
-      redirect: '/signup'
-    },
-    config : {
-      auth : false
-    }
-  },
   // ── LTI 1.3 — Connect your LMS (instructor-gated) ───────────────────────────
   // Approved instructors mint a Dynamic Registration link to hand to their LMS admin.
   {
@@ -584,5 +545,12 @@ config.constants.trinketLangs.forEach(function(lang) {
       }
   });
 });
+
+// Auth provider routes — a deploy uses exactly ONE provider
+// (config.auth.provider: 'local' | 'firebase'); everything provider-specific
+// (login/signup pages, session establishment, password flows, OAuth redirects)
+// lives behind config/auth_routes.js. The rest of the app only sees the
+// session ('request.user').
+routes = routes.concat(require('./auth_routes'));
 
 module.exports = routes;

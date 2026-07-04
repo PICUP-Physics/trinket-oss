@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://www.gstatic.com/firebasejs/ui/6.1.0/firebase-ui-auth.css">
+<style>
+  .auth-page-wrapper { padding: 40px 0; }
+  #firebaseui-auth-container { max-width: 400px; margin: 0 auto; }
+  #auth-error { display: none; max-width: 400px; margin: 10px auto 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="auth-page-wrapper">
+  <div class="row">
+    <div class="medium-8 medium-offset-2 small-12 columns text-center">
+      <h2>Sign In</h2>
+      <p class="subheader">Sign in or create an account below.</p>
+    </div>
+  </div>
+
+  <div id="firebaseui-auth-container"></div>
+
+  <div id="auth-error" class="row">
+    <div class="medium-8 medium-offset-2 small-12 columns">
+      <div data-alert class="alert-box alert radius">
+        <span id="auth-error-message"></span>
+        <a href="#" class="close">&times;</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/ui/6.1.0/firebase-ui-auth__en.js"></script>
+<script>
+(function() {
+  var firebaseConfig  = {% if firebaseConfig %}{{ firebaseConfig | json | safe }}{% else %}{}{% endif %};
+  var authEmulatorUrl = {% if authEmulatorUrl %}{{ authEmulatorUrl | json | safe }}{% else %}null{% endif %};
+
+  firebase.initializeApp(firebaseConfig);
+
+  if (authEmulatorUrl) {
+    firebase.auth().useEmulator(authEmulatorUrl, { disableWarnings: true });
+  }
+
+  var ui = new firebaseui.auth.AuthUI(firebase.auth());
+
+  function showError(message) {
+    document.getElementById('auth-error-message').textContent = message;
+    document.getElementById('auth-error').style.display = 'block';
+  }
+
+  ui.start('#firebaseui-auth-container', {
+    signInOptions: [
+      firebase.auth.EmailAuthProvider.PROVIDER_ID,
+      firebase.auth.GoogleAuthProvider.PROVIDER_ID
+    ],
+    signInFlow: 'popup',
+    callbacks: {
+      signInSuccessWithAuthResult: function(authResult) {
+        authResult.user.getIdToken().then(function(idToken) {
+          return fetch('/api/auth/session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ idToken: idToken })
+          });
+        })
+        .then(function(response) {
+          return response.json().then(function(data) {
+            return { ok: response.ok, status: response.status, data: data };
+          });
+        })
+        .then(function(result) {
+          if (result.ok) {
+            window.location.href = result.data.redirect || '/welcome';
+          } else {
+            var msg = (result.data && result.data.message) || 'Access denied.';
+            showError(msg);
+            firebase.auth().signOut();
+          }
+        })
+        .catch(function(err) {
+          showError('Something went wrong. Please try again.');
+          firebase.auth().signOut();
+        });
+
+        return false; // prevent FirebaseUI from handling the redirect
+      },
+      signInFailure: function(error) {
+        showError(error.message || 'Sign-in failed. Please try again.');
+        return Promise.resolve();
+      }
+    },
+    tosUrl: '/terms',
+    privacyPolicyUrl: '/privacy'
+  });
+})();
+</script>
+{% endblock %}

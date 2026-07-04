@@ -28,6 +28,11 @@ features:
   pyodideVersion: '0.28.1'  # Pyodide CDN version — single source of truth for bootstrap script and indexURL
 
 auth:
+  # Auth provider — a deployment uses exactly ONE ('local' or 'firebase').
+  # 'local' = stock email/password (login form, bcrypt, forgot-pass flow).
+  # 'firebase' = FirebaseUI + Google OAuth; set in the deploy overlay along
+  # with the firebase client config below. See config/auth_routes.js.
+  provider: local
   # Emails that bypass the instructor/roster check and have full admin access
   adminEmails: []
   # Approval-tier profile (instructor-run deployments). When true, forking/creating
