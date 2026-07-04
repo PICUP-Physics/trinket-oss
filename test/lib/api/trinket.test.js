@@ -56,6 +56,26 @@ describe('Trinket Creation', () => {
       trinketLang      = flow.lastResponse.body.data.lang;
     });
 
+    // Regression: GET /api/trinkets (the My-Trinkets list). The original
+    // implementation was a raw-mongoose aggregate that HANGS on the firestore
+    // backend (driver buffers forever with no mongo connection) — caught live
+    // on the Cloud Run trial, invisible here because the list had no coverage.
+    // On the old code this test times out on the firestore profile.
+    describe('When listing my trinkets', () => {
+      it('should include the new trinket in the list', async () => {
+        await flow.get('/api/trinkets');
+        expect(flow.lastResponse.statusCode).toEqual(200);
+        const ids = flow.lastResponse.body.data.map((t) => t.id.toString());
+        expect(ids).toContain(trinketId.toString());
+      });
+
+      it('should honor the limit parameter', async () => {
+        await flow.get('/api/trinkets?limit=1');
+        expect(flow.lastResponse.statusCode).toEqual(200);
+        expect(flow.lastResponse.body.data.length).toBeLessThanOrEqual(1);
+      });
+    });
+
     it('should return a new trinket', () => {
       expect(flow.wasOk).toBe(true);
       expect(flow.lastResponse.statusCode).toEqual(200);
