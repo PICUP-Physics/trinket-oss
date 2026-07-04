@@ -429,7 +429,9 @@ workers:
     outputDir: '/tmp/' # should be readable by nginx
     templateUrl: 'http://127.0.0.1/tmp/' # should be an nginx alias pointing to outputDir
 db:
-  backend: firestore
+  # Stock deployments use MongoDB via Mongoose. Firestore deployments override
+  # this in their overlay (production-cloudrun.yaml already sets it).
+  backend: mongoose
   firestore:
     projectId: ''   # Override in local.yaml or via GOOGLE_CLOUD_PROJECT env var
   mongo:

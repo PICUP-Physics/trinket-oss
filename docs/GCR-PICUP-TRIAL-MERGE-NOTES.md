@@ -42,6 +42,7 @@ of 20 files; only 5 needed real composition.
 | `vite.config.mjs` | **combine**: picup's `loadPaths` + gcr's `quietDeps`/`silenceDeprecations` (compatible sass options) |
 | `_brand-theme.scss`, `_nav.scss`, `_generic.scss` | **picup's** fallback palette — gcr rebrands via `--brand-*` custom props per deploy (the theming design working as intended) |
 | `config/default.yaml` | **compose**: picup's feature values (`requireAuthToFork: false`, `pyodide: true`) + gcr's additive `courseImport` flag + gcr's additive `auth:`/`lti:` sections (inert empty defaults) + picup's `app:` branding/theme verbatim + **two NEW flags** (see Design decisions) |
+| `config/default.yaml` (follow-up) | **CAUGHT DURING DEPLOY-TEST SETUP**: the merged file shipped `db.backend: firestore` as the DEFAULT — violates "Mongo stays picup's default". Only masked in CI because `test.yaml` pins `backend: mongoose`. Fixed to `mongoose`; firestore deploys get it from `production-cloudrun.yaml`/overlays. Lesson for the real merge: grep the merged default.yaml for backend-flavored defaults (`db.backend`, `storage.backend`, session `cache.backend`) — config files have no test coverage of their DEFAULT values. |
 | `config/api_routes.js` | **gcr's** — adds `pre: ['canCreateCourse(user)']` to course-create/import routes (see Design decisions) |
 | `package-lock.json` | regenerated in container, never hand-merged |
 
