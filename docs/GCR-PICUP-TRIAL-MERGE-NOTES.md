@@ -287,6 +287,11 @@ Next session: walk firestore-backend.js against 1/3/5/6 (likely one or two
 shared root causes in query translation — $inc, $or, deletedAt filters);
 verify against mandi prod data (are fork counts all 0?).
 
+**RESOLVED (2026-07-04, `b3bfa39` + follow-ups — see "Post-publish fixes"
+below): all 7 traced to 4 firestore-backend root causes; both profiles now
+fully green.** The two live-prod-bug candidates (fork counters, reset-pass
+plaintext) still need checking against mandi data.
+
 ## PR #39 (Todd: "My Courses" page) merged in (2026-07-04)
 
 Probe-merge measured, then real-merged: **exactly one conflict**, in
@@ -328,6 +333,96 @@ Gotchas recorded for whoever repeats this:
   `formName=signup` field, and Joi email validation rejects non-real TLDs
   (`.local`) — use `@example.com`.
 
+## Post-publish fixes (2026-07-04, commits `d7550c8`…`28f46bf`)
+
+Everything found after the deploy-validation session above, while exercising
+the live Cloud Run trial + both test profiles. Suite grew 135→141 tests
+(regression coverage for the live catches).
+
+### 🏁 STATUS: GREEN/GREEN — both profiles 139 pass / 2 skip / 0 fail
+
+First time the full suite passes on BOTH backends (mongo `28f46bf`,
+firestore re-verified same commit). The trial branch is test-complete.
+
+### The 4 firestore-backend root causes (`b3bfa39`) — resolves all 7 failures
+
+1. **`doc.deleteOne` missing** on FirestoreDocument (Mongoose 6 API) — broke
+   user.test cleanups AND `Course.deleteCourse` (ends in `self.deleteOne()`;
+   the TypeError made deletes silently fail → deleted courses kept serving
+   200). Aliased to `remove()`.
+2. **Dotted keys treated as literal field names** in
+   `findByIdAndUpdate`/`findOneAndUpdate` upsert → `set()` paths: fork/run
+   counters wrote to a field literally named `"metrics.forks"` and
+   `doc.metrics` never existed. Now expanded to nested maps for `set()`;
+   `update()` keeps native dotted-path handling.
+   **🔴 LIVE-PROD BUG CANDIDATE — check mandi: are all fork counts 0?**
+3. **`isModified()` blind to direct assignment** (only saw `set()`-written
+   fields): `user.password = x` in reset-pass skipped the `encryptPassword`
+   hook and stored **plaintext** → post-reset logins failed. Now also diffs
+   against the post-defaults snapshot.
+   **🔴 LIVE-PROD BUG CANDIDATE — check mandi users for plaintext password
+   fields (any user who ever used forgot-password). Potentially urgent.**
+4. **Signup gate now honors `auth.requireApprovedAccount`** (knob
+   consistency: open deploys accept any signup on EVERY provider;
+   roster/allowlist only gates instructor-run deploys). Pinned by a
+   regression test (`2ded17c`).
+
+### Trinket-list merge slip (`f6033b5`, caught LIVE on the Cloud Run trial)
+
+`/library/trinkets` spun on "loading…": the merge took picup's controller
+wholesale (right call for import/export) but that reverted gcr's
+backend-neutral list rewrite — picup's raw-mongoose aggregate buffers forever
+on firestore (mongoose never connects). Ported gcr's list back (findByOwner +
+in-JS filter/sort/cursor); **zero raw-mongoose calls remain in controllers**.
+`GET /api/trinkets` had ZERO test coverage (how this shipped invisibly) — now
+covered (`2ded17c`, times out on pre-fix code = retroactive RED).
+
+Follow-up (`28f46bf`): the ported list then failed on MONGO — the folderless
+filter (`!t.folder`) ran on raw mongoose Documents, where an unset nested
+path reads back as truthy `{}`, dropping every unfiled trinket. Fix: hoist
+the `toObject()` normalize ahead of the filter (minimize collapses `{}` →
+`undefined`; firestore docs unaffected). This was the last red test.
+
+### node-config 0.4 runtime.json landmine (`f6033b5`, `5bf0da0`)
+
+node-config 0.4 **persists runtime config mutations to `config/runtime.json`
+and reloads it with TOP priority on next boot.** Consequences found:
+- FS-profile test runs poisoned working trees: later mongo-profile runs
+  silently ran firestore-against-nothing (the "18 files failed" wall).
+- **FS-profile green was ACCIDENTAL**: a previous run's persisted
+  `backend=firestore` applied at module load — solo-file FS runs never
+  worked. Real fix (`e015539`): the harness flips the backend at
+  setup-module load (test files require models at module top, BEFORE any
+  beforeAll — backend-factory was binding models to unconnected mongoose →
+  "buffering timed out").
+- The deploy-dir merge made the LIVE app write one too.
+Disabled via `NODE_CONFIG_PERSIST_ON_CHANGE=N` /
+`NODE_CONFIG_DISABLE_FILE_WATCH=Y` in app.js; vitest globalSetup deletes any
+stale runtime.json. (Stray `config/runtime.json.tmp-*` litter in older trees
+is debris from this — delete on sight.)
+
+### deploys/ per-deploy customization (`d7550c8`, `eb65e28`)
+
+`TRINKET_DEPLOY=<name>` overlays `deploys/<name>/{config,views,public}` onto
+the stock app (yaml deep-merged onto node-config's singleton — 0.4.x has no
+multi-dir NODE_CONFIG_DIR; views/public shadow by filename). `deploys/` is
+gitignored; **decision: each deploy folder is a clone of a private
+per-deploy repo** (branding + overlays out of public history; an existing
+local-production.yaml moves over unchanged). Steve to create deploy-mandi /
+deploy-uindy repos (MIAuthors org). Caveat in the header comment: deploy
+yaml wins over EVERYTHING incl. NODE_CONFIG env — keep host-specific values
+out of deploy config.
+
+### Test-loop portability note (2026-07-04, intelmini)
+
+The container test loop reproduces webapps results exactly on intelmini
+(Intel Mac mini, native amd64), BUT: a clone carrying gitignored deploy
+overlays (`config/local.yaml` sets `db.backend: firestore`) breaks the suite
+wholesale — node-config loads local.yaml AFTER test.yaml, so every file dies
+on GCP "Could not load the default credentials". Run tests from a clean
+clone, or mask the overlay in the container:
+`-v /path/to/empty.yaml:/app/config/local.yaml:ro`.
+
 ## Bottom line for the real merge (updated)
 
 The mechanical merge is a day's work (done here). The REAL work items are:
@@ -337,8 +432,15 @@ The mechanical merge is a day's work (done here). The REAL work items are:
    + Andrew sign-off. gcr overlays must set: both flags true +
    `auth.provider: firebase` + `db.backend: firestore`.
 3. ~~userByUsername lookup~~ ✅ fixed (backend-aware findById in model.js).
-4. Storage seam: 3 files.test.js failures (stub storage-backend in tests, or
-   mirror the auth facade for storage). Only open code item.
-5. Test updates for deliberate Store-layer changes (findById $or internals
-   assertion — 1 test).
+4. ~~Storage seam: 3 files.test.js failures~~ ✅ **not the seam** — see
+   "Final 3 failures" above; both real causes fixed.
+5. ~~Test updates for deliberate Store-layer changes~~ ✅ profile-aware
+   findById assertion landed in `b3bfa39`.
 6. Components-pipeline unification (pyodide.html css path).
+7. **NEW — verify the two live-prod bug candidates against mandi** (fork
+   counters in a literal `"metrics.forks"` field; plaintext passwords from
+   reset-pass) — see "Post-publish fixes". The plaintext one is potentially
+   urgent.
+
+As of `28f46bf` the suite is **green/green on both profiles (139/2/0)** —
+the firestore-profile axis flagged above is now validated.
