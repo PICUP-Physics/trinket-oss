@@ -118,11 +118,85 @@ Kept from gcr without a flag (additive, inert when unconfigured):
 - `docker-compose.gcr.yml` naming/placement: fine for trial; real merge may
   want `docker/` subdir or profiles.
 
+## Stage 1 rehearsal: tests/rebuild → merged tree (2026-07-04)
+
+Merged `tests/rebuild` into the trial branch (`8c81207`): **6 conflicts, all
+trivial** — `.gitignore` (combine, +`coverage`), `.nvmrc` (identical both
+sides), `Dockerfile` (keep gcr's production one with the pinned rsWVPRunner
+glowscript block; tests/rebuild's minimal variant discarded), 2× modify/delete
+on dead mocha files `test/setup.js` + `test/lib/models/trinket.js` (**delete**
+— the Vitest rebuild deliberately replaced them; gcr's edits were to the
+broken harness), package-lock (regenerated, union confirmed: vitest +
+firebase-admin both present). **Stage 1 will be cheap.**
+
 ## Validation plan
 
 1. ~~Resolve all 20 → commit the trial merge~~ ✅ `015e0fe`
-2. Merge `tests/rebuild` (122-test Vitest suite) into the trial branch —
-   doubles as a Stage 1 conflict rehearsal.
-3. Run the suite in the node:20 amd64 container (fresh `gcr-trial-nm` volume).
-4. Record failures here — each failure in an auto-merged file is a finding
-   for the real merge.
+2. ~~Merge `tests/rebuild` into the trial branch~~ ✅ `8191c6b` (6 trivial
+   conflicts; amended — the first commit `8c81207` had accidentally staged a
+   still-conflicted package-lock)
+3. ~~Run the suite in the node:20 amd64 container~~ ✅ see results
+4. ~~Record failures~~ ✅ below
+
+## Test results against the merged tree (2026-07-04)
+
+**62 pass / 73 fail / 2 skip (137).** Control: this suite is ~122-green on its
+own branch against plain picup/main → the merge broke ~60-70 assertions.
+**BUT the taxonomy collapses almost entirely into ONE root cause:**
+
+### 🔴 HEADLINE FINDING: the merge silently deletes picup's local password auth
+
+- gcr's `config/routes.js` (auto-merged in, NO conflict) replaced
+  `GET /login pages.login` + **`POST /login users.login`** + the whole
+  forgot-pass route block with `GET /login auth.loginPage` (Firebase login
+  page). POST /login, POST /signup, forgot-pass → **404**.
+- gcr's `lib/models/user.js` (its auth region auto-merged) dropped
+  `encryptPassword` / `comparePassword` entirely (Firebase owns passwords).
+- Cascade: registration/login flows dead → `flow.switchUser` fails →
+  ~60 downstream test failures (admin/course/files/legacy/login/logout/
+  profile/trinket API tests). This is EXACTLY the silent-auto-merge breakage
+  class the test run was designed to expose — and the suite caught it.
+
+**Design decision needed (the biggest of the whole merge): single main must
+support BOTH auth stacks, config-selected.** Sketch: keep picup's local
+email/password stack (routes, users.login, encryptPassword/comparePassword
+hooks) as the default; gcr overlay switches to Firebase/Google (+ LTI). The
+model hooks can stay unconditionally (no-op when no password is ever set);
+the route table needs a config gate (auth.local.enabled vs auth.firebase).
+Restoring + gating this is the main body of work the real merge adds beyond
+what this trial already resolved.
+
+### Secondary findings (real, smaller)
+
+- `Trinket.findById` now queries `$or:[{_id},{shortCode}]` (gcr Store layer,
+  deliberate) — 1 test asserts the old internals; update the test.
+- `userByUsername` CastError: merged helper casts a username ('testing') to
+  ObjectId — gcr's Store-layer lookup semantics differ from picup's
+  `findByLogin`; needs a look during the real merge (affects /u/:username
+  pages → sample-course page 500).
+- `[instructorAuth] instructor Datastore disabled` logs on every boot —
+  correct default-off behavior, good sign for the config-gating story.
+
+### Process gotchas (for CI / the real merge)
+
+- npm cannot re-resolve the `trinketapp/marked` git-dep from inside a git
+  WORKTREE in a container (the `.git` pointer file references an unmounted
+  host path; git aborts; npm falls back to ssh and fails). Workaround:
+  generate package-lock in a non-git temp dir (`cp package.json /lockgen && cd
+  /lockgen && npm install --package-lock-only`). Also: rehost/registry-pin
+  the marked fork eventually (same theme as the components-tarball backlog).
+- `npm install --package-lock-only` starting from a *valid* older lock keeps
+  git deps pinned (no network git); starting from a broken/absent lock does a
+  full re-resolve and hits the git-dep problem. Never hand-merge a lockfile;
+  never trust a silent `>/dev/null` regen — verify with `json.load`.
+
+## Bottom line for the real merge (updated)
+
+The mechanical merge is a day's work (done here). The REAL work items are:
+1. **Dual-stack auth restoration + config gating** (the headline above) — the
+   one genuinely new engineering task the trial surfaced.
+2. The two policy flags (auth.requireApprovedAccount, auth.restrictCourseCreation)
+   + Andrew sign-off.
+3. userByUsername lookup semantics reconcile.
+4. Test updates for deliberate Store-layer changes (findById $or).
+5. Components-pipeline unification (pyodide.html css path).
