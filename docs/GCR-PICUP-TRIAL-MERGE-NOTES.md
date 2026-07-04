@@ -92,6 +92,21 @@ Kept from gcr without a flag (additive, inert when unconfigured):
 `canInitiateLtiRegistration` (fails closed without LTI config),
 `canCreateCourse` server-method registrations, `auth:`/`lti:` config sections.
 
+3. **GCP is all-or-none (Steve, 2026-07-04): `db.backend: firestore` requires
+   `auth.provider: firebase`** (+ GCS-family storage). DIY/local password auth
+   with the firestore backend is NOT a supported deployment shape — the
+   plaintext-reset bug class (see "Post-publish fixes") exists precisely in
+   that never-actually-deployed combination. The two supported shapes are:
+   - **self-host**: mongoose + local auth (+ optional Google OAuth) +
+     S3-compatible storage (garage/minio/AWS) — stock picup, the compose stack.
+   - **GCP**: firestore + Firebase Auth + GCS — mandi/uindy/Cloud Run, and the
+     gcr dev compose stack (full emulator suite: auth+firestore+storage).
+   Enforcement TBD at the real merge (startup-check warn vs production
+   fail-closed with an explicit `allowUnsupportedConfig` escape hatch).
+   CAVEAT the automated FS test profile currently authenticates via local
+   auth against the firestore emulator (harness convenience, not a supported
+   shape) — see the auth-emulator open item before enforcing unconditionally.
+
 ## Findings for the real merge
 
 1. All 5 open PRs merge cleanly into current picup/main — Stage 0 is friction-free.
@@ -118,6 +133,12 @@ Kept from gcr without a flag (additive, inert when unconfigured):
 - The 58 auto-merged files are unaudited — test suite run is the probe.
 - `docker-compose.gcr.yml` naming/placement: fine for trial; real merge may
   want `docker/` subdir or profiles.
+- **Wire the Firebase AUTH emulator into the automated FS test profile**:
+  mint users/sessions via the auth emulator's REST API instead of
+  `POST /login` (flow.cjs). Then the FS profile tests exactly what GCP-shape
+  deploys run, the last local-auth-on-firestore user disappears, and the
+  all-or-none rule (design decision 3) can be enforced without a test-env
+  exemption. Real harness work — new user/session fixture path.
 
 ## Stage 1 rehearsal: tests/rebuild → merged tree (2026-07-04)
 
