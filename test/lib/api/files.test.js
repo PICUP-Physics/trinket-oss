@@ -120,7 +120,11 @@ describe('Files', () => {
     it('should download the file', () => {
       expect(flow.wasOk).toBe(true);
       expect(flow.lastResponse.statusCode).toBe(200);
-      expect(flow.lastResponse.headers['content-disposition']).toBe('attachment; filename=transparent.gif');
+      // Image-mime files stream inline (no attachment header) so embeds can
+      // render them. The old `/^image/.test(file.type)` check could never match
+      // (type is only 'embed'/'download'), so the legacy always-attach behavior
+      // this assertion used to encode was a bug.
+      expect(flow.lastResponse.headers['content-disposition']).toBeUndefined();
       expect(flow.lastContentType).toContain('image/gif');
     });
   });
