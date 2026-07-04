@@ -247,6 +247,45 @@ the real convergence, pending: Andrew's sign-off on the policy flags + the
 mongoose backend only — a Firestore-emulator run of the same suite is the
 one axis not yet validated).
 
+## Firestore-profile suite run (2026-07-04, trial commit `1aeb898`)
+
+**First-ever run of the suite against the Firestore backend: 128 pass / 7
+fail / 2 skip.** Infrastructure (committed on the trial branch, reusable for
+CI):
+- `TEST_DB_BACKEND=firestore` branch in `test/helpers/vitest-setup.cjs`
+  (backend config, memory session cache, per-test emulator wipe via
+  `DELETE /emulator/v1/.../documents`, mongoose waits skipped).
+- `test/firestore-emulator.Dockerfile` — node:20 + JRE 11 + standalone
+  emulator jar v1.19.8 (no firebase-tools). Build once, ~493MB.
+- Must run `--fileParallelism=false` (one shared emulator project).
+- Auth-provider=firebase itself is NOT covered (would need the Firebase AUTH
+  emulator) — suite runs local-auth against the firestore DB backend.
+
+### The 7 failures — mostly LIVE gcr-prod bug candidates
+
+gcr production runs this same backend, so backend-semantics failures here are
+likely live prod bugs, not merge regressions:
+
+1. `metrics.forks` not incremented after fork — `findByIdAndUpdate`/`$inc`
+   semantics on firestore-backend. **If real: fork counts never increment on
+   mandi/uindy today.**
+2. `metrics.runs` missing after run — same family.
+3. Course delete → still exists — soft-delete (`deletedAt`) update or the
+   not-found filtering on firestore.
+4. Forgot-pass full flow (reset key → save → login) — first password-flow
+   exercise EVER on firestore (gcr prod never runs it; only matters post-merge
+   for hypothetical firestore+local deploys — low priority).
+5. `findByLogin` by USERNAME (email works — login flows pass) — alternateIds
+   `$or` on firestore-backend; check how firestore-backend implements $or.
+6. `findAdminList` — role/populate query semantics.
+7. `findById` internals assertion — test mocks findOne and asserts the query
+   shape; the backend-aware `_id` arm changes the shape per profile. Test
+   needs to be profile-aware (test issue, not code).
+
+Next session: walk firestore-backend.js against 1/3/5/6 (likely one or two
+shared root causes in query translation — $inc, $or, deletedAt filters);
+verify against mandi prod data (are fork counts all 0?).
+
 ## Bottom line for the real merge (updated)
 
 The mechanical merge is a day's work (done here). The REAL work items are:
