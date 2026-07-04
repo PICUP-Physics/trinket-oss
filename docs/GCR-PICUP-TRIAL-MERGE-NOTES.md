@@ -287,6 +287,36 @@ Next session: walk firestore-backend.js against 1/3/5/6 (likely one or two
 shared root causes in query translation — $inc, $or, deletedAt filters);
 verify against mandi prod data (are fork counts all 0?).
 
+## Deploy validation — BOTH profiles run for real (2026-07-04)
+
+Beyond the test suite, both sides of the auth/backend facade were booted as
+actual deployments from this branch (via child branch `trial/deploy-test`,
+identical code + gitignored overlays):
+
+- **Firestore/Firebase profile — LIVE on Cloud Run** in a throwaway GCP
+  project (`trinket-merge-test`, separate billing alerts, $10/mo budget).
+  Overlay flips exactly four knobs: `auth.provider: firebase`,
+  `db.backend: firestore`, `requireApprovedAccount: true`,
+  `restrictCourseCreation: true` — this is the dress rehearsal for the
+  mandi/uindy overlays at the real merge. Result: FirebaseUI login page
+  served, APIs 401 for anonymous, Firestore indexes/rules deployed clean.
+- **Mongo/local profile — full docker-compose stack** (app + mongo:5 +
+  redis + garage S3) with NO overlay (stock defaults): local login form
+  served, and a scripted signup → logout → login → /home round-trip passed,
+  proving the RESTORED password auth (bcrypt pre-save + comparePassword)
+  end-to-end in a running server, not just under Vitest.
+
+Gotchas recorded for whoever repeats this:
+- Compose named volume `node_modules` seeds from the image ONLY when empty —
+  a stale volume silently shadows a rebuilt image's deps (symptom:
+  MODULE_NOT_FOUND for a dep that IS in the image). `docker compose down -v`
+  before first run of a new branch.
+- `deploy-cloudrun.sh` budget step uses `timeout`, absent on stock macOS —
+  deploy exits 127 AFTER a fully successful deploy. Use coreutils or guard it.
+- Smoke-test payload quirks (not bugs): signup requires the hidden
+  `formName=signup` field, and Joi email validation rejects non-real TLDs
+  (`.local`) — use `@example.com`.
+
 ## Bottom line for the real merge (updated)
 
 The mechanical merge is a day's work (done here). The REAL work items are:
