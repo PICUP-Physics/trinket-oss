@@ -16,6 +16,14 @@ if (!Promise.prototype.fail) {
 }
 
 
+// node-config 0.4 persists any runtime config mutation to config/runtime.json
+// and reloads that file WITH TOP PRIORITY on the next boot — so a stale file
+// silently overrides yaml/env config edits (it burned both the test harness
+// and a deploy). We never use the runtime.json paradigm; disable it before
+// the first require('config').
+process.env.NODE_CONFIG_PERSIST_ON_CHANGE = process.env.NODE_CONFIG_PERSIST_ON_CHANGE || 'N';
+process.env.NODE_CONFIG_DISABLE_FILE_WATCH = process.env.NODE_CONFIG_DISABLE_FILE_WATCH || 'Y';
+
 // Resolve the per-deploy overlay folder (TRINKET_DEPLOY) BEFORE anything
 // requires 'config' — it extends NODE_CONFIG_DIR, which node-config reads once.
 require('./config/deploy-dir');
