@@ -3,8 +3,10 @@
 // Per-deploy customization folder (opt-in via TRINKET_DEPLOY).
 //
 // When TRINKET_DEPLOY=<name> is set, deploys/<name>/ overlays the stock app:
-//   deploys/<name>/config/  extra node-config directory (its local*.yaml /
-//                           production*.yaml win over the repo's config/)
+//   deploys/<name>/config/  yaml overlays deep-merged onto the loaded config
+//                           (default.yaml, {env}.yaml, local.yaml, local-{env}.yaml,
+//                           in that order — same names node-config uses, so an
+//                           existing local-production.yaml moves over unchanged)
 //   deploys/<name>/views/   nunjucks search path ahead of lib/views — a file
 //                           here shadows the stock template of the same name
 //   deploys/<name>/public/  static assets ahead of public/ — same-name shadowing
@@ -14,14 +16,32 @@
 // public history. Without TRINKET_DEPLOY this module is a no-op and the app
 // behaves exactly as stock.
 //
-// MUST be required before the first require('config') anywhere in the
-// process: node-config reads NODE_CONFIG_DIR once, at first load.
+// Implementation note: our node-config (0.4.x) predates multi-directory
+// NODE_CONFIG_DIR, so we deep-merge into its mutable singleton instead. That
+// means deploy yaml wins over EVERYTHING, including the NODE_CONFIG env var —
+// keep host-specific values (url.hostname etc.) out of deploy config files.
+// Require this before other app modules so every require('config') sees the
+// merged result.
 
 var path = require('path');
 var fs   = require('fs');
 
 var deployDir = null;
 var name = process.env.TRINKET_DEPLOY;
+
+function deepMerge(target, source) {
+  Object.keys(source).forEach(function(key) {
+    var s = source[key];
+    var t = target[key];
+    if (s && typeof s === 'object' && !Array.isArray(s) &&
+        t && typeof t === 'object' && !Array.isArray(t)) {
+      deepMerge(t, s);
+    } else {
+      target[key] = s;
+    }
+  });
+  return target;
+}
 
 if (name) {
   if (!/^[\w-]+$/.test(name)) {
@@ -34,8 +54,20 @@ if (name) {
 
   var configDir = path.join(deployDir, 'config');
   if (fs.existsSync(configDir)) {
-    var baseDir = process.env.NODE_CONFIG_DIR || path.resolve(__dirname);
-    process.env.NODE_CONFIG_DIR = baseDir + path.delimiter + configDir;
+    var config = require('config');
+    var yaml   = require('js-yaml');
+    var env    = process.env.NODE_ENV || 'development';
+    ['default.yaml', env + '.yaml', 'local.yaml', 'local-' + env + '.yaml']
+      .forEach(function(file) {
+        var p = path.join(configDir, file);
+        if (!fs.existsSync(p)) { return; }
+        var doc = yaml.safeLoad(fs.readFileSync(p, 'utf8'));
+        if (doc && typeof doc === 'object') {
+          deepMerge(config, doc);
+          // global logger does not exist yet this early in startup
+          console.log('[deploy-dir] merged ' + path.join('deploys', name, 'config', file));
+        }
+      });
   }
 }
 
