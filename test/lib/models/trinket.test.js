@@ -123,7 +123,12 @@ describe('Trinket model', () => {
         const doc     = 'foo';
         const findOne = vi.fn().mockResolvedValue(doc);
         const scope   = { model: { findOne } };
-        const query   = { shortCode: 'abc123' };
+        // On the firestore backend, findById also matches a raw-string _id
+        // (Firestore doc IDs are arbitrary strings; Mongo would CastError), so
+        // the query legitimately gains an $or arm there. See lib/models/model.js.
+        const query   = process.env.TEST_DB_BACKEND === 'firestore'
+          ? { $or: [{ _id: 'abc123' }, { shortCode: 'abc123' }] }
+          : { shortCode: 'abc123' };
 
         await new Promise((res, rej) =>
           Trinket.classMethods.findById.call(scope, 'abc123', (err, r) =>
