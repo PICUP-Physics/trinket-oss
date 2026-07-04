@@ -190,13 +190,56 @@ what this trial already resolved.
   full re-resolve and hits the git-dep problem. Never hand-merge a lockfile;
   never trust a silent `>/dev/null` regen — verify with `json.load`.
 
+## Dual-stack auth prototype (2026-07-04, trial commit `d0a233b`) — WORKS
+
+Steve's design steer: any single deploy uses either passport/local or firebase,
+NEVER both → hide the details behind a facade instead of sprinkling conditionals.
+
+**Implemented: `config/auth_routes.js` provider facade.**
+- One knob: `auth.provider: 'local' | 'firebase'` (default local = stock).
+- Each provider owns its COMPLETE route surface: local = GET/POST /login,
+  signup + POST /users, users.logout, forgot-pass ×4, activate-account ×2,
+  `login.html` (stock form, restored); firebase = auth.loginPage rendering
+  `login-firebase.html` (renamed from gcr's login.html), auth.logout,
+  /auth/google + callback (passport). Session establishment for firebase stays
+  POST /api/auth/session in api_routes.js (follow-up: could move into facade).
+- routes.js = one line: `routes.concat(require('./auth_routes'))`. Zero auth
+  conditionals anywhere else. Controllers untouched — both providers converge
+  on the same cookie session + ensureSeedAdminRole/ensureInstructorFlag
+  pipeline; the rest of the app only sees `request.user`.
+- User model: password field + bcrypt encryptPassword/comparePassword restored
+  UNCONDITIONALLY (no-op for firebase/google/lti accounts — they never set a
+  password). View selection lives in the provider route entries (html key), so
+  auth.loginPage needed no changes.
+- `model.js findById`: gcr's raw-string `_id` $or-arm (needed for Firestore's
+  string doc IDs) now fires ONLY on the firestore backend — Mongoose
+  CastErrors on non-ObjectId _id, which broke every /u/{username} page on
+  Mongo. Backend-aware guard via config.db.backend.
+
+**Result: suite went 62 → 132 pass (3 fail / 2 skip of 137)** — better than
+the ~122 control. The auth restoration is COMPLETE as far as the suite can see.
+
+### Remaining 3 failures = the storage seam (files.test.js only)
+
+2× upload timeout + 1× missing content-disposition. The trial resolved
+`lib/util/file.js` to gcr's `storage-backend` abstraction; the tests stub
+`aws-sdk` directly, so the backend's client never resolves → upload hangs.
+Fix options for the real merge: (a) tests stub `storage-backend` instead of
+aws-sdk, or (b) the mongoose/s3 storage path keeps constructing raw aws.S3 the
+way picup did (storage facade mirrors the auth facade). Contained, not a
+blocker.
+
 ## Bottom line for the real merge (updated)
 
 The mechanical merge is a day's work (done here). The REAL work items are:
-1. **Dual-stack auth restoration + config gating** (the headline above) — the
-   one genuinely new engineering task the trial surfaced.
+1. ~~Dual-stack auth restoration + config gating~~ ✅ **PROTOTYPED AND GREEN**
+   (`auth_routes.js` facade above — port this design to the real merge).
 2. The two policy flags (auth.requireApprovedAccount, auth.restrictCourseCreation)
-   + Andrew sign-off.
-3. userByUsername lookup semantics reconcile.
-4. Test updates for deliberate Store-layer changes (findById $or).
-5. Components-pipeline unification (pyodide.html css path).
+   + Andrew sign-off. gcr overlays must set: both flags true +
+   `auth.provider: firebase` + `db.backend: firestore`.
+3. ~~userByUsername lookup~~ ✅ fixed (backend-aware findById in model.js).
+4. Storage seam: 3 files.test.js failures (stub storage-backend in tests, or
+   mirror the auth facade for storage). Only open code item.
+5. Test updates for deliberate Store-layer changes (findById $or internals
+   assertion — 1 test).
+6. Components-pipeline unification (pyodide.html css path).
