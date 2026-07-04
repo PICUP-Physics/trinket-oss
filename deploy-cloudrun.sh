@@ -83,6 +83,20 @@ if [[ -f "${SCRIPT_DIR}/.env" ]]; then
   source "${SCRIPT_DIR}/.env"
 fi
 
+# Per-deploy overlay folder: with TRINKET_DEPLOY=<name>, deploys/<name>/.env
+# overrides the root .env, and the app loads deploys/<name>/{config,views,public}
+# at runtime (see config/deploy-dir.js). Lets ONE checkout drive many deploys.
+if [[ -n "${TRINKET_DEPLOY:-}" ]]; then
+  if [[ ! -d "${SCRIPT_DIR}/deploys/${TRINKET_DEPLOY}" ]]; then
+    echo "Error: TRINKET_DEPLOY='"'"'${TRINKET_DEPLOY}'"'"' but deploys/${TRINKET_DEPLOY}/ does not exist" >&2
+    exit 1
+  fi
+  if [[ -f "${SCRIPT_DIR}/deploys/${TRINKET_DEPLOY}/.env" ]]; then
+    # shellcheck disable=SC1090
+    source "${SCRIPT_DIR}/deploys/${TRINKET_DEPLOY}/.env"
+  fi
+fi
+
 GOOGLE_CLOUD_PROJECT="${GOOGLE_CLOUD_PROJECT:?Set GOOGLE_CLOUD_PROJECT in .env or the environment}"
 
 # Validate FIREBASE_CLIENT_CONFIG is present and is valid JSON with required fields
@@ -388,6 +402,9 @@ NODE_ENV: production
 NODE_APP_INSTANCE: cloudrun
 GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT}
 YAML
+if [[ -n "${TRINKET_DEPLOY:-}" ]]; then
+  echo "TRINKET_DEPLOY: ${TRINKET_DEPLOY}" >> "${ENV_VARS_FILE}"
+fi
 
 # Include hostname-dependent vars upfront when the URL is already known:
 # NO_TRAFFIC always has the URL (required); re-deploys have _LIVE_SERVICE_URL.
@@ -489,7 +506,7 @@ if [[ -z "${_LIVE_SERVICE_URL}" ]]; then
   echo "--- Patching NODE_CONFIG with service hostname (first deploy) ---"
   HOSTNAME="${PUBLIC_HOSTNAME:-$(echo "${SERVICE_URL}" | sed 's|https://||')}"
   # ^|^ makes | the delimiter so JSON commas/colons in values are safe.
-  _PATCH_VARS="NODE_ENV=production|NODE_APP_INSTANCE=cloudrun|GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}|NODE_CONFIG={\"app\":{\"url\":{\"hostname\":\"${HOSTNAME}\"}}}|GOOGLE_CALLBACK_URL=https://${HOSTNAME}/auth/google/callback|FIREBASE_CLIENT_CONFIG=${FIREBASE_CLIENT_CONFIG}"
+  _PATCH_VARS="NODE_ENV=production|NODE_APP_INSTANCE=cloudrun|GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}|${TRINKET_DEPLOY:+TRINKET_DEPLOY=${TRINKET_DEPLOY}|}NODE_CONFIG={\"app\":{\"url\":{\"hostname\":\"${HOSTNAME}\"}}}|GOOGLE_CALLBACK_URL=https://${HOSTNAME}/auth/google/callback|FIREBASE_CLIENT_CONFIG=${FIREBASE_CLIENT_CONFIG}"
   [[ -n "${_LIVE_ADMIN_EMAILS:-}" ]] && _PATCH_VARS="${_PATCH_VARS}|ADMIN_EMAILS=${_LIVE_ADMIN_EMAILS}"
   gcloud run services update "${SERVICE_NAME}" \
     --region="${GOOGLE_CLOUD_REGION}" \

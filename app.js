@@ -16,6 +16,10 @@ if (!Promise.prototype.fail) {
 }
 
 
+// Resolve the per-deploy overlay folder (TRINKET_DEPLOY) BEFORE anything
+// requires 'config' — it extends NODE_CONFIG_DIR, which node-config reads once.
+require('./config/deploy-dir');
+
 // initialize the global logger
 log = require('./config/log');
 

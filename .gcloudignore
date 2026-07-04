@@ -20,3 +20,9 @@ cleanup-cloudrun.sh
 scripts/
 SETUP.md
 docker-compose.yml
+
+# Per-deploy overlay folders ride along to Cloud Build (config/views/public),
+# but never their .env (tooling-only secrets; the app gets env from Cloud Run).
+!deploys/
+!deploys/**
+deploys/*/.env
