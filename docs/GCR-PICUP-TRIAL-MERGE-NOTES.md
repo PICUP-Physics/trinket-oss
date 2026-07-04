@@ -219,15 +219,33 @@ NEVER both → hide the details behind a facade instead of sprinkling conditiona
 **Result: suite went 62 → 132 pass (3 fail / 2 skip of 137)** — better than
 the ~122 control. The auth restoration is COMPLETE as far as the suite can see.
 
-### Remaining 3 failures = the storage seam (files.test.js only)
+### Final 3 failures: NOT the storage seam (hypothesis corrected)
 
-2× upload timeout + 1× missing content-disposition. The trial resolved
-`lib/util/file.js` to gcr's `storage-backend` abstraction; the tests stub
-`aws-sdk` directly, so the backend's client never resolves → upload hangs.
-Fix options for the real merge: (a) tests stub `storage-backend` instead of
-aws-sdk, or (b) the mongoose/s3 storage path keeps constructing raw aws.S3 the
-way picup did (storage facade mirrors the auth facade). Contained, not a
-blocker.
+The FileUtil stubs worked all along (they stub the facade level —
+`FileUtil.uploadMaterialFile`/`downloadMaterialFile` — which survives the
+merge unchanged). The real causes, both fixed (trial commit after `d0a233b`):
+
+1. **gcr production bug: `File.findById` override drops callbacks.** gcr's
+   File model overrides the generic findById with
+   `function(id){ return this.model.findById(id); }` (to skip the alternateIds
+   `$or`, which the firestore backend can't express) — but it IGNORES the
+   `(id, cb)` callback form. Any callback-style caller hangs forever (the 2×
+   30s timeouts). Fixed: override now honors the callback like the generic.
+   **Check gcr prod for other callback-form File.findById callers.**
+2. **The content-disposition test encoded a picup dead-branch bug.** picup's
+   `/^image/.test(file.type)` can never match (type ∈ embed/download), so
+   images were ALWAYS sent as attachment. gcr's mime-based check is the fix;
+   the test expectation was updated (image-mime streams inline).
+
+### 🏁 FINAL RESULT: 135 pass / 0 fail / 2 skip — FULLY GREEN
+
+The complete convergence (picup/main + 5 PRs + all 277 gcr commits +
+tests/rebuild + dual-auth facade + the fixes above) passes the entire suite
+on the Mongo/local-auth profile. The trial branch is a working candidate for
+the real convergence, pending: Andrew's sign-off on the policy flags + the
+5-PR gate + a firestore-profile test pass (suite currently exercises
+mongoose backend only — a Firestore-emulator run of the same suite is the
+one axis not yet validated).
 
 ## Bottom line for the real merge (updated)
 
