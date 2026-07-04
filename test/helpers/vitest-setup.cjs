@@ -204,23 +204,40 @@ function makeInMemoryRedisClient() {
 // model.js exposes its config (Lesson.plugins etc.) under the 'test' env.
 process.env.NODE_ENV = 'test';
 
+// Firestore profile: TEST_DB_BACKEND=firestore runs the same suite against the
+// Firestore emulator (FIRESTORE_EMULATOR_HOST must be set) instead of the
+// in-process mongo memory server. All test files share ONE emulator project,
+// so run this profile with --fileParallelism=false.
+const FS_MODE = process.env.TEST_DB_BACKEND === 'firestore';
+
 // Holds the in-memory redis client created during beforeAll so afterEach can
 // flush it, clearing login rate-limit counters between tests file-wide.
 let _redisClient;
 
 beforeAll(async () => {
-  // 1) Point config at the memory server BEFORE config/db (app.js) is required.
+  // 1) Point config at the right backend BEFORE config/db (app.js) is required.
   //    config/db.js connects at require-time, so this must run first.
   // `inject` isn't a Vitest global; pull it via dynamic import (works in CJS).
   const { inject } = await import('vitest');
-  const uri = inject('mongoUri');
-  const u = new URL(uri);
   const config = require('config');
-  config.db.mongo.host = u.hostname;
-  config.db.mongo.port = u.port;
-  // Give each test FILE its own unique database so parallel workers don't
-  // clobber each other's data via afterEach dropDatabase().
-  config.db.mongo.database = 'test_' + Math.random().toString(36).slice(2);
+  if (FS_MODE) {
+    if (!process.env.FIRESTORE_EMULATOR_HOST) {
+      throw new Error('TEST_DB_BACKEND=firestore requires FIRESTORE_EMULATOR_HOST');
+    }
+    config.db.backend   = 'firestore';
+    config.db.firestore = { projectId: process.env.GOOGLE_CLOUD_PROJECT || 'demo-trinket' };
+    // Sessions can't ride the mongoose connection here; use the in-memory
+    // catbox cache (same choice as the gcr docker-compose dev stack).
+    config.app.plugins.session.cache = { backend: 'memory' };
+  } else {
+    const uri = inject('mongoUri');
+    const u = new URL(uri);
+    config.db.mongo.host = u.hostname;
+    config.db.mongo.port = u.port;
+    // Give each test FILE its own unique database so parallel workers don't
+    // clobber each other's data via afterEach dropDatabase().
+    config.db.mongo.database = 'test_' + Math.random().toString(36).slice(2);
+  }
 
   // app.js exits(1) if the session cookie password is < 32 chars. Provide one.
   config.app.plugins.session.cookieOptions.password =
@@ -248,15 +265,22 @@ beforeAll(async () => {
   //    (assigned inside init) are registered before tests run.
   await require('../../app.js');
 
-  // 4) Wait for the mongoose connection to be ready.
-  await mongoose.connection.asPromise();
+  // 4) Wait for the mongoose connection to be ready (mongoose profile only —
+  //    config/db.js never connects when db.backend is firestore).
+  if (!FS_MODE) await mongoose.connection.asPromise();
 });
 
 afterEach(async () => {
   // NOTE: dropDatabase() removes indexes along with data, so DB-level unique
   // constraints (e.g. on username/email) are NOT enforced after the first test
   // in a file. Tests must rely on app-level uniqueness checks instead.
-  if (mongoose.connection.readyState === 1) {
+  if (FS_MODE) {
+    // Wipe the emulator between tests (equivalent of dropDatabase).
+    const projectId = (require('config').db.firestore || {}).projectId || 'demo-trinket';
+    await fetch('http://' + process.env.FIRESTORE_EMULATOR_HOST +
+      '/emulator/v1/projects/' + projectId + '/databases/(default)/documents',
+      { method: 'DELETE' });
+  } else if (mongoose.connection.readyState === 1) {
     await mongoose.connection.db.dropDatabase();
   }
   // Clear rate-limit counters from the Store's backing client between tests.
@@ -275,5 +299,5 @@ afterEach(async () => {
 });
 
 afterAll(async () => {
-  await mongoose.disconnect();
+  if (!FS_MODE) await mongoose.disconnect();
 });
