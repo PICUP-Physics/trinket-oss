@@ -210,7 +210,7 @@ function runCode() {
   });
 
   var glowscriptTextarea = 'block';
-  if (runMode && runMode === 'calculator' && (trinketVersion === '3.2.2' || parseFloat(trinketVersion) > 3.2)) {
+  if (runMode && runMode === 'calculator' && (trinketVersion === '3.2.2' || trinketVersion === '3.2.3' || parseFloat(trinketVersion) > 3.2)) {
     glowscriptTextarea = 'none';
   }
 
@@ -585,11 +585,18 @@ window.TrinketAPI = {
       doneCalled = true;
     }
 
+    // If the output iframe doesn't exist yet (trinket not yet run), skip snapshot
+    var frame = $('#glowscriptOutput')[0];
+    if (!frame) {
+      window.removeEventListener('message', snapshotHandler);
+      return done();
+    }
+
     // setup event listener
     window.addEventListener('message', snapshotHandler);
 
     // post message to iframe to take snapshot
-    output.contentWindow.postMessage('glowscript.snapshot', '*');
+    frame.contentWindow.postMessage('glowscript.snapshot', '*');
 
     // ensure done is called
     setTimeout(function() {

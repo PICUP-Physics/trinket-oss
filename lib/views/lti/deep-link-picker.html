@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row"><div class="small-12 medium-8 columns small-centered" ng-non-bindable>
+  {% if bothMode %}
+  {# Single-entry LMS (Moodle/D2L): offer BOTH modes as tabs. The Assignment tab is only
+     rendered when the launch allows a line item (assignmentAllowed). The Course/Topic tab is
+     always available. Both reuse the shared filter box and the existing .dl-course/.dl-item
+     markup so the client-side dlFilter keeps working. #}
+  <h3>Add Trinket Content to Your LMS</h3>
+  <p>Choose a graded <strong>Assignment</strong>, or link a whole <strong>Course or Topic</strong>. Your LMS adds it as a link that launches directly into Trinket.</p>
+
+  {% if not courses or courses | length == 0 %}
+    <p class="panel">You don't have any Trinket courses yet. Create a course or assignment in Trinket first, then return here.</p>
+  {% else %}
+    {# Self-styled tabs (don't rely on Foundation .button, which collapsed here). Active tab uses
+       the deploy brand color via the --brand-* custom property injected in base.html. #}
+    <div class="dl-tabs" style="margin:0 0 1rem;">
+      <button type="button" class="dl-tab-btn" data-tab="content" onclick="dlSelectTab('content')"
+              style="display:inline-block; padding:0.5rem 1rem; margin-right:0.4rem; border:1px solid #ccc; border-radius:3px; background:var(--brand-primary,#35429B); color:#fff; font-size:0.9rem; cursor:pointer; white-space:nowrap;">Course or Topic</button>
+      {% if assignmentAllowed %}
+      <button type="button" class="dl-tab-btn" data-tab="assignment" onclick="dlSelectTab('assignment')"
+              style="display:inline-block; padding:0.5rem 1rem; border:1px solid #ccc; border-radius:3px; background:#eee; color:#333; font-size:0.9rem; cursor:pointer; white-space:nowrap;">Assignment</button>
+      {% endif %}
+    </div>
+
+    <input type="text" id="dl-filter"
+           placeholder="Filter courses, topics and assignments…"
+           style="width:100%; box-sizing:border-box; margin-bottom:1rem; padding:0.5rem;"
+           oninput="dlFilter(this.value)">
+
+    <div class="dl-tab-panel dl-tab-active" data-tab="content">
+      {% for course in courses %}
+      <details class="dl-course" data-name="{{ course.name }}"
+               style="margin-bottom:0.5rem; border:1px solid #ddd; border-radius:3px; padding:0.5rem 0.75rem;">
+        <summary style="cursor:pointer; font-weight:bold;">{{ course.name }}</summary>
+        <ul class="no-bullet" style="margin:0.5rem 0 0;">
+          <li class="dl-item" data-name="{{ course.name }} whole course" style="margin-bottom:0.5rem;">
+            <form method="POST" action="/lti/deep-link/select" style="display:inline;">
+              <input type="hidden" name="targetType" value="course">
+              <input type="hidden" name="courseId" value="{{ course.id }}">
+              <input type="hidden" name="title" value="{{ course.name }}">
+              <button type="submit" class="button small">Whole course: {{ course.name }}</button>
+            </form>
+          </li>
+          {% for topic in course.topics %}
+          <li class="dl-item" data-name="{{ topic.title }}" style="margin-bottom:0.5rem;">
+            <form method="POST" action="/lti/deep-link/select" style="display:inline;">
+              <input type="hidden" name="targetType" value="topic">
+              <input type="hidden" name="courseId" value="{{ course.id }}">
+              <input type="hidden" name="targetId" value="{{ topic.lessonId }}">
+              <input type="hidden" name="title" value="{{ course.name }} — {{ topic.title }}">
+              <button type="submit" class="button small secondary">Topic: {{ topic.title }}</button>
+            </form>
+          </li>
+          {% endfor %}
+        </ul>
+      </details>
+      {% endfor %}
+    </div>
+
+    {% if assignmentAllowed %}
+    <div class="dl-tab-panel" data-tab="assignment" style="display:none;">
+      {% for course in courses %}
+        {% if course.assignments and course.assignments | length > 0 %}
+        <details class="dl-course" data-name="{{ course.name }}"
+                 style="margin-bottom:0.5rem; border:1px solid #ddd; border-radius:3px; padding:0.5rem 0.75rem;">
+          <summary style="cursor:pointer; font-weight:bold;">{{ course.name }}</summary>
+          <ul class="no-bullet" style="margin:0.5rem 0 0;">
+            {% for assignment in course.assignments %}
+            <li class="dl-item" data-name="{{ assignment.title }}" style="margin-bottom:0.5rem;">
+              <form method="POST" action="/lti/deep-link/select" style="display:inline;">
+                <input type="hidden" name="targetType" value="assignment">
+                <input type="hidden" name="targetId" value="{{ assignment.materialId }}">
+                <input type="hidden" name="courseId" value="{{ course.id }}"/>
+                <input type="hidden" name="title" value="{{ assignment.title }}">
+                <button type="submit" class="button small">{{ assignment.title }}</button>
+              </form>
+            </li>
+            {% endfor %}
+          </ul>
+        </details>
+        {% endif %}
+      {% endfor %}
+      {% if not anyAssignments %}
+      <p class="panel">None of your courses have assignments yet. Create an assignment in Trinket first, then return here.</p>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <p id="dl-no-match" class="panel" style="display:none;">No courses or items match your filter.</p>
+  {% endif %}
+
+  {% else %}
+  {% if contentMode %}
+  <h3>Add Trinket Content to Your LMS</h3>
+  <p>Open a course, then choose the whole course or a specific topic. Your LMS adds it as a link that launches directly into Trinket.</p>
+  {% else %}
+  <h3>Add a Trinket Assignment to Your LMS</h3>
+  <p>Open a course, then choose an assignment. Your LMS adds it as a graded link that launches directly into Trinket.</p>
+  {% endif %}
+
+  {% if not courses or courses | length == 0 %}
+    <p class="panel">You don't have any Trinket courses yet. Create a course or assignment in Trinket first, then return here.</p>
+  {% else %}
+    <input type="text" id="dl-filter"
+           placeholder="Filter courses and {% if contentMode %}topics{% else %}assignments{% endif %}…"
+           style="width:100%; box-sizing:border-box; margin-bottom:1rem; padding:0.5rem;"
+           oninput="dlFilter(this.value)">
+
+    {% if contentMode %}
+      {% for course in courses %}
+      <details class="dl-course" data-name="{{ course.name }}"
+               style="margin-bottom:0.5rem; border:1px solid #ddd; border-radius:3px; padding:0.5rem 0.75rem;">
+        <summary style="cursor:pointer; font-weight:bold;">{{ course.name }}</summary>
+        <ul class="no-bullet" style="margin:0.5rem 0 0;">
+          <li class="dl-item" data-name="{{ course.name }} whole course" style="margin-bottom:0.5rem;">
+            <form method="POST" action="/lti/deep-link/select" style="display:inline;">
+              <input type="hidden" name="targetType" value="course">
+              <input type="hidden" name="courseId" value="{{ course.id }}">
+              <input type="hidden" name="title" value="{{ course.name }}">
+              <button type="submit" class="button small">Whole course: {{ course.name }}</button>
+            </form>
+          </li>
+          {% for topic in course.topics %}
+          <li class="dl-item" data-name="{{ topic.title }}" style="margin-bottom:0.5rem;">
+            <form method="POST" action="/lti/deep-link/select" style="display:inline;">
+              <input type="hidden" name="targetType" value="topic">
+              <input type="hidden" name="courseId" value="{{ course.id }}">
+              <input type="hidden" name="targetId" value="{{ topic.lessonId }}">
+              <input type="hidden" name="title" value="{{ course.name }} — {{ topic.title }}">
+              <button type="submit" class="button small secondary">Topic: {{ topic.title }}</button>
+            </form>
+          </li>
+          {% endfor %}
+        </ul>
+      </details>
+      {% endfor %}
+    {% else %}
+      {% for course in courses %}
+        {% if course.assignments and course.assignments | length > 0 %}
+        <details class="dl-course" data-name="{{ course.name }}"
+                 style="margin-bottom:0.5rem; border:1px solid #ddd; border-radius:3px; padding:0.5rem 0.75rem;">
+          <summary style="cursor:pointer; font-weight:bold;">{{ course.name }}</summary>
+          <ul class="no-bullet" style="margin:0.5rem 0 0;">
+            {% for assignment in course.assignments %}
+            <li class="dl-item" data-name="{{ assignment.title }}" style="margin-bottom:0.5rem;">
+              <form method="POST" action="/lti/deep-link/select" style="display:inline;">
+                <input type="hidden" name="targetType" value="assignment">
+                <input type="hidden" name="targetId" value="{{ assignment.materialId }}">
+                <input type="hidden" name="courseId" value="{{ course.id }}"/>
+                <input type="hidden" name="title" value="{{ assignment.title }}">
+                <button type="submit" class="button small">{{ assignment.title }}</button>
+              </form>
+            </li>
+            {% endfor %}
+          </ul>
+        </details>
+        {% endif %}
+      {% endfor %}
+      {% if not anyAssignments %}
+      <p class="panel">None of your courses have assignments yet. Create an assignment in Trinket first, then return here.</p>
+      {% endif %}
+    {% endif %}
+
+    <p id="dl-no-match" class="panel" style="display:none;">No courses or items match your filter.</p>
+  {% endif %}
+  {% endif %}
+</div></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Client-side filter for the deep-link picker: hide non-matching courses/items as you type,
+// auto-expand courses with a match, collapse all when the box is cleared. No dependencies.
+// When tabs are present (mode 'both'), the filter is scoped to the active tab panel.
+function dlFilter(q) {
+  q = (q || '').trim().toLowerCase();
+  var active = document.querySelector('.dl-tab-panel.dl-tab-active');
+  var scope = active || document;
+  var courses = scope.querySelectorAll('.dl-course');
+  var anyVisible = false;
+  for (var i = 0; i < courses.length; i++) {
+    var course = courses[i];
+    var cname = (course.getAttribute('data-name') || '').toLowerCase();
+    var courseMatch = !q || cname.indexOf(q) >= 0;
+    var items = course.querySelectorAll('.dl-item');
+    var anyItem = false;
+    for (var j = 0; j < items.length; j++) {
+      var iname = (items[j].getAttribute('data-name') || '').toLowerCase();
+      var match = courseMatch || iname.indexOf(q) >= 0;
+      items[j].style.display = match ? '' : 'none';
+      if (match) anyItem = true;
+    }
+    var show = courseMatch || anyItem;
+    course.style.display = show ? '' : 'none';
+    course.open = !!(q && anyItem);
+    if (show) anyVisible = true;
+  }
+  var none = document.getElementById('dl-no-match');
+  if (none) none.style.display = (courses.length && !anyVisible) ? '' : 'none';
+}
+
+// Tab switching for the 'both' picker: show the chosen panel, mark it active (so dlFilter scopes
+// to it), update button styling, and re-run the current filter against the newly active tab.
+function dlSelectTab(name) {
+  var panels = document.querySelectorAll('.dl-tab-panel');
+  for (var i = 0; i < panels.length; i++) {
+    var on = panels[i].getAttribute('data-tab') === name;
+    panels[i].style.display = on ? '' : 'none';
+    if (on) { panels[i].className += ' dl-tab-active'; }
+    else { panels[i].className = panels[i].className.replace(/\s*dl-tab-active/g, ''); }
+  }
+  var btns = document.querySelectorAll('.dl-tab-btn');
+  for (var k = 0; k < btns.length; k++) {
+    var bon = btns[k].getAttribute('data-tab') === name;
+    btns[k].style.background = bon ? 'var(--brand-primary, #35429B)' : '#eee';
+    btns[k].style.color = bon ? '#fff' : '#333';
+  }
+  var f = document.getElementById('dl-filter');
+  dlFilter(f ? f.value : '');
+}
+</script>
+{% endblock %}

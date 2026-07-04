@@ -7,6 +7,9 @@
     "test": "test"
   },
   "dependencies": {
+    "@google-cloud/datastore": "^10.1.0",
+    "@google-cloud/firestore": "^8.6.0",
+    "@google-cloud/storage": "^7.19.0",
     "@hapi/boom": "^10.0.0",
     "@hapi/catbox-redis": "^7.0.0",
     "@hapi/hapi": "^20.0.0",
@@ -27,9 +30,11 @@
     "diff": "~1.0.8",
     "escape-string-regexp": "~1.0.5",
     "file-type": "^3.8.0",
+    "firebase-admin": "^13.10.0",
     "highlight.js": "^9.6.0",
     "is-svg": "^2.1.0",
     "joi": "^17.0.0",
+    "jose": "^4.15.9",
     "js-yaml": "~3.0.1",
     "jsonwebtoken": "^5.0.5",
     "jszip": "~3.6.0",
@@ -84,7 +89,8 @@
     "build:css": "vite build",
     "watch:css": "vite build --watch",
     "build": "npm run build:css",
-    "make-admin": "node scripts/make-admin.js"
+    "make-admin": "node scripts/make-admin.js",
+    "setup-vendor": "bash scripts/setup-glowscript.sh"
   },
   "repository": {
     "type": "git",

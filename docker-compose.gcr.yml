@@ -1,0 +1,58 @@
+services:
+  firebase:
+    build:
+      context: .
+      dockerfile: Dockerfile.emulator
+    container_name: trinket-emulators
+    volumes:
+      - .:/app
+      - firebase_cache:/root/.cache/firebase
+    command: firebase emulators:start --only auth,firestore,storage --project demo-trinket
+    ports:
+      - "4000:4000"   # Emulator UI
+      - "8088:8080"   # Firestore (host 8088 avoids Canvas testbed's host 8080; container port + firebase:8080 unchanged)
+      - "9099:9099"   # Auth
+      - "9199:9199"   # Storage
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:4000"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  app:
+    build: .
+    platform: linux/arm64
+    image: trinket-gcr/app:latest
+    ports:
+      - 3001:3000
+    container_name: trinket-gcr
+    command: node app.js
+    depends_on:
+      firebase:
+        condition: service_healthy
+    volumes:
+      - .:/usr/local/node/trinket
+      - /usr/local/node/trinket/node_modules
+      - /usr/local/node/trinket/public/css
+      - /usr/local/node/trinket/public/components
+    environment:
+      NODE_ENV: development
+      GOOGLE_CLOUD_PROJECT: demo-trinket
+      FIRESTORE_EMULATOR_HOST: firebase:8080
+      STORAGE_EMULATOR_HOST: http://firebase:9199
+      STORAGE_PUBLIC_HOST: http://localhost:9199
+      FIREBASE_AUTH_EMULATOR_HOST: firebase:9099
+      FIREBASE_AUTH_EMULATOR_URL: http://localhost:9099
+      SESSION_PASSWORD: ${SESSION_PASSWORD}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_CALLBACK_URL: http://localhost:3001/auth/google/callback
+      FIREBASE_CLIENT_CONFIG: ${FIREBASE_CLIENT_CONFIG}
+      LTI_PRIVATE_KEY: ${LTI_PRIVATE_KEY}
+      NODE_CONFIG: >-
+        {"app":{"url":{"hostname":"${LTI_PUBLIC_HOST:-localhost}","protocol":"${LTI_PUBLIC_PROTO:-http}","port":${LTI_PUBLIC_PORT:-3001}},"plugins":{"session":{"cache":{"backend":"memory"}}},"auth":{"google":{"callbackURL":"http://localhost:3001/auth/google/callback"}}},"db":{"backend":"firestore","firestore":{"projectId":"demo-trinket"},"redis":{"enabled":false}},"storage":{"backend":"gcs"},"features":{"assets":true},"aws":{"buckets":{"materials":{"name":"demo-trinket.appspot.com","host":"http://localhost:9199/demo-trinket.appspot.com"},"userassets":{"name":"demo-trinket.appspot.com","host":"http://localhost:9199/demo-trinket.appspot.com"},"useravatars":{"name":"demo-trinket.appspot.com","host":"http://localhost:9199/demo-trinket.appspot.com"},"snapshots":{"name":"demo-trinket.appspot.com","host":"http://localhost:9199/demo-trinket.appspot.com"}}}}
+
+volumes:
+  firebase_cache:

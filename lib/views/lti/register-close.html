@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row"><div class="small-12 medium-8 columns small-centered">
+  <h3>Registration complete</h3>
+  <p>Trinket has been registered. A Trinket administrator will activate the connection shortly, after
+     which launches will work. You can close this window.</p>
+</div></div>
+<script>
+  (window.opener || window.parent).postMessage({ subject: 'org.imsglobal.lti.close' }, '*');
+</script>
+{% endblock %}

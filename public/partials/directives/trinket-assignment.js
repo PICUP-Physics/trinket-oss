@@ -143,6 +143,9 @@
               else {
                 // same as above?
               }
+            })
+            .finally(function() {
+              scope.submittingCode = false;
             });
         }
       }
@@ -200,6 +203,7 @@
           trinketSubmissions.getSubmissionsForMaterial(scope.material)
             .then(function(submissions) {
               if (submissions.length) {
+                var hasActiveAssignment = false;
                 // check status of each submission
                 angular.forEach(submissions, function(submission) {
                   switch (submission.submissionState) {
@@ -219,6 +223,7 @@
                         scope.isModified = true;
                       }
 
+                      hasActiveAssignment = true;
                       break;
                     case "submitted":
                     case "submittedLate":
@@ -256,7 +261,11 @@
                       break;
                     default:
                   }
-                })
+                });
+
+                if (!hasActiveAssignment) {
+                  scope.loadingAssignment = false;
+                }
               }
               else {
                 // no "submissions" means user hasn't started yet

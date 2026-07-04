@@ -9,13 +9,8 @@ chai.should();
 chai.use(chaiAsPromised);
 chai.use(sinonChai);
 
-var sinon      = require('sinon'),
-    config     = require('config'),
-    redis      = require('redis'),
-    redismock  = require('redis-mock'),
-    catboxmock = require('./helpers/catbox-redis');
-
-sinon.stub(redis, 'createClient', redismock.createClient);
+var sinon  = require('sinon'),
+    config = require('config');
 
 var app = require('../app.js'),
     db  = require('./helpers/db');

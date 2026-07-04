@@ -42,14 +42,14 @@
     <div ui-tree="outlineDragOptions" data-drag-delay="200">
       <ul ui-tree-nodes ng-model="course.lessons" data-type="lesson" class="outline-list lessons">
         <li class="outline-list-item lesson" ng-repeat="lesson in course.lessons" ui-tree-node data-type="lesson" ng-class="{isDraft:lesson.isDraft,past:lesson.isPast,current:lesson.isCurrent,future:lesson.isFuture}">
-          <div class="lesson-title angular-ui-tree-handle clearfix">
+          <div class="lesson-title angular-ui-tree-handle clearfix" ui-tree-handle>
             <i class="fa fa-bars"></i>
             <span class="lesson-name">{{ lesson.name }}</span>
             <div data-tooltip class="draft-circle in-aside right has-tip" title="Marked as draft" ng-if="lesson.isDraft">&nbsp;</div>
           </div>
           <ul ui-tree-nodes ng-model="lesson.materials" data-type="material" class="outline-list materials" ng-class="{isDraft:lesson.isDraft}">
             <li ng-repeat="material in lesson.materials" id="{{ lesson.slug }}-{{ material.slug }}" ui-tree-node data-type="material" class="outline-list-item material" ng-class="{past:material.isPast,current:material.isCurrent,future:material.isFuture}">
-              <div class="material-title angular-ui-tree-handle clearfix" ng-click="viewMaterial(material.slideIndex, true)">
+              <div class="material-title angular-ui-tree-handle clearfix" ui-tree-handle ng-click="viewMaterial(material.slideIndex, true)">
                 <!-- add title or tooltip with dates info? -->
                 <i ng-if="usingDates(material)" class="fa fa-fw fa-clock-o dates-active-icon"></i>
                 <!-- change icon depending on what kind of material this is -->
@@ -153,7 +153,7 @@
       </div>
       <ul ui-tree-nodes ng-model="course.lessons" data-type="edit-outline-lesson" class="outline-list edit-lessons">
         <li class="outline-list-item lesson" ng-repeat="lesson in course.lessons" ui-tree-node data-type="edit-outline-lesson" ng-class="{isDraft:lesson.isDraft}">
-          <div class="edit-lesson-title angular-ui-tree-handle clearfix">
+          <div class="edit-lesson-title angular-ui-tree-handle clearfix" ui-tree-handle>
             <i class="fa fa-bars"></i>
 
             <div data-tooltip class="draft-circle in-outline has-tip" title="Marked as draft" ng-if="lesson.isDraft">&nbsp;</div>
@@ -181,7 +181,7 @@
           </div>
           <ul ui-tree-nodes ng-model="lesson.materials" data-type="edit-outline-material" class="outline-list edit-materials" ng-class="{isDraft:lesson.isDraft}">
             <li ng-repeat="material in lesson.materials" ui-tree-node data-type="edit-outline-material" class="outline-list-item material">
-              <div ng-switch="material.type" class="edit-material-title angular-ui-tree-handle clearfix">
+              <div ng-switch="material.type" class="edit-material-title angular-ui-tree-handle clearfix" ui-tree-handle>
                 <i ng-switch-when="page" class="fa fa-file-text-o fa-fw"></i>
                 <!-- add title or tooltip with dates info? -->
                 <i ng-if="usingDates(material)" class="fa fa-fw fa-clock-o dates-active-icon"></i>
@@ -301,39 +301,42 @@
 
   <div class="row">
     <div class="small-12 columns">
-      <p ng-if="emailEnabled">There are 3 ways to add students to your class:</p>
-      <p ng-if="!emailEnabled">There are 2 ways to add students to your class:</p>
+      <p>There are 2 ways to add students to your class:</p>
     </div>
   </div>
 
-  <div ng-if="emailEnabled">
+  <div>
     <div id="invitations-sent-messages"></div>
 
     <div class="row">
       <div class="small-12 columns">
         <form name="invite-users-form" ng-submit="inviteUsersToCourse()">
           <fieldset ng-class="{'border-on':formToggles.email}" class="border">
-            <legend class="clickable-legend" ng-click="toggleForm('email')"><i ng-class="{'hide':formToggles.email}" class="fa fa-chevron-right"></i> Email Invitations</legend>
+            <legend class="clickable-legend" ng-click="toggleForm('email')"><i ng-class="{'hide':formToggles.email}" class="fa fa-chevron-right"></i> Add Students</legend>
             <div ng-class="{'show-fields':formToggles.email}" class="collapsed-form">
 
               <div class="row">
                 <div class="small-12 columns">
-                  <p>Paste a list of email addresses, one per line.</p>
+                  <p>Paste a list of students, one per line. Each line can be an email address alone, or <strong>First, Last, email</strong>. You can also paste directly from a spreadsheet column.</p>
                 </div>
               </div>
               <div class="row" data-equalizer data-equalizer-mq="large-up">
                 <div class="medium-12 large-6 columns" data-equalizer-watch>
-                  <textarea rows="4" ng-model="inviteForm.emailList"></textarea>
+                  <textarea rows="5" placeholder="Jane, Smith, jane@example.com&#10;Bob, Jones, bob@example.com&#10;noemail@example.com" ng-model="inviteForm.studentList"></textarea>
+                  <input type="file" accept=".csv,.txt" id="csv-upload-input" style="display:none" onchange="angular.element(this).scope().uploadCsvFile(this.files[0]); this.value=''">
+                  <p class="text-center" style="margin-top:0.25rem">
+                    <a href="" ng-click="openCsvUpload()"><i class="fa fa-upload"></i> Upload CSV file</a>
+                  </p>
                 </div>
                 <div class="medium-12 large-6 columns" data-equalizer-watch>
                   <button type="submit" class="button small secondary bottom" ng-class="{'disabled':sendingInvitations}">
-                    <i ng-class="sendingInvitations ? 'fa fa-circle-o-notch fa-spin' : 'fa fa-envelope'"></i> Send Invitations
+                    <i ng-class="sendingInvitations ? 'fa fa-circle-o-notch fa-spin' : 'fa fa-add'"></i> Add Students
                   </button>
                 </div>
               </div>
               <div class="row">
                 <div class="small-12 columns">
-                  We'll send an email with a unique link to each address. You'll see a list of pending invitations below.
+                  Students will be able to sign up with their email address. You'll see a list of pending students below.
                 </div>
               </div>
 
@@ -345,41 +348,6 @@
   </div>
 
   <div id="access-code-messages"></div>
-
-  <div class="row">
-    <div class="small-12 columns">
-      <form name="access-code-form">
-        <fieldset ng-class="{'border-on':formToggles.accessCode}" class="border">
-          <legend class="clickable-legend" ng-click="toggleForm('accessCode')"><i ng-class="{'hide':formToggles.accessCode}" class="fa fa-chevron-right"></i> Share Access Code</legend>
-          <div ng-class="{'show-fields':formToggles.accessCode}" class="collapsed-form">
-            <div class="row">
-              <div class="small-12 columns">
-                <p>Share this access code or link with your students. They'll be able to enter the code from their home page. The link will automatically add them to your course.</p>
-              </div>
-            </div>
-            <div class="row collapse">
-              <div class="small-4 columns">
-                <p class="join-code faux-input">{{ accessCode }}</p>
-              </div>
-              <div class="small-4 columns end">
-                <a class="button secondary collapse postfix" ng-click="generateAccessCode()"><i ng-class="generatingCode ? 'fa fa-circle-o-notch fa-spin' : 'fa fa-code'"></i> Generate New Access Code</a>
-              </div>
-            </div>
-            <div class="row">
-              <div class="small-12 columns">
-                <p class="smaller">{{ accessCodeUrl }}</p>
-              </div>
-            </div>
-            <div class="row" ng-show="accessCode.length">
-              <div class="small-12 columns">
-                <p class="smaller no-margin">Note: Changing the access code invalidates previous access codes.</p>
-              </div>
-            </div>
-          </div>
-        </fieldset>
-      </form>
-    </div>
-  </div>
 
   <div id="add-user-messages"></div>
 
@@ -410,12 +378,12 @@
 
   </section> <!-- end add users -->
 
-  <div ng-if="emailEnabled">
+  <div>
     <div id="invitations-update-messages"></div>
 
     <div class="row" ng-show="haveInvitations()">
       <div class="large-12 columns">
-        <strong>Pending Invitations</strong>
+        <strong>Pending Students</strong>
       </div>
     </div>
     <div class="row" ng-show="haveInvitations()">
@@ -424,9 +392,8 @@
           <li class="course-user" ng-repeat="(email, invitation) in invitations | orderBy:'email'">
             <div class="row">
               <div class="small-6 columns invitation-info">
-                <a ng-click="toggleShowInvitation(invitation)"><i ng-class="showInvitation[user.userId] ? 'fa fa-minus-square-o' : 'fa fa-plus-square-o'"></i></a>
                 <i ng-show="invitation.status == 'invalid'" title="Invalid email address" class="fa fa-exclamation-circle alert"></i>
-                <span id="invalid-{{ invitation.id }}" class="course-user-display-name" editable-text="invitation.email" blur="submit" onbeforesave="updateInvitationEmail(invitation, $data)">{{ invitation.email }}</span>
+                <span id="invalid-{{ invitation.id }}" class="course-user-display-name" editable-text="invitation.email" blur="submit" onbeforesave="updateInvitationEmail(invitation, $data)">{{ invitation.name ? invitation.name + ' &lt;' + invitation.email + '&gt;' : invitation.email }}</span>
               </div>
               <div class="small-6 columns invitation-actions text-right">
                 <a ng-hide="working[invitation.email] || resent[invitation.email]" class="course-user-actions-link" data-options="align:left" data-dropdown="invitation-{{ invitation.id }}"><i class="fa fa-ellipsis-v"></i></a>
@@ -434,25 +401,19 @@
                 <span ng-show="resent[invitation.email]" class="course-user-actions-link"><i class="fa fa-check-circle success"></i></span>
 
                 <ul id="invitation-{{ invitation.id }}" class="f-dropdown text-left" data-dropdown-content>
-                  <li><a ng-hide="invitation.status == 'invalid'" ng-click="resendInvitation(invitation)"><i class="fa fa-envelope-o fa-fw"></i> Resend Invitation</a></li>
                   <li><a ng-show="invitation.status == 'invalid'" ng-click="clickEditable(invitation)"><i class="fa fa-exclamation-circle fa-fw alert"></i> Invalid Email</a></li>
-                  <li><a ng-click="deleteInvitation(invitation)"><i class="fa fa-trash-o fa-fw alert"></i> Delete Invitation</a></li>
+                  <li><a ng-click="deleteInvitation(invitation)"><i class="fa fa-trash-o fa-fw alert"></i> Remove Student</a></li>
                 </ul>
               </div>
             </div>
 
-            <div ng-class="{'show-invitation':showInvitation[invitation.id]}" class="row collapsed">
-              <div class="small-12 columns">
-                <i class="fa fa-link"></i> {{ invitation.acceptUrl }}
-              </div>
-            </div>
           </li>
         </ul>
       </div>
     </div> <!-- end invitation list -->
     <div class="row" ng-show="haveInvitations()">
       <div class="large-12 columns">
-        <p class="smaller">Note: Changing the email address of a pending invitation will send a new email.</p>
+        <p class="smaller">Pending students will be enrolled automatically the first time they sign in with the email address listed above.</p>
       </div>
     </div>
   </div>

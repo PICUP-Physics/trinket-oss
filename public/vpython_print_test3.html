@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script src="http://localhost:3001/components/vpython-glowscript/lib/jquery/2.1/jquery.min.js"></script>
+<script src="http://localhost:3001/components/vpython-glowscript/lib/jquery/2.1/jquery-ui.custom.min.js"></script>
+<script src="http://localhost:3001/components/vpython-glowscript/package/glow.3.2.3.min.js"></script>
+<script src="http://localhost:3001/components/vpython-glowscript/package/RScompiler.3.2.3.min.js"></script>
+<style>body{margin:8px;font-family:monospace;font-size:12px;white-space:pre}</style>
+</head>
+<body>
+<div id="glowscript" style="display:none"></div>
+<div id="log"></div>
+<script>
+function log(msg) {
+  document.getElementById('log').textContent += msg + '\n';
+  console.log(msg);
+}
+
+window.__context = { glowscript_container: $('#glowscript') };
+
+// Patch GSprint to trace calls
+var origGSprint = window.GSprint;
+window.GSprint = function() {
+  log('[GSprint] called with args: ' + JSON.stringify(Array.from(arguments)));
+  try {
+    var result = origGSprint.apply(this, arguments);
+    log('[GSprint] returned OK, textarea exists: ' + !!document.getElementById('print'));
+    return result;
+  } catch(e) {
+    log('[GSprint] THREW: ' + e.message + ' | ' + e.stack.slice(0,300));
+    throw e;
+  }
+};
+
+var prog = 'Web VPython 3.2\nprint("hello from vpython")\n';
+var compiled = window.glowscript_compile(prog, {lang:'vpython', version:'3.2.3'});
+log('Compiled OK, length=' + compiled.length);
+
+async function run() {
+  log('\n=== RUNNING ===');
+  try {
+    eval(compiled);
+    await __main__();
+    log('__main__() done, textarea: ' + (document.getElementById('print') ? 'EXISTS' : 'NULL'));
+  } catch(e) {
+    log('ERROR: ' + e.message + ' | ' + e.stack.slice(0,300));
+  }
+}
+
+setTimeout(run, 300);
+</script>
+</body>
+</html>

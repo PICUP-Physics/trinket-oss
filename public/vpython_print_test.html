@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script src="http://localhost:3001/components/vpython-glowscript/lib/jquery/2.1/jquery.min.js"></script>
+<script src="http://localhost:3001/components/vpython-glowscript/lib/jquery/2.1/jquery-ui.custom.min.js"></script>
+<script src="http://localhost:3001/components/vpython-glowscript/package/glow.3.2.3.min.js"></script>
+<script src="http://localhost:3001/components/vpython-glowscript/package/RScompiler.3.2.3.min.js"></script>
+<style>body{margin:8px;font-family:monospace}</style>
+</head>
+<body>
+<div id="glowscript"></div>
+<pre id="log"></pre>
+<script>
+function log(msg) {
+  document.getElementById('log').textContent += msg + '\n';
+  console.log(msg);
+}
+
+window.__context = { glowscript_container: $('#glowscript') };
+
+var prog = 'Web VPython 3.2\nprint("hello from vpython")\nprint("second line")\n';
+log('Input program:\n' + prog);
+
+try {
+  var compiled = window.glowscript_compile(prog, {lang:'vpython', version:'3.2.3'});
+  log('Compiled OK, length=' + compiled.length);
+  // Find print in compiled
+  var idx = compiled.indexOf('print');
+  log('First "print" at index: ' + idx);
+  log('Context: ' + compiled.slice(Math.max(0,idx-30), idx+80));
+} catch(e) {
+  log('COMPILE ERROR: ' + e.message);
+}
+
+async function run() {
+  try {
+    eval(compiled);
+    log('eval() done, calling __main__()...');
+    await __main__();
+    log('__main__() done');
+  } catch(e) {
+    log('RUNTIME ERROR: ' + e.message + ' | stack: ' + e.stack);
+  }
+  var ta = document.getElementById('print');
+  log('textarea#print: ' + (ta ? 'EXISTS, value="' + ta.value + '"' : 'NULL'));
+  var po = document.getElementById('print-output');
+  log('print-output: ' + (po ? po.innerHTML : 'NULL'));
+}
+
+setTimeout(run, 500);
+</script>
+</body>
+</html>

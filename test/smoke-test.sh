@@ -7,6 +7,21 @@
 # Default: http://localhost:3001
 #
 
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  cat <<'EOF'
+Usage: smoke-test.sh [base_url]
+
+Run smoke tests against a running Trinket instance.
+
+Arguments:
+  base_url   Base URL to test against (default: http://localhost:3001)
+
+Example:
+  ./test/smoke-test.sh https://trinket-xyz.run.app
+EOF
+  exit 0
+fi
+
 BASE_URL="${1:-http://localhost:3001}"
 PASS=0
 FAIL=0

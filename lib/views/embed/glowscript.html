@@ -4,7 +4,7 @@
 
 {% block head_styles %}
 {% if not outputOnly %}
-<link rel="stylesheet" type="text/css" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/8.0/styles/github.min.css">
+<link rel="stylesheet" type="text/css" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/8.0/styles/github.min.css" crossorigin="anonymous">
 {% endif %}
 {% endblock %}
 
@@ -195,13 +195,18 @@ while True:
 <script id="glowscript_source" type="text/plain">{{prog}}</script>
 
         <script type="text/javascript">
+          window.onerror = function(msg, url, line, col, err) {
+            window.parent.postMessage(JSON.stringify({ "glowscript.error": "SRCDOC ERROR: " + msg + " at " + url + ":" + line, type: "runtime" }), "*");
+            return false;
+          };
+
           var prog = $('#glowscript_source').text()
             , compiled, main_func;
 
           // need to distinguish between 2.9 and <
           var floatVersion = parseFloat('{{version}}');
 
-          if ('{{runMode}}' === 'calculator' && ('{{version}}' === '3.2.2' || floatVersion > 3.2)) {
+          if ('{{runMode}}' === 'calculator' && ('{{version}}' === '3.2.2' || '{{version}}' === '3.2.3' || floatVersion > 3.2)) {
             $('#print-output').css('display', 'flex');
             window.addEventListener('message', function(e) {
               var data;

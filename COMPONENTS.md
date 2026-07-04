@@ -34,7 +34,8 @@ Additional components:
 | Component | Repository | Version | Notes |
 |-----------|------------|---------|-------|
 | glowscript | [trinketapp/glowscript](https://github.com/trinketapp/glowscript) | 2.7.5 | 3D graphics (Trinket fork) |
-| vpython-glowscript | [trinketapp/vpython-glowscript](https://github.com/trinketapp/vpython-glowscript) | 3.2.2 | VPython bindings |
+| vpython-glowscript | [trinketapp/vpython-glowscript](https://github.com/trinketapp/vpython-glowscript) | 3.2.2 | VPython bindings (legacy fallback) |
+| rsWVPRunner package | rsWVPRunner repo, deployed to `gs://rswvprunner/package/` | 3.2 (pinned locally as 3.2.3) | Current Web VPython runtime. Built by `build_package.py` in rsWVPRunner; the Dockerfile downloads `glow`/`RScompiler`/`RSrun` `3.2.min.js` from the bucket into `public/components/vpython-glowscript/package/` as `*.3.2.3.min.js`. The versionMap in `lib/views/embed/glowscript-config.html` points `3.2` at trinket version `3.2.3`. Includes the `glowscript.print` postMessage patch (in `lib/glow/api_misc.js` upstream) used by calculator runMode. |
 | glowscript-blocks | [txst-per-group/Glowscript-Blocks](https://github.com/txst-per-group/Glowscript-Blocks) | 0.1.11 | Block editor for GlowScript |
 
 ### Other Components

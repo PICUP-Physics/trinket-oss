@@ -1,77 +1,103 @@
 {% extends "base.html" %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="https://www.gstatic.com/firebasejs/ui/6.1.0/firebase-ui-auth.css">
+<style>
+  .auth-page-wrapper { padding: 40px 0; }
+  #firebaseui-auth-container { max-width: 400px; margin: 0 auto; }
+  #auth-error { display: none; max-width: 400px; margin: 10px auto 0; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="auth-page-wrapper">
   <div class="row">
-    <div class="medium-8 medium-offset-2 small-12 columns">
-      {% if flash.failure.message %}
-        <small class="error">{{ flash.failure.message }}</small>
-      {% elif flash.info %}
-      <div data-alert class="alert-box success radius text-center">
-        {{ flash.info }}
-        <a href="#" class="close">&times;</a>
-      </div>
-      {% endif %}
-      <h2 class="text-center">Log In</h2>
+    <div class="medium-8 medium-offset-2 small-12 columns text-center">
+      <h2>Sign In</h2>
+      <p class="subheader">Sign in or create an account below.</p>
     </div>
   </div>
 
-  {% include "includes/login-buttons.html" %}
+  <div id="firebaseui-auth-container"></div>
 
-  <form id="login-form" action="/login" method="post">
-    <div class="row">
-      <div class="medium-6 medium-offset-3 small-10 small-offset-1 columns">
-        <label
-          {% if flash.validation.email %}class="error"{% endif %}>Email address or username
-          <input type="text" name="email" value="{{ flash.payload.email }}" required />
-        </label>
-        {% if flash.validation.email %}
-          <small class="error">{{ flash.validation.email }}</small>
-        {% endif %}
+  <div id="auth-error" class="row">
+    <div class="medium-8 medium-offset-2 small-12 columns">
+      <div data-alert class="alert-box alert radius">
+        <span id="auth-error-message"></span>
+        <a href="#" class="close">&times;</a>
       </div>
     </div>
-
-    <div class="row">
-      <div class="medium-6 medium-offset-3 small-10 small-offset-1 columns">
-        <label>Password
-          <input id="password-box" type="password" name="password" required />
-          {% if emailEnabled %}<div id="forgot-label">Forgot your password? <a href="/forgot-pass">Get reset instructions.</a></div>{% endif %}
-        </label>
-      </div>
-    </div>
-
-    <div class="row">
-      <div class="medium-2 medium-offset-3 small-4 small-offset-1 columns">
-        <input class="button primary" type="submit" value="log in"/>
-      </div>
-    </div>
-
-    <div class="row">
-      <div class="small-12 columns text-center">
-        <p>Need to create an account? <a href="/signup">Sign Up</a></p>
-      </div>
-    </div>
-
-  </form>
+  </div>
 </div>
-
-{% if flash.courseInvitation %}
-<div id="courseInvitationModal" class="reveal-modal small" data-reveal>
-  <h2>Login to Trinket</h2>
-  <p>To join <strong>{{ flash.courseInvitation.course.name }}</strong>, you'll need to login or create a free account first.</p>
-  <hr>
-  <p>If you already have a Trinket account, just login below and you'll be automatically added to your course.</p>
-  <p>Don't have a Trinket account? Sign up <a href="/signup">here</a> to create your account.</p>
-  <p>Questions? Click the <i class="fa fa-question-circle"></i> Help link at the top of the page or contact your instructor.</p>
-  <a class="close-reveal-modal">&#215;</a>
-</div>
-{% endif %}
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/ui/6.1.0/firebase-ui-auth__en.js"></script>
 <script>
-{% if flash.courseInvitation %}
-  $("#courseInvitationModal").foundation('reveal', 'open');
-{% endif %}
+(function() {
+  var firebaseConfig  = {% if firebaseConfig %}{{ firebaseConfig | json | safe }}{% else %}{}{% endif %};
+  var authEmulatorUrl = {% if authEmulatorUrl %}{{ authEmulatorUrl | json | safe }}{% else %}null{% endif %};
+
+  firebase.initializeApp(firebaseConfig);
+
+  if (authEmulatorUrl) {
+    firebase.auth().useEmulator(authEmulatorUrl, { disableWarnings: true });
+  }
+
+  var ui = new firebaseui.auth.AuthUI(firebase.auth());
+
+  function showError(message) {
+    document.getElementById('auth-error-message').textContent = message;
+    document.getElementById('auth-error').style.display = 'block';
+  }
+
+  ui.start('#firebaseui-auth-container', {
+    signInOptions: [
+      firebase.auth.EmailAuthProvider.PROVIDER_ID,
+      firebase.auth.GoogleAuthProvider.PROVIDER_ID
+    ],
+    signInFlow: 'popup',
+    callbacks: {
+      signInSuccessWithAuthResult: function(authResult) {
+        authResult.user.getIdToken().then(function(idToken) {
+          return fetch('/api/auth/session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ idToken: idToken })
+          });
+        })
+        .then(function(response) {
+          return response.json().then(function(data) {
+            return { ok: response.ok, status: response.status, data: data };
+          });
+        })
+        .then(function(result) {
+          if (result.ok) {
+            window.location.href = result.data.redirect || '/welcome';
+          } else {
+            var msg = (result.data && result.data.message) || 'Access denied.';
+            showError(msg);
+            firebase.auth().signOut();
+          }
+        })
+        .catch(function(err) {
+          showError('Something went wrong. Please try again.');
+          firebase.auth().signOut();
+        });
+
+        return false; // prevent FirebaseUI from handling the redirect
+      },
+      signInFailure: function(error) {
+        showError(error.message || 'Sign-in failed. Please try again.');
+        return Promise.resolve();
+      }
+    },
+    tosUrl: '/terms',
+    privacyPolicyUrl: '/privacy'
+  });
+})();
 </script>
 {% endblock %}

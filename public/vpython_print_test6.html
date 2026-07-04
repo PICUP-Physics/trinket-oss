@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script src="http://localhost:3001/components/vpython-glowscript/lib/jquery/2.1/jquery.min.js"></script>
+<script>
+// Check body availability BEFORE glow loads
+window._bodyAtJqueryLoad = document.body ? 'EXISTS' : 'NULL';
+window._jqBodyLen = $('body').length;
+</script>
+<script src="http://localhost:3001/components/vpython-glowscript/package/glow.3.2.3.min.js"></script>
+<script>
+// Check right after glow loads  
+window._bodyAfterGlow = document.body ? 'EXISTS' : 'NULL';
+window._jqBodyAfterGlow = $('body').length;
+</script>
+<script src="http://localhost:3001/components/vpython-glowscript/package/RScompiler.3.2.3.min.js"></script>
+<style>body{margin:8px;font-family:monospace;font-size:12px;}</style>
+</head>
+<body>
+<div id="glowscript" style="display:none"></div>
+<pre id="log"></pre>
+<script>
+function log(msg) { document.getElementById('log').textContent += msg + '\n'; console.log(msg); }
+
+log('body at jQuery load: ' + window._bodyAtJqueryLoad + ', $("body").length=' + window._jqBodyLen);
+log('body after glow load: ' + window._bodyAfterGlow + ', $("body").length=' + window._jqBodyAfterGlow);
+log('body NOW: ' + document.body + ', $("body").length=' + $('body').length);
+
+window.__context = { glowscript_container: $('#glowscript') };
+
+var prog = 'Web VPython 3.2\nprint("hello from vpython")\n';
+var compiled = window.glowscript_compile(prog, {lang:'vpython', version:'3.2.3'});
+log('Compiled OK');
+
+async function run() {
+  log('=== RUNNING ===');
+  try {
+    eval(compiled);
+    await __main__();
+    log('done');
+  } catch(e) { log('ERROR: ' + e.message); }
+  var ta = document.getElementById('print');
+  log('textarea: ' + (ta ? 'EXISTS, value="' + ta.value + '"' : 'NULL'));
+}
+setTimeout(run, 200);
+</script>
+</body>
+</html>

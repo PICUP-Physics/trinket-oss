@@ -25,7 +25,7 @@ docker-compose up
 
 Wait for the services to start. You'll see `Server started on port:` when ready.
 
-Open **http://localhost:3000** in your browser.
+Open **http://localhost:3001** in your browser.
 
 ## Frontend Components
 
@@ -56,7 +56,7 @@ docker-compose exec app npm run watch:css
 docker-compose logs -f
 
 # Just the app
-docker logs -f trinket
+docker logs -f trinket-gcr
 ```
 
 ### Restarting the App
@@ -99,7 +99,7 @@ trinket-oss/
 
 | Service | Port | Description |
 |---------|------|-------------|
-| app | 3000 | Trinket web application |
+| app | 3001 | Trinket web application (host port; container listens on 3000) |
 | mongodb | 17017 | MongoDB database |
 | redis | 16379 | Redis (optional - uses in-memory fallback if disabled) |
 | nginx | 443 | HTTPS proxy (optional) |

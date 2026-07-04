@@ -129,12 +129,28 @@
       </div>
       <div class="row">
         <div class="small-12 medium-3 columns">
-          <input id="emailToken" name="emailToken" type="hidden" value="{{ emailToken }}" />
+          <input id="emailToken" name="emailToken" type="hidden" value="{{ emailToken }}" data-short-code="{{ trinket.shortCode if trinket and trinket.shortCode else '' }}" />
           <button class="g-recaptcha button success small" data-sitekey="{{ config.app.recaptcha.sitekey }}" data-callback="submitEmailForm" data-badge="bottomleft">Send</button>
         </div>
         <div id="emailAlert" class="small-12 medium-9 columns end hide"></div>
       </div>
     </form>
+    <script>
+      (function() {
+        try {
+          var el = document.getElementById('emailToken');
+          if (!el || !window.localStorage) return;
+          var sc = el.getAttribute('data-short-code');
+          var tok = el.value;
+          if (sc && tok) {
+            localStorage.setItem('emailToken:' + sc, tok);
+          } else if (sc && !tok) {
+            var stored = localStorage.getItem('emailToken:' + sc);
+            if (stored) el.value = stored;
+          }
+        } catch (e) {}
+      })();
+    </script>
     {% if not noTips %}
     <div class="row">{{ tips.copyTrinket() }}</div>
     {% endif %}

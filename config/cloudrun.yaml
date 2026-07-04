@@ -1,0 +1,30 @@
+# Cloud Run deployment configuration for NODE_ENV=cloudrun.
+# Production Cloud Run deploys load config/production-cloudrun.yaml because
+# deploy scripts set NODE_ENV=production and NODE_APP_INSTANCE=cloudrun.
+#
+# Secrets: SESSION_PASSWORD is injected from Google Secret Manager.
+# app.url.hostname: injected via NODE_CONFIG env var by deploy scripts after
+# the service URL is known. No manual editing required.
+
+app:
+  url:
+    protocol: https
+    hostname: ''   # Overridden at runtime via NODE_CONFIG — see deploy.sh
+    port:
+  hostname: 0.0.0.0
+  plugins:
+    session:
+      cookieOptions:
+        password: ''   # Injected via SESSION_PASSWORD env var from Secret Manager
+        domain: ''
+        isSecure: true
+        isSameSite: 'None'
+      cache:
+        backend: memory
+
+db:
+  backend: firestore   # No MongoDB required
+  redis:
+    enabled: false
+  # db.firestore.projectId is not set here; the Firestore SDK reads
+  # GOOGLE_CLOUD_PROJECT automatically on Cloud Run.

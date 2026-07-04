@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block content %}
+<form id="dl" method="post" action="{{ returnUrl }}">
+  <input type="hidden" name="JWT" value="{{ jwt }}"/>
+</form>
+<script>document.getElementById('dl').submit();</script>
+{% endblock %}
