@@ -36,6 +36,18 @@ No action needed — just good to know when interpreting "My Trinkets" thumbnail
 
 ---
 
+## Content management UI: delete courses, trinkets, folders
+
+There is currently NO UI for deleting a course — the endpoint exists (`DELETE /api/courses/{courseId}`, gated on the `delete-course` permission) but nothing in the Angular app or templates calls it, so course cleanup means the Firestore console. The broader gap is content-management affordances:
+
+- **Delete course** — settings/dashboard button for owner + admin, confirm dialog, calls the existing endpoint. (The endpoint works as of the trial-branch `deleteOne` fix; on pre-fix backends it half-deletes — roles revoked, course doc left behind — so don't wire UI to it before that fix is deployed.)
+- **Delete trinkets in bulk** — select-multiple in My Trinkets; today it's one-at-a-time.
+- **Folder operations** — delete/move a whole folder of trinkets at once.
+
+Destructive controls, so they deserve deliberate UX (confirmation, perhaps a soft-delete grace period per "Firestore document accumulation" above) and a picup design conversation — the upstream omission may have been caution rather than oversight.
+
+---
+
 ## Import: replace vs. append on re-import
 
 When an instructor imports trinkets or a course they've imported before, they need an explicit choice:
