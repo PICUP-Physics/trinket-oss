@@ -287,6 +287,17 @@ Next session: walk firestore-backend.js against 1/3/5/6 (likely one or two
 shared root causes in query translation — $inc, $or, deletedAt filters);
 verify against mandi prod data (are fork counts all 0?).
 
+## PR #39 (Todd: "My Courses" page) merged in (2026-07-04)
+
+Probe-merge measured, then real-merged: **exactly one conflict**, in
+`lib/views/base.html` — Todd's "My Courses" nav item and gcr's consolidated
+New-Trinket menu both target the account-menu slot after "My Trinkets".
+Resolution (COMBINE, keep for the real merge): Todd's courses item first
+(with his `config.features.courses != false` guard), then gcr's
+`enabledNewTrinketTypes` single-type/dropdown block unchanged. Everything
+else (courses controller/model, routes, new library page, scss) auto-merged
+over the gcr changes.
+
 ## Deploy validation — BOTH profiles run for real (2026-07-04)
 
 Beyond the test suite, both sides of the auth/backend facade were booted as

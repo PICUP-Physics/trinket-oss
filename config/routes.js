@@ -406,6 +406,14 @@ routes = [
     html : 'trinket/library.html'
   },
   {
+    route  : 'GET /library/courses courses.library',
+    config : {
+      auth : 'session',
+      pre  : [helpers.coursesEnabled]
+    },
+    html   : 'courses/library.html'
+  },
+  {
     route : 'GET /docs/colors pages.index',
     html  : 'docs/colors.html'
   },

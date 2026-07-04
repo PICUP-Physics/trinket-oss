@@ -2,6 +2,9 @@
 .env
 config/firebase-service-account.json
 
+.claude
+CLAUDE.md
+
 node_modules
 public/components
 public/vendor
