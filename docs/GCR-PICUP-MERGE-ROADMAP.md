@@ -1,13 +1,32 @@
 # gcr → picup/main Merge Roadmap
 
-> Fork-only planning doc. Lives on `gcr-firebase`, never merges upstream.
+> Planning doc; lives on `gcr-firebase` for now, merges upstream with the other
+> ops docs at Stage 6.
 > Snapshot date: 2026-07-04. Update the divergence numbers before acting — they drift.
 
 ## Goal
 
-Bring the gcr fork's portable work back to `picup/main` so any deploy — Mongo
-(picup) or Firestore (gcr) — has confidence things work, **without** forcing a
-data migration or breaking picup's Mongo default.
+**One `main` for both systems.** Bring the gcr fork's portable work back to
+`picup/main` so any deploy — Mongo (picup) or Firestore (gcr) — has confidence
+things work, **without** forcing a data migration or breaking picup's Mongo
+default. Endgame: histories converge, `gcr-firebase` is deleted, and the
+mandi/uindy deploy worktrees track `main` directly (per-deploy config stays in
+gitignored overlays, exactly as today).
+
+## Operating rhythm: port up, sync down (decided 2026-07-04)
+
+Content-porting alone doesn't converge histories — it just makes two lines with
+similar content. So after **every** stage lands upstream:
+
+1. `git merge picup/main` into `gcr-firebase`, resolving shared files to
+   **upstream's** version (review tweaks made during the PR win).
+2. FF-merge into the deploy worktrees and deploy to mandi/uindy.
+
+Effects: gcr runs the *merged* code in production (real-world validation
+upstream can't get any other way), review-time drift can't accumulate, and the
+divergence count ratchets **down** after every stage instead of holding until a
+big-bang finish. By the final stage the convergence merge is near-empty.
+Down-syncs start only after Stage 0 (the 5-PR hold still applies).
 
 ## Current state (2026-07-04)
 
@@ -50,12 +69,24 @@ noise. Hold the big-bucket merges until they land:
 - **#33** fix: open upload dialog via ng-click (hard-refresh)
 - **#34** fix: preload Ace markdown mode + github theme
 
-## Strategy: staged themed PRs, not one monster
+## Strategy: staged themed PRs + down-sync, not one monster
 
-A single 277-commit merge is unreviewable and would clobber the fork's carried
-patches. Peel off portable, config-gated buckets in dependency order.
+Routes considered (2026-07-04):
 
-**Portable → picup/main, in order:**
+- **A. Monster merge** — one ~20k-line PR. Converges history immediately but is
+  unreviewable, risks clobbering carried patches, and ships untested
+  Firestore/LTI code to picup in one shot. Rejected.
+- **B. Staged themed PRs only** — reviewable, but histories never converge and
+  review-time edits upstream drift from what gcr runs in prod. Rejected as
+  incomplete.
+- **C. Staged PRs + down-sync after every stage** — B's reviewability plus
+  progressive convergence and prod validation of the merged code. **Chosen.**
+
+Known cost of staging: the 277 commits weren't authored in neat buckets, so
+each stage is *constructed* from the diff, not cherry-picked — real extraction
+labor, same as the PR-validation march (which worked).
+
+**Portable → picup/main, in order (each stage ends with a down-sync + deploy):**
 
 - **Stage 0 (in flight):** land the 5 open PRs above.
 - **Stage 1 — Test rebuild** (`tests/rebuild`, already CI-green): land *first*
@@ -72,10 +103,21 @@ patches. Peel off portable, config-gated buckets in dependency order.
 - **Stage 5 — Instructor approval + instructor-flag + course-import UX.**
   Depends on Stage 4 + Stage 2. (Instructor-flag fix already deployed to mandi;
   this stage ports it upstream.)
+- **Stage 6 — Ops docs + deploy/seed scripts upstream** (decided 2026-07-04:
+  upstream, not a separate repo). Relocate as `docs/deploy/gcr/` +
+  `scripts/` — inert files, no runtime effect. Ask Andrew's blessing when the
+  time comes; fallback is a small separate deploy-tools repo, which still
+  achieves single-main for the app code.
+- **Stage 7 — Convergence merge + dissolve the fork.** Final
+  `gcr-firebase → picup/main` merge PR whose content diff should be ~empty
+  (like PR #37 did for trinketapp — after which syncs became trivial). Then
+  delete `gcr-firebase`; deploy worktrees track `main`; the only per-deploy
+  difference left is the gitignored overlay files.
 
-**Fork-only — never merge:** deploy overlays (`local-production.yaml`, cloudrun
-scripts, per-deploy uindy/mandi config), gcr ops docs (UINDY-SETUP,
-TESTBED-ORCHESTRATION, TRINKET-DEPLOYMENT-PLAN, compliance), `.env`.
+**Never in git anywhere (gitignored, both repos):** `.env`,
+`local-production.yaml`, any per-deploy secrets. (These were previously listed
+as "fork-only" along with ops docs — reclassified: only *secrets* stay out of
+git; everything else eventually merges at Stage 6.)
 
 ## Known conflict zones
 
@@ -88,8 +130,18 @@ TESTBED-ORCHESTRATION, TRINKET-DEPLOYMENT-PLAN, compliance), `.env`.
 - **picup's 126 upstream commits** — the trinketapp sync (#37) changed shared
   files; each stage merges against current `picup/main`, not the old base.
 
+## Divergence ratchet
+
+Track the numbers here after each down-sync; they should only go down.
+
+| Date | Stage completed | gcr ahead | picup ahead |
+|---|---|---|---|
+| 2026-07-04 | (baseline) | 277 | 126 |
+
 ## Immediate next actions
 
 1. Get the 5 open PRs reviewed → merged (Stage 0).
-2. Then draft the Stage 1 test-rebuild → picup PR.
-3. Re-measure divergence before Stage 2 (it will have shrunk).
+2. First down-sync: merge picup/main into gcr-firebase (picks up #36, #37,
+   #30/#22 etc. that are already upstream), deploy, record the ratchet.
+3. Then draft the Stage 1 test-rebuild → picup PR.
+4. Re-measure divergence before Stage 2 (it will have shrunk).
