@@ -210,6 +210,24 @@ process.env.NODE_ENV = 'test';
 // so run this profile with --fileParallelism=false.
 const FS_MODE = process.env.TEST_DB_BACKEND === 'firestore';
 
+// FS profile: flip the backend AT MODULE LOAD, not in beforeAll. Test files
+// require models at their own module top (e.g. legacy.test requires Trinket),
+// which runs BEFORE any beforeAll — backend-factory would otherwise bind those
+// models to mongoose (unconnected → "buffering timed out"). This was masked
+// for months by node-config 0.4's runtime.json (a previous FS run's persisted
+// mutations set backend=firestore at load time); killing runtime.json exposed it.
+if (FS_MODE) {
+  if (!process.env.FIRESTORE_EMULATOR_HOST) {
+    throw new Error('TEST_DB_BACKEND=firestore requires FIRESTORE_EMULATOR_HOST');
+  }
+  const _config = require('config');
+  _config.db.backend   = 'firestore';
+  _config.db.firestore = { projectId: process.env.GOOGLE_CLOUD_PROJECT || 'demo-trinket' };
+  // Sessions can't ride the mongoose connection here; use the in-memory
+  // catbox cache (same choice as the gcr docker-compose dev stack).
+  _config.app.plugins.session.cache = { backend: 'memory' };
+}
+
 // Holds the in-memory redis client created during beforeAll so afterEach can
 // flush it, clearing login rate-limit counters between tests file-wide.
 let _redisClient;
@@ -220,16 +238,8 @@ beforeAll(async () => {
   // `inject` isn't a Vitest global; pull it via dynamic import (works in CJS).
   const { inject } = await import('vitest');
   const config = require('config');
-  if (FS_MODE) {
-    if (!process.env.FIRESTORE_EMULATOR_HOST) {
-      throw new Error('TEST_DB_BACKEND=firestore requires FIRESTORE_EMULATOR_HOST');
-    }
-    config.db.backend   = 'firestore';
-    config.db.firestore = { projectId: process.env.GOOGLE_CLOUD_PROJECT || 'demo-trinket' };
-    // Sessions can't ride the mongoose connection here; use the in-memory
-    // catbox cache (same choice as the gcr docker-compose dev stack).
-    config.app.plugins.session.cache = { backend: 'memory' };
-  } else {
+  // FS_MODE config flips happen at module load (top of this file) — see above.
+  if (!FS_MODE) {
     const uri = inject('mongoUri');
     const u = new URL(uri);
     config.db.mongo.host = u.hostname;
