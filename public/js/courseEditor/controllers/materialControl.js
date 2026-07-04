@@ -83,6 +83,7 @@
     self.$scope.preview          = angular.bind(self, self.getPreview);
     self.$scope.updateMaterial   = angular.bind(self, self.updateMaterial);
     self.$scope.onFileSelect     = angular.bind(self, self.onFileSelect);
+    self.$scope.openUploadDialog = angular.bind(self, self.openUploadDialog);
     self.$scope.backToCourse     = angular.bind(self, self.backToCourse);
     self.$scope.toggleDraft      = angular.bind(self, self.toggleDraft);
 
@@ -147,6 +148,16 @@
       self.autoSave();
     }
   }
+
+  // Open the upload dialog programmatically. The trigger used Foundation's
+  // data-reveal-id auto-wiring, which only binds at page bootstrap; this Angular
+  // partial is injected after bootstrap, so on a hard-refresh / deep-link the
+  // trigger was never wired and clicking did nothing. Opening the reveal here
+  // (mirroring the existing 'close' call) works regardless of load path (#24).
+  MaterialControl.prototype.openUploadDialog = function(ev) {
+    if (ev && ev.preventDefault) { ev.preventDefault(); }
+    $('#fileUploadModal').foundation('reveal', 'open');
+  };
 
   MaterialControl.prototype.onFileSelect = function(files, fromModal) {
     var self = this;
