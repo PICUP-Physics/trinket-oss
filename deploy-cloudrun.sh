@@ -78,9 +78,17 @@ EOF
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# A TRINKET_DEPLOY given on the command line outranks the one in .env — the
+# .env value is a convenience default (e.g. for docker compose); an explicit
+# `TRINKET_DEPLOY=name bash deploy-cloudrun.sh` must win or one checkout
+# cannot safely drive multiple deploys.
+_CLI_TRINKET_DEPLOY="${TRINKET_DEPLOY:-}"
 if [[ -f "${SCRIPT_DIR}/.env" ]]; then
   # shellcheck source=.env
   source "${SCRIPT_DIR}/.env"
+fi
+if [[ -n "${_CLI_TRINKET_DEPLOY}" ]]; then
+  TRINKET_DEPLOY="${_CLI_TRINKET_DEPLOY}"
 fi
 
 # Per-deploy overlay folder: with TRINKET_DEPLOY=<name>, deploys/<name>/.env
