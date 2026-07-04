@@ -101,8 +101,11 @@ Kept from gcr without a flag (additive, inert when unconfigured):
      S3-compatible storage (garage/minio/AWS) — stock picup, the compose stack.
    - **GCP**: firestore + Firebase Auth + GCS — mandi/uindy/Cloud Run, and the
      gcr dev compose stack (full emulator suite: auth+firestore+storage).
-   Enforcement TBD at the real merge (startup-check warn vs production
-   fail-closed with an explicit `allowUnsupportedConfig` escape hatch).
+   Enforcement IMPLEMENTED (Steve-approved, 2026-07-04): `checkShape()` in
+   `lib/util/startup-check.js` — fail-closed when NODE_ENV=production,
+   warn everywhere else, `app.allowUnsupportedConfig: true` escape hatch,
+   message names both shapes + the fix. Unit-tested across the matrix
+   (test/lib/util/startup-check.test.js).
    CAVEAT the automated FS test profile currently authenticates via local
    auth against the firestore emulator (harness convenience, not a supported
    shape) — see the auth-emulator open item before enforcing unconditionally.
