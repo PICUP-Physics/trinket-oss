@@ -72,20 +72,20 @@
     "winston": "^3.8.0"
   },
   "devDependencies": {
-    "chai": "^3.5.0",
-    "chai-as-promised": "^6.0.0",
-    "cheerio": "~0.22.0",
-    "mocha": "^3.4.1",
-    "redis-mock": "~0.2.0",
+    "@vitest/coverage-v8": "^2.1.9",
+    "form-data": "^4.0.6",
+    "mongodb-memory-server": "^10.4.3",
     "sass": "^1.57.0",
-    "should": "~3.0.0",
-    "sinon": "~1.7.3",
-    "sinon-chai": "^2.5.0",
-    "supertest": "~0.8.3",
-    "vite": "^4.5.14"
+    "vite": "^4.5.14",
+    "vitest": "^2.1.9"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "scripts": {
-    "test": "mocha",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "build:css": "vite build",
     "watch:css": "vite build --watch",
     "build": "npm run build:css",

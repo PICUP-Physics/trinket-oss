@@ -1,38 +1,19 @@
-var _      = require('underscore'),
-    sinon  = require('sinon'),
-    should = require('chai').should(),
-    plugin = require('../../../../lib/models/plugins/paginate');
+const plugin = require('../../../../lib/models/plugins/paginate');
 
 describe('paginate plugin', function() {
-  var query = {
-        sort : sinon.spy(function() {
-          return this;
-        }),
-        limit : sinon.spy(function() {
-          return this;
-        }),
-        select : sinon.spy(function() {
-          return this;
-        }),
-        exec : sinon.spy(function(cb) {
-          return this;
-        })
-      },
-      model = {
-        find : sinon.spy(function() {
-          return query;
-        }),
-      },
-      schema, options;
+  let query, model, schema, options;
 
   beforeEach(function() {
-    model.find.reset();
-    query.sort.reset();
-    query.limit.reset();
-    query.exec.reset();
-    schema  = {
-      statics : {}
+    query = {
+      sort:   vi.fn(function() { return query; }),
+      limit:  vi.fn(function() { return query; }),
+      select: vi.fn(function() { return query; }),
+      exec:   vi.fn(function(cb) { return query; })
     };
+    model = {
+      find: vi.fn(function() { return query; }),
+    };
+    schema  = { statics: {} };
     options = {};
   });
 
@@ -42,18 +23,17 @@ describe('paginate plugin', function() {
 
   describe('instantiation', function() {
     function shouldWork() {
-      var err;
+      let err;
       try {
         plugin(schema, options);
       } catch(e) {
         err = e;
-      };
-
-      should.not.exist(err);
+      }
+      expect(err == null).toBe(true);
     }
 
     it('should require a sortBy option', function() {
-      var err;
+      let err;
 
       try {
         plugin(schema, options);
@@ -61,8 +41,8 @@ describe('paginate plugin', function() {
       catch(e) {
         err = e.toString();
       }
-      should.exist(err);
-      err.should.match(/requires.*sort\skey/i);
+      expect(err != null).toBe(true);
+      expect(err).toMatch(/requires.*sort\skey/i);
     });
 
     it('should accept a single sortBy option as a string', function() {
@@ -81,7 +61,7 @@ describe('paginate plugin', function() {
     });
 
     it('should not allow a default limit above the max limit', function() {
-      var err;
+      let err;
       options.sortBy = 'foo';
       options.defaultLimit = 100;
       options.maxLimit     = 1;
@@ -91,8 +71,8 @@ describe('paginate plugin', function() {
       catch(e) {
         err = e;
       }
-      should.exist(err);
-      err.should.match(/default.*limit.*exceed.*max.*limit/i);
+      expect(err != null).toBe(true);
+      expect(err.message).toMatch(/default.*limit.*exceed.*max.*limit/i);
     });
 
     it('should provide a paginate method when all valid options are supplied', function() {
@@ -100,8 +80,8 @@ describe('paginate plugin', function() {
       options.defaultLimit = 1;
       options.maxLimit = 2;
       shouldWork();
-      should.exist(schema.statics.paginate);
-      schema.statics.paginate.should.be.a('function');
+      expect(schema.statics.paginate != null).toBe(true);
+      expect(schema.statics.paginate).toBeInstanceOf(Function);
     });
   });
 
@@ -109,33 +89,33 @@ describe('paginate plugin', function() {
     it('should return an unexecuted query if no callback is provided', function() {
       options.sortBy = 'foo';
       plugin(schema, options);
-      var result = callPaginate();
-      result.should.equal(query);
-      query.exec.called.should.be.false;
+      const result = callPaginate();
+      expect(result).toBe(query);
+      expect(query.exec).not.toHaveBeenCalled();
     });
 
     it('should execute the query if a callback is provided', function() {
       options.sortBy = 'foo';
       plugin(schema, options);
-      var cb = sinon.spy();
-      var result = callPaginate(cb);
-      query.exec.calledWithExactly(cb).should.be.true;
+      const cb = vi.fn();
+      callPaginate(cb);
+      expect(query.exec).toHaveBeenCalledWith(cb);
     });
 
     it('should die if an invalid sort key is provided', function() {
-      var err;
+      let err;
       options.sortBy = 'foo';
       plugin(schema, options);
       try {
         callPaginate({
           sort : 'bar'
-        })
+        });
       } catch(e) {
         err = e;
       }
 
-      should.exist(err);
-      err.should.match(/sort.*key.*not.*allowed/i);
+      expect(err != null).toBe(true);
+      expect(err.message).toMatch(/sort.*key.*not.*allowed/i);
     });
 
     describe('query instantiation', function() {
@@ -143,43 +123,43 @@ describe('paginate plugin', function() {
         options.sortBy = 'foo';
         plugin(schema, options);
         callPaginate();
-        model.find.calledOnce.should.be.true;
+        expect(model.find).toHaveBeenCalledOnce();
       });
 
       it('should construct a default condition if none is provided', function() {
         options.sortBy = 'foo';
         plugin(schema, options);
         callPaginate();
-        model.find.firstCall.calledWithExactly({foo:{'$exists':true}}).should.be.true;
+        expect(model.find).toHaveBeenCalledWith({foo:{'$exists':true}});
       });
 
       it('should use the where option as the query if it is provided', function() {
-        var whereClause = { a : 'b' },
-            expectedQuery = {
-              a : 'b',
-              foo : {'$exists' : true}
-            };
+        const whereClause = { a : 'b' },
+              expectedQuery = {
+                a : 'b',
+                foo : {'$exists' : true}
+              };
 
         options.sortBy = 'foo';
         plugin(schema, options);
         callPaginate({
           where : whereClause
         });
-        model.find.firstCall.calledWithExactly(expectedQuery).should.be.true;
+        expect(model.find).toHaveBeenCalledWith(expectedQuery);
       });
 
       it('should add an after condition to the query if it is provided', function() {
-        var whereClause = { a : 'b' };
+        const whereClause = { a : 'b' };
         options.sortBy = 'foo';
         plugin(schema, options);
         callPaginate({
           where : whereClause,
           after : 1
         });
-        model.find.firstCall.calledWithExactly({
+        expect(model.find).toHaveBeenCalledWith({
           foo : { '$exists': true, '$gt' : 1 },
           a   : 'b'
-        }).should.be.true;
+        });
       });
     });
 
@@ -188,16 +168,16 @@ describe('paginate plugin', function() {
         options.sortBy = 'foo';
         plugin(schema, options);
         callPaginate();
-        query.sort.calledOnce.should.be.true;
+        expect(query.sort).toHaveBeenCalledOnce();
       });
 
       it('should by default sort ascending by the default sortBy value', function() {
         options.sortBy = 'foo';
         plugin(schema, options);
         callPaginate();
-        query.sort.firstCall.calledWithExactly({
+        expect(query.sort).toHaveBeenCalledWith({
           foo : 1
-        }).should.be.true;
+        });
       });
 
       it('should sort ascending if the provided sort is positive', function() {
@@ -206,9 +186,9 @@ describe('paginate plugin', function() {
         callPaginate({
           sort : 'foo'
         });
-        query.sort.firstCall.calledWithExactly({
+        expect(query.sort).toHaveBeenCalledWith({
           foo : 1
-        }).should.be.true;
+        });
       });
 
       it('should sort descending if the provided sort is negative', function() {
@@ -217,9 +197,9 @@ describe('paginate plugin', function() {
         callPaginate({
           sort : '-foo'
         });
-        query.sort.firstCall.calledWithExactly({
+        expect(query.sort).toHaveBeenCalledWith({
           foo : -1
-        }).should.be.true;
+        });
       });
     });
 
@@ -228,7 +208,7 @@ describe('paginate plugin', function() {
         options.sortBy = 'foo';
         plugin(schema, options);
         callPaginate();
-        query.limit.calledOnce.should.be.true;
+        expect(query.limit).toHaveBeenCalledOnce();
       });
 
       it('should use the default limit if none is provided', function() {
@@ -236,18 +216,18 @@ describe('paginate plugin', function() {
         options.defaultLimit = 5;
         plugin(schema, options);
         callPaginate();
-        query.limit.firstCall.calledWithExactly(options.defaultLimit).should.be.true;
+        expect(query.limit).toHaveBeenCalledWith(options.defaultLimit);
       });
 
       it('should use the supplied limit', function() {
         options.sortBy = 'foo';
         plugin(schema, options);
         callPaginate({limit:2});
-        query.limit.firstCall.calledWithExactly(2).should.be.true;
+        expect(query.limit).toHaveBeenCalledWith(2);
       });
 
       it('should not allow the supplied limit to exceed the max limit', function() {
-        var err;
+        let err;
         options.sortBy = 'foo';
         options.defaultLimit = 1;
         options.maxLimit = 5;
@@ -258,8 +238,8 @@ describe('paginate plugin', function() {
           err = e;
         }
 
-        should.exist(err);
-        err.should.match(/limit.*less.*than.*max.*limit/i);
+        expect(err != null).toBe(true);
+        expect(err.message).toMatch(/limit.*less.*than.*max.*limit/i);
       });
     });
   });

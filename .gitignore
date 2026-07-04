@@ -80,3 +80,4 @@ config/local-production-cloudrun.yaml
 
 # Per-deploy brand assets (logos) — each worktree carries its own; never shared
 public/img/brand/
+coverage
