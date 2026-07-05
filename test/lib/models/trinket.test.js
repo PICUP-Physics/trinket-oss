@@ -199,4 +199,29 @@ describe('Trinket model', () => {
       });
     });
   });
+
+  describe('checkSnapshot (default thumbnail)', () => {
+    // Regression: the default placeholder must be the bundled LOCAL asset.
+    // Routing it through the per-deploy snapshots bucket 404s (the bucket has
+    // no avatar-default.png) and renders a broken <img> — seen live on uindy.
+
+    it('defaults a missing snapshot to the local asset', () => {
+      const t = {};
+      Trinket.checkSnapshot(t);
+      expect(t.snapshot).toEqual('/img/avatar-default.png');
+    });
+
+    it('repairs a previously-defaulted bucket URL back to the local asset', () => {
+      const t = { snapshot: 'https://trinket-uindy-snapshots.example.com/avatar-default.png' };
+      Trinket.checkSnapshot(t);
+      expect(t.snapshot).toEqual('/img/avatar-default.png');
+    });
+
+    it('leaves real captured snapshots untouched', () => {
+      const url = 'https://trinket-snapshots.example.com/96d9c679d154-1783183844779.png';
+      const t = { snapshot: url };
+      Trinket.checkSnapshot(t);
+      expect(t.snapshot).toEqual(url);
+    });
+  });
 });
