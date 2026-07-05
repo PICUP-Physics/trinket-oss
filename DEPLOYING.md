@@ -315,6 +315,41 @@ Cloud Run — after editing overlay files, `docker compose up --build` (or
 `docker compose build app`) to pick them up. For rapid view-tweaking, prefer
 bare node.
 
+**Bare node + compose backends.** The compose stack publishes its backends
+to the host on offset ports (no collision with host-installed services):
+mongo `127.0.0.1:17017`, redis `127.0.0.1:16379`, garage `127.0.0.1:3900`.
+A bare-node run must be pointed at them — and the right home for that is a
+`config/local-development.yaml` in the overlay repo, which deploy-dir merges
+ONLY when `NODE_ENV` is development (so it can never leak into prod, and
+`local-production.yaml` never leaks into dev):
+
+```yaml
+# deploys/<name>/config/local-development.yaml
+db:
+  mongo:
+    host: localhost
+    port: 17017
+  redis:
+    app:
+      port: 16379
+    exports:
+      port: 16379
+aws:
+  endpoint: http://localhost:3900
+```
+
+Then the loop is:
+
+```bash
+docker compose up mongodb redis garage-init   # backends only (garage-init pulls in garage)
+TRINKET_DEPLOY=mandi node app.js              # overlay branding/views, live-reloading
+```
+
+Keep env-specific values in the env-suffixed files (`local-development.yaml`
+/ `local-production.yaml`), not in `local.yaml` — `local.yaml` loads in
+EVERY env, including test, and a backend setting there will poison runs that
+assume stock defaults.
+
 ---
 
 ## Updating the Web VPython runtime (rsWVPRunner)
