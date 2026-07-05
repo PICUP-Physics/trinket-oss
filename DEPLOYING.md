@@ -261,6 +261,60 @@ replace the page body. The same shadowing works for any template (e.g.
 `views/static/help.html`) and any static asset (e.g.
 `public/img/brand/logo.png`).
 
+### Deploying to Cloud Run with a deploy overlay
+
+`deploy-cloudrun.sh` is overlay-aware. With the overlay repo cloned into
+`deploys/`, name it on the command line:
+
+```bash
+git clone git@github.com:MIAuthors/deploy-mandi.git deploys/mandi
+TRINKET_DEPLOY=mandi bash deploy-cloudrun.sh            # direct
+TRINKET_DEPLOY=mandi NO_TRAFFIC=1 bash deploy-cloudrun.sh   # staged (recommended)
+```
+
+What the script does with it:
+
+1. **`deploys/mandi/.env` is sourced after the root `.env`** and overrides
+   it — project id, service name, region, secrets all come from the
+   overlay, so the root `.env` can stay generic (or hold a convenience
+   default `TRINKET_DEPLOY=mandi`; an explicit command-line value always
+   outranks it).
+2. **The overlay is baked into the image** (the Dockerfile copies the whole
+   tree, `deploys/` included) — changing overlay config/views means a
+   redeploy, same as changing app code.
+3. **`TRINKET_DEPLOY=mandi` is set on the Cloud Run service**, so the app
+   activates the overlay at boot.
+
+One checkout drives many deploys: clone several overlay repos side by side
+under `deploys/` and pick per invocation —
+`TRINKET_DEPLOY=uindy bash deploy-cloudrun.sh` deploys UIndy from the same
+tree without touching mandi.
+
+### Running locally with a deploy overlay
+
+**Bare node** (fastest iteration — config, views, and assets all live-read
+from the overlay folder; a nunjucks edit only needs a page reload, a config
+edit a restart):
+
+```bash
+TRINKET_DEPLOY=mandi node app.js
+```
+
+You still need whatever backends the overlay's shape expects (the compose
+stack's mongo/redis, or the Firebase emulators for a GCP-shape overlay).
+
+**Docker compose** (closest to production): `docker-compose.yml` passes
+`TRINKET_DEPLOY` through to the app container:
+
+```bash
+TRINKET_DEPLOY=mandi docker compose up --build
+```
+
+Note the overlay is baked into the compose image at build time just like
+Cloud Run — after editing overlay files, `docker compose up --build` (or
+`docker compose build app`) to pick them up. For rapid view-tweaking, prefer
+bare node.
+
 ---
 
 ## Updating the Web VPython runtime (rsWVPRunner)
