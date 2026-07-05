@@ -215,7 +215,7 @@ custom pages — lives OUTSIDE this repo, in a private per-deploy repo cloned
 into the gitignored `deploys/` folder and activated with `TRINKET_DEPLOY`:
 
 ```bash
-git clone git@github.com:MIAuthors/deploy-mandi.git deploys/mandi
+git clone git@github.com:MIAuthors/trinket-deploy.git deploys/mandi
 TRINKET_DEPLOY=mandi node app.js
 ```
 
@@ -267,7 +267,7 @@ replace the page body. The same shadowing works for any template (e.g.
 `deploys/`, name it on the command line:
 
 ```bash
-git clone git@github.com:MIAuthors/deploy-mandi.git deploys/mandi
+git clone git@github.com:MIAuthors/trinket-deploy.git deploys/mandi
 TRINKET_DEPLOY=mandi bash deploy-cloudrun.sh            # direct
 TRINKET_DEPLOY=mandi NO_TRAFFIC=1 bash deploy-cloudrun.sh   # staged (recommended)
 ```
