@@ -9,7 +9,11 @@ beforeEach(() => {
   flow.activeUser = 'user';
 });
 
-describe('User Registration', () => {
+// Local-auth provider only: these routes (login form / signup form /
+// forgot-pass) are not registered under auth.provider=firebase.
+const FB_MODE = process.env.TEST_AUTH_PROVIDER === 'firebase';
+
+describe.skipIf(FB_MODE)('User Registration', () => {
   // libraryUser and sampleCourse are re-created per test (replaces the legacy
   // outer before/after that ran once for all tests — here the DB is dropped
   // between tests so we must recreate them each time).

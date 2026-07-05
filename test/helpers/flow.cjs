@@ -242,6 +242,10 @@ var flow = {
 
   // Set the active cookie jar to `user`, logging them in (creating the user if
   // needed) the first time. Empty string => an anonymous/unauthenticated jar.
+  // Under the firebase-auth profile (TEST_AUTH_PROVIDER=firebase) the POST
+  // /login form route doesn't exist; login mints an ID token from the Auth
+  // emulator and exchanges it at POST /api/auth/session — the same seam the
+  // FirebaseUI client uses in production.
   async switchUser(user) {
     this.activeUser = user;
     if (!user) return;             // anonymous: no login
@@ -256,11 +260,48 @@ var flow = {
       await new User(defaults[user]).save();
     }
 
+    if (require('config').auth.provider === 'firebase') {
+      var idToken = await firebaseIdToken(creds);
+      var r2 = await this.post('/api/auth/session', { idToken: idToken });
+      if (r2.statusCode !== 200) {
+        throw new Error('Failed firebase session login for "' + user + '": ' +
+          r2.statusCode + ' ' + (r2.body && JSON.stringify(r2.body).slice(0, 200)));
+      }
+      return;
+    }
+
     var r = await this.login(creds);
     if (r.statusCode !== 302) {
       throw new Error('Failed to log in "' + user + '"');
     }
   },
 };
+
+// Mint an ID token from the Firebase AUTH emulator for (email, password).
+// signUp first (fresh emulator/account), fall back to signInWithPassword when
+// the account already exists within a test file. Fixture passwords can be
+// shorter than Firebase's 6-char minimum, so the emulator account uses a
+// derived password — it never has to match the local-auth bcrypt one.
+async function firebaseIdToken(creds) {
+  var base = 'http://' + process.env.FIREBASE_AUTH_EMULATOR_HOST +
+             '/identitytoolkit.googleapis.com/v1/accounts:';
+  var body = JSON.stringify({
+    email: creds.email,
+    password: 'emu-' + creds.password + '-000000',
+    returnSecureToken: true
+  });
+  var opts = { method: 'POST', headers: { 'content-type': 'application/json' }, body: body };
+
+  var res  = await fetch(base + 'signUp?key=fake-api-key', opts);
+  var json = await res.json();
+  if (json.error && /EMAIL_EXISTS/.test(json.error.message || '')) {
+    res  = await fetch(base + 'signInWithPassword?key=fake-api-key', opts);
+    json = await res.json();
+  }
+  if (!json.idToken) {
+    throw new Error('Auth emulator gave no idToken: ' + JSON.stringify(json.error || json).slice(0, 300));
+  }
+  return json.idToken;
+}
 
 module.exports = flow;

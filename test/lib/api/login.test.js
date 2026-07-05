@@ -10,7 +10,11 @@ beforeEach(() => {
   flow.activeUser = 'user';
 });
 
-describe('User Login', () => {
+// Local-auth provider only: these routes (login form / signup form /
+// forgot-pass) are not registered under auth.provider=firebase.
+const FB_MODE = process.env.TEST_AUTH_PROVIDER === 'firebase';
+
+describe.skipIf(FB_MODE)('User Login', () => {
   describe('When I enter an invalid login', () => {
     beforeEach(async () => {
       flow.switchUser('');

@@ -136,12 +136,20 @@ Kept from gcr without a flag (additive, inert when unconfigured):
 - The 58 auto-merged files are unaudited — test suite run is the probe.
 - `docker-compose.gcr.yml` naming/placement: fine for trial; real merge may
   want `docker/` subdir or profiles.
-- **Wire the Firebase AUTH emulator into the automated FS test profile**:
-  mint users/sessions via the auth emulator's REST API instead of
-  `POST /login` (flow.cjs). Then the FS profile tests exactly what GCP-shape
-  deploys run, the last local-auth-on-firestore user disappears, and the
-  all-or-none rule (design decision 3) can be enforced without a test-env
-  exemption. Real harness work — new user/session fixture path.
+- ~~**Wire the Firebase AUTH emulator into the automated FS test profile**~~
+  **DONE 2026-07-05 — third test profile, green on first full run
+  (129 pass / 23 skip / 0 fail)**: `TEST_AUTH_PROVIDER=firebase` (requires
+  the FS profile) flips `auth.provider` at module load; `flow.switchUser`
+  mints an emulator ID token (REST signUp/signIn) and exchanges it at
+  `POST /api/auth/session` — the same seam FirebaseUI drives in production.
+  Auth-emulator accounts wipe alongside the firestore wipe in afterEach.
+  Local-auth-only files (`login`, `forgot_pass`, `registration`) skipIf the
+  mode; new `firebase-auth.test.js` covers the session seam (valid token,
+  authenticated API, garbage token 401, missing token flash-validation).
+  Image: `trinket-test-firestore` gained firebase-tools; run command in the
+  Dockerfile header. NOTE the suite documents a framework convention found
+  along the way: Joi validation failures on API routes return
+  `200 + flash.validation`, not bare 400s; handler Booms keep real codes.
 
 ## Stage 1 rehearsal: tests/rebuild → merged tree (2026-07-04)
 

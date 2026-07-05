@@ -228,6 +228,26 @@ if (FS_MODE) {
   _config.app.plugins.session.cache = { backend: 'memory' };
 }
 
+// Firebase-auth profile: TEST_AUTH_PROVIDER=firebase (FS profile only) runs
+// the suite with auth.provider=firebase — the GCP all-or-none shape mandi and
+// uindy actually deploy. Login goes through the Firebase AUTH emulator:
+// flow.switchUser mints an ID token via the emulator REST API and exchanges
+// it at POST /api/auth/session. Local-auth-only tests (login form, signup
+// form, forgot-pass) must skipIf this mode — those routes don't exist under
+// the firebase provider.
+const FB_AUTH_MODE = process.env.TEST_AUTH_PROVIDER === 'firebase';
+if (FB_AUTH_MODE) {
+  if (!FS_MODE) {
+    throw new Error('TEST_AUTH_PROVIDER=firebase requires TEST_DB_BACKEND=firestore (all-or-none shapes)');
+  }
+  if (!process.env.FIREBASE_AUTH_EMULATOR_HOST) {
+    throw new Error('TEST_AUTH_PROVIDER=firebase requires FIREBASE_AUTH_EMULATOR_HOST');
+  }
+  // firebase-admin verifies emulator tokens against GOOGLE_CLOUD_PROJECT.
+  process.env.GOOGLE_CLOUD_PROJECT = process.env.GOOGLE_CLOUD_PROJECT || 'demo-trinket';
+  require('config').auth.provider = 'firebase';
+}
+
 // Holds the in-memory redis client created during beforeAll so afterEach can
 // flush it, clearing login rate-limit counters between tests file-wide.
 let _redisClient;
@@ -290,6 +310,13 @@ afterEach(async () => {
     await fetch('http://' + process.env.FIRESTORE_EMULATOR_HOST +
       '/emulator/v1/projects/' + projectId + '/databases/(default)/documents',
       { method: 'DELETE' });
+    if (FB_AUTH_MODE) {
+      // Also wipe Auth-emulator accounts, or cross-test signUps collide on
+      // EMAIL_EXISTS with stale uids after the DB user is gone.
+      await fetch('http://' + process.env.FIREBASE_AUTH_EMULATOR_HOST +
+        '/emulator/v1/projects/' + projectId + '/accounts',
+        { method: 'DELETE' });
+    }
   } else if (mongoose.connection.readyState === 1) {
     await mongoose.connection.db.dropDatabase();
   }
