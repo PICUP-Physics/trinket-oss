@@ -208,6 +208,61 @@ After that, all subsequent deploys can use the staged workflow.
 
 ---
 
+## Per-deploy customization (`deploys/`)
+
+Everything specific to one deployment — config with secrets, branding,
+custom pages — lives OUTSIDE this repo, in a private per-deploy repo cloned
+into the gitignored `deploys/` folder and activated with `TRINKET_DEPLOY`:
+
+```bash
+git clone git@github.com:MIAuthors/deploy-mandi.git deploys/mandi
+TRINKET_DEPLOY=mandi node app.js
+```
+
+The overlay (`config/deploy-dir.js` is the loader) has three parts, all
+optional:
+
+| Folder | Effect |
+|---|---|
+| `deploys/<name>/config/` | yaml files (same names node-config uses, e.g. `local-production.yaml`) deep-merged onto the loaded config — wins over everything, so keep host-specific values out |
+| `deploys/<name>/views/` | nunjucks templates that shadow `lib/views/` by relative path |
+| `deploys/<name>/public/` | static assets that shadow `public/` by relative path |
+
+Without `TRINKET_DEPLOY` the app runs completely stock — the mechanism is
+inert.
+
+### Example: give your deploy its own About page
+
+The stock page is `lib/views/static/about.html`. To replace it, add a file
+at the same relative path inside your deploy repo —
+`deploys/<name>/views/static/about.html`:
+
+```html
+{% extends "base.html" %}
+
+{% block title %}About My University's Trinket{% endblock %}
+
+{% block body_id %}about{% endblock %}
+
+{% block content %}
+<div class="row" style="padding: 40px 0;">
+  <div class="small-12 columns">
+    <h2>About this site</h2>
+    <p class="lead">This trinket instance is run by ... for ... courses.</p>
+  </div>
+</div>
+{% endblock %}
+```
+
+Restart the app and `/about` serves your version — no fork, no patches to
+this repo. `{% extends "base.html" %}` still resolves against the stock
+tree, so you inherit the site chrome (nav, login state, footer) and only
+replace the page body. The same shadowing works for any template (e.g.
+`views/static/help.html`) and any static asset (e.g.
+`public/img/brand/logo.png`).
+
+---
+
 ## Updating the Web VPython runtime (rsWVPRunner)
 
 The GlowScript embed loads `glow.3.2.3.min.js` (and `RScompiler` / `RSrun`) from
