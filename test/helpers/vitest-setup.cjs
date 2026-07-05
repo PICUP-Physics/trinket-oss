@@ -269,6 +269,28 @@ beforeAll(async () => {
     config.db.mongo.database = 'test_' + Math.random().toString(36).slice(2);
   }
 
+  // Real-S3 profile: TEST_S3=garage boots an actual garage in globalSetup
+  // (mongo-global.mjs) — point the aws config at it BEFORE app boot so
+  // config/aws.js reads the right endpoint at require time. Storage tests
+  // that stub FileUtil are unaffected; s3-roundtrip.test.js goes stub-free.
+  const garage = inject('garage');
+  if (garage) {
+    config.storage.backend    = 's3';
+    config.aws.endpoint       = garage.endpoint;
+    config.aws.keyId          = garage.keyId;
+    config.aws.key            = garage.secret;
+    config.aws.region         = 'garage';
+    config.aws.s3ForcePathStyle = true;
+    config.aws.signatureVersion = 'v4';
+    ['materials', 'snapshots', 'useravatars', 'userassets', 'exports'].forEach(function (b) {
+      config.aws.buckets[b] = Object.assign({}, config.aws.buckets[b], {
+        name: 'trinket-' + b,
+        host: garage.endpoint + '/trinket-' + b
+      });
+    });
+    config.features.assets = true;   // /file replies 501 without it
+  }
+
   // app.js exits(1) if the session cookie password is < 32 chars. Provide one.
   config.app.plugins.session.cookieOptions.password =
     'test-only-session-cookie-password-0123456789';

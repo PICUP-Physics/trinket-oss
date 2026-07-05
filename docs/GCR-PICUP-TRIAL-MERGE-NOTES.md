@@ -150,6 +150,14 @@ Kept from gcr without a flag (additive, inert when unconfigured):
   Dockerfile header. NOTE the suite documents a framework convention found
   along the way: Joi validation failures on API routes return
   `200 + flash.validation`, not bare 400s; handler Booms keep real codes.
+- **Real-S3 round-trip profile (2026-07-05)**: `TEST_S3=garage` on the mongo
+  profile boots an actual garage v1.0.1 in globalSetup (static musl binary
+  cached in node_modules like the mongod binaries; single-node provisioning
+  mirrors docker/garage/init.sh), points `config.aws` at it before app boot,
+  and `s3-roundtrip.test.js` pushes real bytes through
+  `lib/util/storage-backend` (multipart `POST /file` → garage object →
+  streamed download, byte-exact compare). First S3 coverage EVER — the old
+  mocha suite never touched it and files.test stubs FileUtil.
 
 ## Stage 1 rehearsal: tests/rebuild → merged tree (2026-07-04)
 

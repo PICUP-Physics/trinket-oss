@@ -99,8 +99,9 @@ var flow = {
     this.lastResponse = {
       statusCode : res.statusCode,
       headers    : res.headers,
-      body       : res.result,   // parsed
-      text       : res.payload,  // raw
+      body       : res.result,      // parsed
+      text       : res.payload,     // raw (utf8 string — lossy for binary)
+      raw        : res.rawPayload,  // Buffer — byte-exact (binary downloads)
       redirect   : res.statusCode >= 300 && res.statusCode < 400,
     };
     this.lastError       = null;
