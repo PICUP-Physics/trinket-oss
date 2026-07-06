@@ -30,9 +30,20 @@ emulator accepts everything.
   valid JSON works against the emulator) in `.env` or the shell.
 - The tree is bind-mounted: view/template edits are live (reload the page);
   server-code edits need `docker compose -f docker-compose.gcr.yml restart app`.
-- The compose file pins `platform: linux/arm64` (Apple Silicon). On an
-  Intel machine, override with a second `-f` file setting
-  `services.app.platform: linux/amd64`.
+- **"Local" means two machines here.** The compose file's
+  `platform: linux/arm64` targets the Apple Silicon laptops — there it works
+  as-is. On the Intel mac-mini (intelmini — where Claude's sessions run),
+  add a second `-f` file overriding `services.app.platform: linux/amd64`:
+  ```yaml
+  # amd64-override.yml
+  services:
+    app:
+      platform: linux/amd64
+  ```
+  ```bash
+  docker compose -f docker-compose.gcr.yml -f amd64-override.yml up --build
+  ```
+  Everything else (ports, emulators, env) is identical on both machines.
 
 ## Self-host shape (compose)
 
