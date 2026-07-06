@@ -142,6 +142,27 @@ var flow = {
     return this._record(res);
   },
 
+  // Multipart import upload from an in-memory zip buffer (the imports routes
+  // read the file from field name 'file', unlike /file's 'upload').
+  async importTrinketsZip(zipBuffer, extraFields) {
+    var form = new FormData();
+    form.append('file', zipBuffer, { filename: 'import.zip' });
+    Object.keys(extraFields || {}).forEach(function (k) { form.append(k, String(extraFields[k])); });
+
+    var server = await getServer();
+    var headers = form.getHeaders();
+    if (this.cookies[this.activeUser]) {
+      headers.cookie = cookieHeader(this.cookies[this.activeUser]);
+    }
+    var res = await server.inject({
+      method  : 'POST',
+      url     : '/api/imports/trinkets',
+      payload : form.getBuffer(),
+      headers : headers,
+    });
+    return this._record(res);
+  },
+
   // --- generic verbs ---
   get(p)        { return this._inject('GET', p); },
   post(p, body) { return this._inject('POST', p, body); },

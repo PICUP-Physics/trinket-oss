@@ -150,6 +150,20 @@ Kept from gcr without a flag (additive, inert when unconfigured):
   Dockerfile header. NOTE the suite documents a framework convention found
   along the way: Joi validation failures on API routes return
   `200 + flash.validation`, not bare 400s; handler Booms keep real codes.
+- **🔴 Import ownership bug (2026-07-06, caught LIVE on the trial by
+  multi-account testing)**: the trinket-import dedup keyed on
+  `legacyShortCode` GLOBALLY — a second user importing the same course zip
+  got a course wired to the FIRST user's trinkets and owned nothing ("All my
+  trinkets" empty), and a `replace=true` re-import by user B silently
+  OVERWROTE user A's trinket content (proven by test). Fix: owner-scoped
+  variants (`findByOwnerAndLegacyShortCode(s)`) used by the import dedup +
+  course-ref resolution; the global lookups remain for legacy-URL routing.
+  Regression tests: `test/lib/api/imports.test.js` (in-memory zip fixtures,
+  both-importers-get-copies + cross-user-overwrite-blocked).
+  **⚠️ LIVE ON MANDI/UINDY PROD** (same global `findOne({legacyShortCode})`
+  in their `imports.js`) — and import is the actively-used feature there.
+  Multi-instructor imports of the same M&I courseware will cross-wire until
+  the merge deploys or the fix is cherry-picked.
 - **Real-S3 round-trip profile (2026-07-05)**: `TEST_S3=garage` on the mongo
   profile boots an actual garage v1.0.1 in globalSetup (static musl binary
   cached in node_modules like the mongod binaries; single-node provisioning
