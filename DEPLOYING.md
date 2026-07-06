@@ -82,6 +82,13 @@ Sign-in popups will be rejected unless you add the tagged hostname:
 For testing that the login view *renders* (which is the common pre-launch
 check), this isn't required — only the FirebaseUI widget needs to load.
 
+**Caveat 2: signing in on the tagged URL redirects you to the PROD host.**
+The post-login redirect comes from `config.url` (PUBLIC_HOSTNAME), so after
+authenticating on `candidate---…run.app` you land on the regular site —
+easy to miss that you're no longer testing the candidate. Navigate back to
+the tagged URL after login (the session cookie is host-scoped, so you may
+need to sign in once per host).
+
 ### 3. Promote to 100% traffic
 
 When you've verified the new revision works, run the command the script
