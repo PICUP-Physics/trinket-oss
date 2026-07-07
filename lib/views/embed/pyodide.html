@@ -200,6 +200,46 @@
     color: #999; font-style: italic; white-space: nowrap;
   }
   #embed_content_python #variables-table .var-cyclic { color: #b08800; font-style: normal; }
+
+  {% if config.features.stepDebugger %}
+  /* --- Step-through debugger (record & replay) ---------------------------- */
+  #embed_content_python #variables-toolbar #debug-launch,
+  #embed_content_python #variables-toolbar #debug-controls {
+    float: right;
+  }
+  #embed_content_python #variables-toolbar .debug-btn {
+    display: inline-block;
+    color: #2b6c9e;
+    cursor: pointer;
+    padding: 0 4px;
+    -webkit-user-select: none; -moz-user-select: none; user-select: none;
+  }
+  #embed_content_python #variables-toolbar .debug-btn:hover { color: #14435f; }
+  #embed_content_python #variables-toolbar .debug-start {
+    border: 1px solid #c6d8e4;
+    border-radius: 3px;
+    padding: 1px 8px;
+    background: #f2f8fc;
+  }
+  #embed_content_python #variables-toolbar #debug-pos {
+    display: inline-block;
+    min-width: 70px;
+    text-align: center;
+    color: #333;
+  }
+  #embed_content_python #variables-toolbar #debug-note {
+    color: #b06000;
+    margin: 0 6px;
+  }
+  #embed_content_python #variables-toolbar #debug-recording { color: #b06000; }
+  /* Current-line marker in the Ace editor during replay (deliberately NOT the
+     red error styling that editor.highlight() applies). */
+  .ace_editor .debug-current-line {
+    position: absolute;
+    background: rgba(255, 213, 79, 0.45);
+    z-index: 4;
+  }
+  {% endif %}
   {% endif %}
 </style>
 
@@ -295,6 +335,21 @@
       <div id="variables-inner">
         <div id="variables-toolbar">
           <label><input type="checkbox" id="variables-show-callables"> Show functions &amp; classes</label>
+          {% if config.features.stepDebugger %}
+          <span id="debug-launch">
+            <span id="debug-start" class="debug-btn debug-start" role="button" tabindex="0" title="Re-run your program slowly, recording each step, then step through it"><i class="fa fa-step-forward"></i> Step through</span>
+            <span id="debug-recording" class="hide">recording&hellip; <span id="debug-cancel" class="debug-btn" role="button" tabindex="0" title="Cancel">cancel</span></span>
+          </span>
+          <span id="debug-controls" class="hide">
+            <span id="debug-first" class="debug-btn" role="button" tabindex="0" title="First step"><i class="fa fa-fast-backward"></i></span>
+            <span id="debug-back" class="debug-btn" role="button" tabindex="0" title="Previous step (←)"><i class="fa fa-step-backward"></i></span>
+            <span id="debug-pos">0 / 0</span>
+            <span id="debug-fwd" class="debug-btn" role="button" tabindex="0" title="Next step (→)"><i class="fa fa-step-forward"></i></span>
+            <span id="debug-last" class="debug-btn" role="button" tabindex="0" title="Last step"><i class="fa fa-fast-forward"></i></span>
+            <span id="debug-note"></span>
+            <span id="debug-exit" class="debug-btn" role="button" tabindex="0" title="Exit step-through"><i class="fa fa-times"></i></span>
+          </span>
+          {% endif %}
         </div>
         <div id="variables-scroll" aria-live="polite">
           <table id="variables-table">

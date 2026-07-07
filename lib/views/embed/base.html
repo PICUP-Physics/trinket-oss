@@ -38,7 +38,8 @@
         draftDebounce     : {{config.app.embed.draftDebounce}},
         autosaveDebounce  : {{config.app.embed.autosaveDebounce}},
         assetsEnabled     : {{ 'true' if config.features.assets else 'false' }},
-        variableExplorer  : {{ 'true' if config.features.variableExplorer else 'false' }}
+        variableExplorer  : {{ 'true' if config.features.variableExplorer else 'false' }},
+        stepDebugger      : {{ 'true' if config.features.stepDebugger else 'false' }}
       }
     };
     {% if config.isTest %}

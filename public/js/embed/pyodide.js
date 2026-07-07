@@ -595,6 +595,285 @@ function expandNode(root, path) {
   }
 }
 
+// --- Step-through debugger (record & replay) --------------------------------
+//
+// Design: docs/pyodide-debugger-mvp.md. Clicking "Step through" re-runs the
+// program under a sys.settrace recorder that captures, per user-code line
+// event: line number, function, call depth, a compact variable snapshot of the
+// executing frame, and the stdout offset. Replay then steps forward/backward
+// through the recording. Requires features.stepDebugger (and the explorer,
+// whose tab/table it reuses).
+
+function stepDebuggerEnabled() {
+  return variableExplorerEnabled()
+    && !!(window.trinket && window.trinket.config && window.trinket.config.stepDebugger);
+}
+
+// Recorder caps (see the MVP doc). The step/size caps abort the traced exec
+// from INSIDE the tracer — that's what bounds `while True:` on the main
+// thread, where JS cannot interrupt synchronous Python.
+var DEBUG_MAX_STEPS = 5000;
+var DEBUG_MAX_VARS = 50;
+var DEBUG_MAX_REPR = 120;
+var DEBUG_MAX_DEPTH = 20;
+var DEBUG_MAX_BYTES = 2 * 1024 * 1024;
+
+// The user program is compiled with filename '<debug>' and exec'd in a fresh
+// namespace: user frames are exactly the '<debug>' frames (functions defined in
+// the main file included), library/site-packages frames are never traced, and
+// the real pyodide.globals namespace is untouched. stdout/stderr are captured
+// into a buffer so replay can reveal output step-by-step. A synthetic '<end>'
+// step (full output, final globals) is appended so students can step past the
+// last line to the terminal state.
+var RECORD_HELPER = [
+  'import sys, json, types, io, traceback',
+  "_SKIP = {'__user_source__', '_plt', '_vpy', '_js_scene', '_wrapped_rate'}",
+  'class _TrinketStopRecording(Exception): pass',
+  '_steps = []',
+  '_snaps = []',
+  '_size = [0]',
+  '_truncated = [False]',
+  '_buf = io.StringIO()',
+  'def _snap_ns(_ns):',
+  '    _out = []',
+  '    for _name, _val in list(_ns.items()):',
+  '        if _name in _SKIP: continue',
+  "        if _name.startswith('__') and _name.endswith('__'): continue",
+  '        if isinstance(_val, types.ModuleType): continue',
+  '        if isinstance(_val, (types.FunctionType, types.BuiltinFunctionType, types.LambdaType)): continue',
+  '        if isinstance(_val, type): continue',
+  '        try:',
+  '            _r = repr(_val)',
+  '        except Exception:',
+  "            _r = '<unrepresentable>'",
+  "        if len(_r) > _max_repr: _r = _r[:_max_repr] + '...'",
+  "        _out.append({'name': _name, 'type': type(_val).__name__, 'repr': _r})",
+  '        _size[0] += len(_r) + len(_name) + 24',
+  '        if len(_out) >= _max_vars: break',
+  '    return _out',
+  'def _depth_of(_frame):',
+  '    _d = 0',
+  '    _f = _frame.f_back',
+  '    while _f is not None:',
+  "        if _f.f_code.co_filename == '<debug>': _d += 1",
+  '        _f = _f.f_back',
+  '    return _d',
+  'def _tracer(_frame, _event, _arg):',
+  "    if _frame.f_code.co_filename != '<debug>':",
+  '        return None',
+  "    if _event == 'call':",
+  '        if _depth_of(_frame) >= _max_depth: return None',
+  '        return _tracer',
+  "    if _event != 'line':",
+  '        return _tracer',
+  '    if len(_steps) >= _max_steps or _size[0] > _max_bytes:',
+  '        _truncated[0] = True',
+  '        raise _TrinketStopRecording()',
+  "    _steps.append({'line': _frame.f_lineno, 'func': _frame.f_code.co_name, 'depth': _depth_of(_frame), 'out': _buf.tell()})",
+  '    _snaps.append(_snap_ns(_frame.f_locals))',
+  '    return _tracer',
+  "_g = {'__name__': '__main__'}",
+  '_err = None',
+  '_old_out, _old_err = sys.stdout, sys.stderr',
+  'sys.stdout = _buf',
+  'sys.stderr = _buf',
+  'try:',
+  "    _code = compile(_user_source, '<debug>', 'exec')",
+  '    sys.settrace(_tracer)',
+  '    try:',
+  '        exec(_code, _g)',
+  '    finally:',
+  '        sys.settrace(None)',
+  'except _TrinketStopRecording:',
+  '    pass',
+  'except BaseException as _e:',
+  "    _err = ''.join(traceback.format_exception_only(type(_e), _e)).strip()",
+  'finally:',
+  '    sys.stdout, sys.stderr = _old_out, _old_err',
+  "_steps.append({'line': None, 'func': '<end>', 'depth': 0, 'out': _buf.tell()})",
+  '_snaps.append(_snap_ns(_g))',
+  "json.dumps({'error': _err, 'truncated': _truncated[0], 'output': _buf.getvalue(), 'steps': _steps, 'snaps': _snaps})"
+].join('\n');
+
+var debugRec = null;       // active recording ({error, truncated, output, steps, snaps}) or null
+var debugIdx = 0;          // current step index into debugRec.steps
+var debugRecording = false;
+var debugCancelled = false;
+var debugMarkerId = null;      // ace marker id for the current-line highlight
+var debugMarkerSession = null; // ace session the marker was added to
+
+// Highlight the replay's current line in the (active) Ace editor with our own
+// marker class — deliberately NOT editor.highlight(), which applies the red
+// error styling and flags the file tab with an error icon.
+function debugHighlightLine(line) {
+  if (debugMarkerSession && debugMarkerId != null) {
+    try { debugMarkerSession.removeMarker(debugMarkerId); } catch (e) {}
+    debugMarkerId = null;
+    debugMarkerSession = null;
+  }
+  if (line == null) return;
+  try {
+    var aceEd = editor && editor._editor && editor._editor.aceInstance;
+    if (!aceEd || !window.ace) return; // e.g. plain-textarea mode: step without highlight
+    var session = aceEd.getSession();
+    var Range = window.ace.require('ace/range').Range;
+    var lineText = session.getLine(line - 1) || '';
+    debugMarkerId = session.addMarker(
+      new Range(line - 1, 0, line - 1, Math.max(lineText.length, 1)),
+      'debug-current-line', 'fullLine');
+    debugMarkerSession = session;
+    aceEd.scrollToLine(line - 1, true, true, function() {});
+  } catch (e) { /* highlight is best-effort */ }
+}
+
+// Render the variables table for a recorded step (flat, no expansion — the
+// recording is a snapshot; live Phase 3 expansion would show FINAL state and
+// lie about this step).
+function paintReplaySnap(snap, st) {
+  var $body = $('#variables-table tbody');
+  if (!$body.length) return;
+  var html = '';
+  if (st && st.func && st.func !== '<module>' && st.func !== '<end>') {
+    html += varNoteRowHtml(0, 'inside ' + st.func + '()');
+  }
+  if (!snap || !snap.length) {
+    html += '<tr class="vars-empty"><td colspan="3">No variables at this step.</td></tr>';
+  } else {
+    for (var i = 0; i < snap.length; i++) {
+      var v = snap[i];
+      html += varRowHtml({
+        displayName: v.name, type: v.type, repr: v.repr, len: null,
+        expandable: false, cyclic: false, kind: 'value'
+      }, { root: v.name, path: [], depth: 0, isChild: false });
+    }
+  }
+  $body.html(html);
+}
+
+function renderDebugStep() {
+  if (!debugRec) return;
+  var st = debugRec.steps[debugIdx];
+  var isEnd = st.func === '<end>';
+  $('#debug-pos').text(isEnd ? 'end' : (debugIdx + 1) + ' / ' + (debugRec.steps.length - 1));
+  paintReplaySnap(debugRec.snaps[debugIdx], st);
+  debugHighlightLine(st.line);
+  if (jqconsole) {
+    jqconsole.Reset();
+    jqconsole.Append(loadingHeader());
+    jqconsole.Write(debugRec.output.slice(0, st.out));
+    if (isEnd && debugRec.error) {
+      jqconsole.Write('\n' + debugRec.error + '\n', 'jqconsole-error', false);
+    }
+  }
+}
+
+function debugStepTo(idx) {
+  if (!debugRec) return;
+  debugIdx = Math.max(0, Math.min(idx, debugRec.steps.length - 1));
+  renderDebugStep();
+}
+
+function enterReplay(rec) {
+  debugRec = rec;
+  debugIdx = 0;
+  $('#debug-recording').addClass('hide');
+  $('#debug-launch').addClass('hide');
+  $('#debug-controls').removeClass('hide');
+  var note = '';
+  if (rec.truncated) note = 'recording stopped after ' + (rec.steps.length - 1) + ' steps';
+  else if (rec.error) note = 'ends with an error';
+  $('#debug-note').text(note);
+  showVariables();
+  renderDebugStep();
+}
+
+function exitReplay() {
+  if (!debugRec) return;
+  var rec = debugRec;
+  debugRec = null;
+  debugHighlightLine(null);
+  $('#debug-controls').addClass('hide');
+  $('#debug-note').text('');
+  $('#debug-launch').removeClass('hide');
+  $('#debug-recording').addClass('hide');
+  // Restore the console to the full recorded output and the table to the live
+  // post-run explorer view.
+  if (jqconsole) {
+    jqconsole.Reset();
+    jqconsole.Append(loadingHeader());
+    jqconsole.Write(rec.output);
+    if (rec.error) jqconsole.Write('\n' + rec.error + '\n', 'jqconsole-error', false);
+  }
+  paintVariables();
+}
+
+// Run the program under the recorder, then enter replay. Mirrors startRun's
+// pre-steps (FS sync, package auto-load, matplotlib target) but execs in a
+// fresh namespace under trace. Normal Run is untouched.
+function runStepThrough() {
+  if (running || debugRecording) return;
+  if (debugRec) exitReplay();
+
+  debugRecording = true;
+  debugCancelled = false;
+  $('#debug-launch').addClass('hide');
+  $('#debug-recording').removeClass('hide');
+
+  function recordingDone() {
+    debugRecording = false;
+    $('#debug-recording').addClass('hide');
+    if (!debugRec) $('#debug-launch').removeClass('hide');
+  }
+
+  ensurePyodide().then(function() {
+    if (debugCancelled) return null;
+    var prog = syncFilesToFS(editor.getAllFiles(), mainFile);
+    if (usesVPython(prog)) {
+      $('#debug-note').text('Step through is not available for VPython programs');
+      setTimeout(function() { $('#debug-note').text(''); }, 4000);
+      return null;
+    }
+    return pyodide.loadPackagesFromImports(prog).then(function() {
+      if (debugCancelled) return null;
+      var setup = Promise.resolve();
+      if (usesMatplotlib(prog)) {
+        window.document.pyodideMplTarget = document.getElementById('graphic');
+        showGraphic();
+        setup = pyodide.runPythonAsync(MATPLOTLIB_SETUP_CODE);
+      }
+      return setup.then(function() {
+        if (debugCancelled) return null;
+        var ns = null;
+        try {
+          ns = pyodide.toPy({
+            _user_source: prog,
+            _max_steps: DEBUG_MAX_STEPS,
+            _max_vars: DEBUG_MAX_VARS,
+            _max_repr: DEBUG_MAX_REPR,
+            _max_depth: DEBUG_MAX_DEPTH,
+            _max_bytes: DEBUG_MAX_BYTES
+          });
+          return JSON.parse(pyodide.runPython(RECORD_HELPER, { globals: ns }));
+        } finally {
+          if (ns && typeof ns.destroy === 'function') {
+            try { ns.destroy(); } catch (e) {}
+          }
+        }
+      });
+    });
+  }).then(function(rec) {
+    recordingDone();
+    if (rec && !debugCancelled) {
+      initConsoleOutput();
+      enterReplay(rec);
+    }
+  }).catch(function(err) {
+    recordingDone();
+    $('#debug-note').text('recording failed');
+    setTimeout(function() { $('#debug-note').text(''); }, 4000);
+  });
+}
+
 function escHtml(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -691,6 +970,7 @@ function collapseSubtree($row) {
 }
 
 function paintVariables() {
+  if (debugRec) return; // replay owns the table; exitReplay repaints on the way out
   var $body = $('#variables-table tbody');
   if (!$body.length) return; // no Variables panel (e.g. outputOnly embed)
 
@@ -1030,6 +1310,36 @@ window.TrinketAPI = {
         e.stopPropagation();
         toggleVarRow($(this).closest('tr'));
       });
+
+      // Step-through debugger controls (record & replay). Markup only exists
+      // when features.stepDebugger is on; handlers are harmless no-ops without it.
+      if (stepDebuggerEnabled()) {
+        var debugActivate = function(handler) {
+          return function(e) {
+            if (e.type === 'keydown' && e.which !== 13 && e.which !== 32) return;
+            e.preventDefault();
+            handler();
+          };
+        };
+        $('#debug-start').on('click keydown', debugActivate(runStepThrough));
+        $('#debug-cancel').on('click keydown', debugActivate(function() { debugCancelled = true; }));
+        $('#debug-first').on('click keydown', debugActivate(function() { debugStepTo(0); }));
+        $('#debug-back').on('click keydown', debugActivate(function() { debugStepTo(debugIdx - 1); }));
+        $('#debug-fwd').on('click keydown', debugActivate(function() { debugStepTo(debugIdx + 1); }));
+        $('#debug-last').on('click keydown', debugActivate(function() { debugStepTo(debugRec ? debugRec.steps.length - 1 : 0); }));
+        $('#debug-exit').on('click keydown', debugActivate(exitReplay));
+
+        // Arrow-key stepping while replaying (ignored while typing in the
+        // editor or any input, so it never hijacks code editing).
+        $(document).on('keydown.stepDebugger', function(e) {
+          if (!debugRec) return;
+          if (e.which !== 37 && e.which !== 39) return;
+          var t = $(e.target);
+          if (t.is('input, textarea') || t.closest('.ace_editor').length) return;
+          e.preventDefault();
+          debugStepTo(debugIdx + (e.which === 39 ? 1 : -1));
+        });
+      }
     }
 
     $(document).on('assets.change', function() {
@@ -1208,6 +1518,7 @@ window.TrinketAPI = {
     $('#codeOutputTab').addClass('active');
     $('#instructionsTab').removeClass('active');
     hideVariables();  // a run always returns focus to the Result pane
+    exitReplay();     // a fresh run invalidates any step-through recording
 
     runCode();
 
