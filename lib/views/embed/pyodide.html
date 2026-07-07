@@ -203,9 +203,20 @@
 
   {% if config.features.stepDebugger %}
   /* --- Step-through debugger (record & replay) ---------------------------- */
+  /* Foundation makes <label> display:block (full width), which would push the
+     debug controls onto their own line — lay the toolbar out as one flex row
+     instead, with the controls pinned right. */
+  #embed_content_python #variables-toolbar {
+    display: flex;
+    align-items: center;
+  }
+  #embed_content_python #variables-toolbar label {
+    flex: 0 0 auto;
+    margin: 0;
+  }
   #embed_content_python #variables-toolbar #debug-launch,
   #embed_content_python #variables-toolbar #debug-controls {
-    float: right;
+    margin-left: auto;
   }
   #embed_content_python #variables-toolbar .debug-btn {
     display: inline-block;
