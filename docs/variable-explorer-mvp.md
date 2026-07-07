@@ -113,7 +113,15 @@ No server, route, model, or shared-framework changes. No new dependencies
 
 - **Phase 1 (core, ~1–1.5 d):** helper + snapshot + tab/panel + flat table (name/type/repr) + count badge + empty state. Functions/classes filtered out (values only).
 - **Phase 2 (polish, ~0.5–1 d):** show/hide functions & classes toggle; per-type icons/coloring; smarter truncation (collection length shown, e.g. `list (1000 items)`); copy-value; a11y (the panel is `aria-live`, keyboard-focusable).
-- **Phase 3 (deferred):** expandable nested inspection of lists/dicts/objects (lazy, with recursion + size guards). Not in MVP.
+- **Phase 3 (implemented, #26):** expandable nested inspection of lists/dicts/objects.
+  Container rows get a caret; expanding lazily fetches **one level** of children
+  from the live namespace via `EXPAND_HELPER`, which navigates a **positional
+  path** (list of child-indices) from the top-level var — so arbitrary dict keys
+  and set members need no serialization. Children render as indented rows, each
+  itself expandable. Guards: `MAX_CHILDREN` (200) per node with a "… N more" note,
+  `MAX_DEPTH` (12), and cycle detection (a child whose `id()` matches an ancestor
+  is flagged `↻` and non-expandable). Expansions are transient — a re-run or the
+  functions/classes toggle repaints the flat table.
 
 ## Known limitations (acceptable for MVP)
 
