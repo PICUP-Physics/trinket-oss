@@ -435,24 +435,65 @@ var VARS_HELPER = [
 // plus the true total, each child's repr/type/len, whether it is itself
 // expandable, and whether it is a cycle back to an ancestor (so the UI can stop).
 var EXPAND_HELPER = [
-  'import json',
-  'def _child_pairs(_obj):',
-  '    if isinstance(_obj, dict):',
-  '        try:',
-  '            return [(repr(_k), _v) for _k, _v in _obj.items()]',
-  '        except Exception:',
-  '            return []',
+  'import json, itertools',
+  // Navigation step: return (found, i-th child value) WITHOUT building labels.
+  // Sequences index in O(1); dict/set/attrs do a single unlabeled pass. repr is
+  // deliberately absent here — labeling every key of every ancestor container
+  // on each expand made a click O(path_len x container_size) repr calls, a
+  // visible freeze on e.g. 100k-key dicts. Iteration order matches
+  // _child_pairs below (same unmutated object), so indices stay consistent.
+  'def _child_at(_obj, _i):',
+  '    if _i < 0:',
+  '        return False, None',
   '    if isinstance(_obj, (list, tuple, range)):',
-  "        return [('[%d]' % _i, _v) for _i, _v in enumerate(_obj)]",
+  '        if _i < len(_obj):',
+  '            return True, _obj[_i]',
+  '        return False, None',
+  '    if isinstance(_obj, dict):',
+  '        _it = _obj.values()',
+  '    elif isinstance(_obj, (set, frozenset)):',
+  '        _it = _obj',
+  '    else:',
+  '        try:',
+  '            _d = vars(_obj)',
+  '        except TypeError:',
+  '            return False, None',
+  '        if not isinstance(_d, dict):',
+  '            return False, None',
+  '        _it = _d.values()',
+  '    try:',
+  '        for _j, _v in enumerate(_it):',
+  '            if _j == _i:',
+  '                return True, _v',
+  '    except Exception:',
+  '        pass',
+  '    return False, None',
+  // Labeled children for the FINAL node only: (total, first _max pairs).
+  // islice caps the labeling work — a 100k-key dict reprs only _max keys.
+  'def _child_pairs(_obj, _max):',
+  '    if isinstance(_obj, dict):',
+  '        _out = []',
+  '        try:',
+  '            for _k, _v in itertools.islice(_obj.items(), _max):',
+  '                try:',
+  '                    _lab = repr(_k)',
+  '                except Exception:',
+  "                    _lab = '<key>'",
+  '                _out.append((_lab, _v))',
+  '        except Exception:',
+  '            return 0, []',
+  '        return len(_obj), _out',
+  '    if isinstance(_obj, (list, tuple, range)):',
+  "        return len(_obj), [('[%d]' % _i, _obj[_i]) for _i in range(min(len(_obj), _max))]",
   '    if isinstance(_obj, (set, frozenset)):',
-  "        return [('{%d}' % _i, _v) for _i, _v in enumerate(_obj)]",
+  "        return len(_obj), [('{%d}' % _i, _v) for _i, _v in enumerate(itertools.islice(_obj, _max))]",
   '    try:',
   '        _d = vars(_obj)',
   '    except TypeError:',
-  '        return []',
+  '        return 0, []',
   '    if isinstance(_d, dict):',
-  '        return [(_k, _v) for _k, _v in _d.items()]',
-  '    return []',
+  '        return len(_d), list(itertools.islice(_d.items(), _max))',
+  '    return 0, []',
   'def _is_container(_obj):',
   '    if isinstance(_obj, (dict, list, tuple, set, frozenset, range)):',
   '        return True',
@@ -465,19 +506,17 @@ var EXPAND_HELPER = [
   '_ok = _root_name in user_ns',
   '_anc = [id(_node)]',
   'for _i in _path:',
-  '    _kids = _child_pairs(_node)',
-  '    if not (0 <= _i < len(_kids)):',
+  '    _found, _node = _child_at(_node, _i)',
+  '    if not _found:',
   '        _ok = False',
   '        break',
-  '    _node = _kids[_i][1]',
   '    _anc.append(id(_node))',
   'if not _ok:',
   "    _result = {'ok': False, 'total': 0, 'children': []}",
   'else:',
-  '    _pairs = _child_pairs(_node)',
-  '    _total = len(_pairs)',
+  '    _total, _pairs = _child_pairs(_node, _MAX)',
   '    _out = []',
-  '    for _label, _v in _pairs[:_MAX]:',
+  '    for _label, _v in _pairs:',
   '        try:',
   '            _r = repr(_v)',
   '        except Exception as _e:',
@@ -623,7 +662,9 @@ function varRowHtml(node, meta) {
     + ' data-root="' + escHtml(meta.root) + '"'
     + " data-path='" + JSON.stringify(meta.path) + "'"
     + ' data-depth="' + depth + '" data-expanded="0">'
-    + '<td class="var-name" style="' + indent + '">' + toggle + kindIcon(kind) + cyc + escHtml(node.displayName) + '</td>'
+    // title = full name: the cell ellipsizes at max-width 220px (deep indents
+    // eat into it), so hover must be able to reveal what got clipped.
+    + '<td class="var-name" style="' + indent + '" title="' + escHtml(node.displayName) + '">' + toggle + kindIcon(kind) + cyc + escHtml(node.displayName) + '</td>'
     + '<td class="var-type">' + escHtml(node.type) + varLenBadge(node.type, node.len) + '</td>'
     + '<td class="var-value"><span class="var-value-text">' + escHtml(node.repr) + '</span>'
     + '<button type="button" class="var-copy" title="Copy value" aria-label="Copy value" tabindex="-1">'

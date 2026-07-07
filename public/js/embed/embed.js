@@ -1790,8 +1790,15 @@ $('document').ready(function() {
       options || (options = {});
 
       var $el = $(el)
-        , interfaceAction = $el.data('action') || options.action
-        , interfaceData   = $el.data('data') || options.data
+        , interfaceAction = $el.data('action') || options.action;
+
+      // A control with no action name has nothing to report — and the
+      // .replace below would throw on undefined. Elements can also opt out
+      // explicitly with data-no-analytics, but a forgotten marker shouldn't
+      // crash the click handler.
+      if (!interfaceAction) return;
+
+      var interfaceData   = $el.data('data') || options.data
         , interfaceName   = $el.closest('[data-interface]').data('interface') || options.interface
         , libraryOverride = $el.data('library-override') || false
         , interfaceSize   = this.$responsiveIndicators.filter(function(index) {
