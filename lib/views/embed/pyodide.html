@@ -182,6 +182,24 @@
   #embed_content_python #variables-table tr:hover .var-copy,
   #embed_content_python #variables-table .var-copy:focus { opacity: 1; }
   #embed_content_python #variables-table .var-copy:hover { color: #555; }
+
+  /* Phase 3: expand/collapse caret + nested-row presentation. Indentation is
+     applied inline per-row (padding-left scales with depth). */
+  #embed_content_python #variables-table .var-toggle {
+    display: inline-block; width: 12px; margin-right: 4px;
+    color: #888; cursor: pointer; line-height: 1; text-align: center;
+    -webkit-user-select: none; -moz-user-select: none; user-select: none;
+  }
+  #embed_content_python #variables-table .var-toggle:hover { color: #333; }
+  #embed_content_python #variables-table .var-toggle-spacer {
+    display: inline-block; width: 12px; margin-right: 4px;
+  }
+  #embed_content_python #variables-table td.var-name { overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+  #embed_content_python #variables-table tr.var-child td.var-name { color: #2a6f37; }
+  #embed_content_python #variables-table tr.var-more td {
+    color: #999; font-style: italic; white-space: nowrap;
+  }
+  #embed_content_python #variables-table .var-cyclic { color: #b08800; font-style: normal; }
   {% endif %}
 </style>
 
@@ -255,7 +273,7 @@
       <div class="{% if not showInstructions %}active {% endif %}menu-button" id="codeOutputTab" data-action="output.view">Result</div>
       <div class="{% if showInstructions %}active {% endif %}menu-button" id="instructionsTab" data-action="instructions.view"><i class="fa fa-list"></i> Instructions</div>
       {% if config.features.variableExplorer %}
-      <div class="menu-button" id="variablesTab" role="button" tabindex="0" title="Variables defined by your program"><i class="fa fa-table"></i> Variables <span id="variablesCount"></span></div>
+      <div class="menu-button" id="variablesTab" role="button" tabindex="0" data-no-analytics="true" title="Variables defined by your program"><i class="fa fa-table"></i> Variables <span id="variablesCount"></span></div>
       {% endif %}
     </div>
 
