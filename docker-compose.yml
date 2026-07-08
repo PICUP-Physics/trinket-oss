@@ -25,7 +25,7 @@ services:
             "url": {
               "protocol": "${PUBLIC_PROTO:-http}",
               "hostname": "${PUBLIC_HOST:-localhost}",
-              "port": "${PUBLIC_PORT:-3000}"
+              "port": "${PUBLIC_PORT-3000}"
             }
           },
           "db": {
