@@ -665,15 +665,33 @@ var RECORD_HELPER = [
   '        _size[0] += len(_r) + len(_name) + 24',
   '        if len(_out) >= _max_vars: break',
   '    return _out',
+  // Phase 2: trace the main file AND user modules imported from the Pyodide FS
+  // (relative names or paths under _user_prefix) — never library frames.
+  'def _is_user(_fname):',
+  "    if _fname == '<debug>': return True",
+  "    if not _fname.endswith('.py'): return False",
+  "    return _fname.startswith(_user_prefix) or not _fname.startswith('/')",
+  // Display label: None for the main file, basename for user modules.
+  'def _file_label(_fname):',
+  "    if _fname == '<debug>': return None",
+  "    return _fname.rsplit('/', 1)[-1]",
   'def _depth_of(_frame):',
   '    _d = 0',
   '    _f = _frame.f_back',
   '    while _f is not None:',
-  "        if _f.f_code.co_filename == '<debug>': _d += 1",
+  '        if _is_user(_f.f_code.co_filename): _d += 1',
   '        _f = _f.f_back',
   '    return _d',
+  // Nearest user frame above: the call site shown as "called from line N".
+  'def _call_site(_frame):',
+  '    _f = _frame.f_back',
+  '    while _f is not None:',
+  '        if _is_user(_f.f_code.co_filename):',
+  '            return _f.f_lineno, _file_label(_f.f_code.co_filename)',
+  '        _f = _f.f_back',
+  '    return None, None',
   'def _tracer(_frame, _event, _arg):',
-  "    if _frame.f_code.co_filename != '<debug>':",
+  '    if not _is_user(_frame.f_code.co_filename):',
   '        return None',
   "    if _event == 'call':",
   '        if _depth_of(_frame) >= _max_depth: return None',
@@ -688,7 +706,9 @@ var RECORD_HELPER = [
   '    if len(_steps) >= _max_steps or _size[0] > _max_bytes:',
   '        _truncated[0] = True',
   '        raise _TrinketStopRecording()',
-  "    _steps.append({'line': _frame.f_lineno, 'func': _frame.f_code.co_name, 'depth': _depth_of(_frame), 'out': _buf.tell()})",
+  '    _d = _depth_of(_frame)',
+  '    _fl, _ff = _call_site(_frame) if _d > 0 else (None, None)',
+  "    _steps.append({'line': _frame.f_lineno, 'func': _frame.f_code.co_name, 'depth': _d, 'out': _buf.tell(), 'file': _file_label(_frame.f_code.co_filename), 'from_line': _fl, 'from_file': _ff})",
   '    _snaps.append(_snap_ns(_frame.f_locals))',
   '    return _tracer',
   "_g = {'__name__': '__main__'}",
@@ -709,7 +729,7 @@ var RECORD_HELPER = [
   "    _err = ''.join(traceback.format_exception_only(type(_e), _e)).strip()",
   'finally:',
   '    sys.stdout, sys.stderr = _old_out, _old_err',
-  "_steps.append({'line': None, 'func': '<end>', 'depth': 0, 'out': _buf.tell()})",
+  "_steps.append({'line': None, 'func': '<end>', 'depth': 0, 'out': _buf.tell(), 'file': None, 'from_line': None, 'from_file': None})",
   '_snaps.append(_snap_ns(_g))',
   "json.dumps({'error': _err, 'truncated': _truncated[0], 'output': _buf.getvalue(), 'steps': _steps, 'snaps': _snaps})"
 ].join('\n');
@@ -745,25 +765,78 @@ function debugHighlightLine(line) {
   } catch (e) { /* highlight is best-effort */ }
 }
 
+// Phase 2: highlight the step's line in the file it belongs to. Switches the
+// editor tab (via the plugin's public selectFile) only when the step's file is
+// actually open, and only when the file changes — repeated selectFile calls
+// per step would flash/refocus the tab bar.
+var debugShownFile = null; // file whose tab replay last selected
+function debugShowLine(st) {
+  if (!st || st.line == null) {
+    debugHighlightLine(null);
+    return;
+  }
+  var file = st.file || mainFile;
+  try {
+    var files = editor.getAllFiles();
+    if (!files || !files.hasOwnProperty(file)) {
+      // Not open in the editor (e.g. hidden file): step without a highlight
+      // rather than marking a line in the wrong file.
+      debugHighlightLine(null);
+      return;
+    }
+    if (file !== debugShownFile && typeof editor.selectFile === 'function') {
+      // noFocus=true: switching tabs must not move keyboard focus into Ace —
+      // that killed arrow-key stepping (arrows would start moving the editor
+      // cursor instead of the replay).
+      editor.selectFile(file, true); // safe: only called for files that exist
+      debugShownFile = file;
+    }
+  } catch (e) { /* tab switching is best-effort */ }
+  debugHighlightLine(st.line);
+}
+
 // Render the variables table for a recorded step (flat, no expansion — the
 // recording is a snapshot; live Phase 3 expansion would show FINAL state and
-// lie about this step).
-function paintReplaySnap(snap, st) {
+// lie about this step). prevSnap (the step before) drives changed-variable
+// highlighting: rows whose value is new or different since the previous step
+// get .var-changed so students can see what the line did.
+function paintReplaySnap(snap, st, prevSnap) {
   var $body = $('#variables-table tbody');
   if (!$body.length) return;
   var html = '';
+
+  // Breadcrumb: where execution is (file for user modules, frame, call site).
+  var crumbs = [];
+  if (st && st.file) crumbs.push('in ' + st.file);
   if (st && st.func && st.func !== '<module>' && st.func !== '<end>') {
-    html += varNoteRowHtml(0, 'inside ' + st.func + '()');
+    var c = 'inside ' + st.func + '()';
+    if (st.from_line != null) {
+      c += ' — called from ' + (st.from_file ? st.from_file + ' line ' : 'line ') + st.from_line;
+    }
+    crumbs.push(c);
   }
+  if (crumbs.length) {
+    html += varNoteRowHtml(0, crumbs.join(' · '));
+  }
+
+  var prev = {};
+  var hasPrev = false;
+  if (prevSnap) {
+    hasPrev = true;
+    for (var p = 0; p < prevSnap.length; p++) prev[prevSnap[p].name] = prevSnap[p].repr;
+  }
+
   if (!snap || !snap.length) {
     html += '<tr class="vars-empty"><td colspan="3">No variables at this step.</td></tr>';
   } else {
     for (var i = 0; i < snap.length; i++) {
       var v = snap[i];
+      var changed = hasPrev && (!(v.name in prev) || prev[v.name] !== v.repr);
       html += varRowHtml({
         displayName: v.name, type: v.type, repr: v.repr, len: null,
         expandable: false, cyclic: false, kind: 'value'
-      }, { root: v.name, path: [], depth: 0, isChild: false });
+      }, { root: v.name, path: [], depth: 0, isChild: false,
+           rowClass: changed ? 'var-changed' : '' });
     }
   }
   $body.html(html);
@@ -781,8 +854,15 @@ function renderDebugStep() {
   var st = debugRec.steps[debugIdx];
   var isEnd = st.func === '<end>';
   $('#debug-pos').text(isEnd ? 'end' : (debugIdx + 1) + ' / ' + (debugRec.steps.length - 1));
-  paintReplaySnap(debugRec.snaps[debugIdx], st);
-  debugHighlightLine(st.line);
+  var $slider = $('#debug-slider');
+  if ($slider.length) {
+    $slider.attr('max', debugRec.steps.length - 1);
+    $slider.val(debugIdx);
+  }
+  paintReplaySnap(debugRec.snaps[debugIdx],
+                  st,
+                  debugIdx > 0 ? debugRec.snaps[debugIdx - 1] : null);
+  debugShowLine(st);
   if (jqconsole) {
     var wantErr = isEnd && !!debugRec.error;
     if (debugLastOut === -1 || st.out < debugLastOut || wantErr !== debugErrShown) {
@@ -837,6 +917,7 @@ function exitReplay(quiet) {
   debugRec = null;
   debugLastOut = -1;
   debugErrShown = false;
+  debugShownFile = null;
   debugHighlightLine(null);
   $('#debug-controls').addClass('hide');
   $('#debug-note').text('');
@@ -893,6 +974,9 @@ function runStepThrough() {
         try {
           ns = pyodide.toPy({
             _user_source: prog,
+            // Secondary .py files sync to the Pyodide FS home dir; frames from
+            // there are user code the tracer should step through (Phase 2).
+            _user_prefix: '/home/pyodide/',
             _max_steps: DEBUG_MAX_STEPS,
             _max_vars: DEBUG_MAX_VARS,
             _max_repr: DEBUG_MAX_REPR,
@@ -983,7 +1067,8 @@ function varRowHtml(node, meta) {
   var cyc = node.cyclic ? '<span class="var-cyclic" title="circular reference">↻</span> ' : '';
   var indent = 'padding-left:' + (8 + depth * 16) + 'px';
   var kind = node.kind || 'value';
-  return '<tr class="var-row var-kind-' + kind + (meta.isChild ? ' var-child' : '') + '"'
+  return '<tr class="var-row var-kind-' + kind + (meta.isChild ? ' var-child' : '')
+    + (meta.rowClass ? ' ' + meta.rowClass : '') + '"'
     + ' data-root="' + escHtml(meta.root) + '"'
     + " data-path='" + JSON.stringify(meta.path) + "'"
     + ' data-depth="' + depth + '" data-expanded="0">'
@@ -1380,6 +1465,13 @@ window.TrinketAPI = {
         $('#debug-fwd').on('click keydown', debugActivate(function() { debugStepTo(debugIdx + 1); }));
         $('#debug-last').on('click keydown', debugActivate(function() { debugStepTo(debugRec ? debugRec.steps.length - 1 : 0); }));
         $('#debug-exit').on('click keydown', debugActivate(exitReplay));
+
+        // Phase 2: scrub through the recording. 'input' fires continuously
+        // while dragging, so the line highlight / variables / console follow
+        // the thumb live.
+        $('#debug-slider').on('input change', function() {
+          debugStepTo(parseInt(this.value, 10) || 0);
+        });
 
         // Arrow-key stepping while replaying (ignored while typing in the
         // editor or any input, so it never hijacks code editing).

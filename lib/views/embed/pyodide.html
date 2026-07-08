@@ -243,6 +243,23 @@
     margin: 0 6px;
   }
   #embed_content_python #variables-toolbar #debug-recording { color: #b06000; }
+  /* Phase 2: step scrubber. Foundation styles input[type=range] minimally;
+     keep it compact so the toolbar stays one line. */
+  #embed_content_python #variables-toolbar #debug-slider {
+    display: inline-block;
+    width: 110px;
+    margin: 0 6px;
+    vertical-align: middle;
+    cursor: pointer;
+  }
+  /* Phase 2: variables whose value is new or changed since the previous step —
+     lets students see what the just-executed line did. */
+  #embed_content_python #variables-table tr.var-changed td.var-value {
+    background: #fff8d6;
+  }
+  #embed_content_python #variables-table tr.var-changed td.var-name {
+    font-weight: bold;
+  }
   /* Current-line marker in the Ace editor during replay (deliberately NOT the
      red error styling that editor.highlight() applies). */
   .ace_editor .debug-current-line {
@@ -354,6 +371,7 @@
           <span id="debug-controls" class="hide">
             <span id="debug-first" class="debug-btn" role="button" tabindex="0" title="First step"><i class="fa fa-fast-backward"></i></span>
             <span id="debug-back" class="debug-btn" role="button" tabindex="0" title="Previous step (←)"><i class="fa fa-step-backward"></i></span>
+            <input type="range" id="debug-slider" min="0" max="0" value="0" step="1" title="Scrub through the steps" aria-label="Step position">
             <span id="debug-pos">0 / 0</span>
             <span id="debug-fwd" class="debug-btn" role="button" tabindex="0" title="Next step (→)"><i class="fa fa-step-forward"></i></span>
             <span id="debug-last" class="debug-btn" role="button" tabindex="0" title="Last step"><i class="fa fa-fast-forward"></i></span>
