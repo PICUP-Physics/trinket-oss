@@ -164,10 +164,34 @@ dependencies. Same blast-radius discipline as the explorer.
     open) before highlighting;
   - **changed-variable highlighting** (pulled forward from Phase 3): rows
     whose value is new or different from the previous step get `.var-changed`.
-- **Phase 3 — polish (deferred until 1–2 prove out):** "run to line"
-  (click a gutter line → jump to first step that hits it), loop-iteration
-  jump ("next time line 8 runs"), diff-highlighting of changed variables
-  between steps.
+- **Phase 3 — polish (deferred until 1–2 prove out):**
+
+  - **Gutter breakpoints** (supersedes the earlier "run to line" idea —
+    instructor-suggested refinement). Clicking left of a line number toggles a
+    breakpoint marker there; replay gains **next/previous-breakpoint**
+    navigation that jumps `debugIdx` to the nearest recorded step matching a
+    breakpoint's (file, line). In the record & replay model a breakpoint
+    pauses nothing — it is a navigation filter over the finished recording —
+    so breakpoints are **fully dynamic**: students can add/remove them
+    mid-replay and jump targets update instantly. Ace does the UI natively
+    (`guttermousedown` for the click, `session.setBreakpoint`/
+    `clearBreakpoint` for the classic gutter dot), and the Phase 2 per-file
+    sessions give per-file breakpoints in multi-file trinkets for free.
+    Estimated ~0.5 d.
+  - **Deferred recording ("start at first breakpoint")** — the companion
+    feature that makes breakpoints matter for long programs. Navigation-only
+    breakpoints can't reach code the recording never reached: a big early
+    loop can burn the whole 5 000-step cap before the interesting part. With
+    breakpoints set, the tracer stays dormant (no snapshots, minimal
+    overhead) until execution first touches a breakpoint line, then records
+    normally — letting students skip past long preambles rather than merely
+    navigating within what got recorded. Moderate effort (~0.5–1 d),
+    recorder-side.
+  - **Loop-iteration jump** ("next time line 8 runs") — largely subsumed by
+    next-breakpoint navigation on a breakpointed line; keep only if a
+    dedicated control proves necessary.
+  - ~~Diff-highlighting of changed variables between steps~~ — **done**
+    (pulled forward into Phase 2 as `.var-changed`).
 
 ## Out of scope (explicitly)
 
