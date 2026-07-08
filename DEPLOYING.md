@@ -32,6 +32,41 @@ Both workflows assume:
 `ADMIN_EMAILS` is managed in the Cloud Run console and is preserved across
 deploys automatically. Don't put it in `.env`.
 
+### Editing `ADMIN_EMAILS` (or any service env var) — the traffic-pinning trap
+
+`ADMIN_EMAILS` is a JSON array read by `lib/util/siteAdmin.js` from the
+`ADMIN_EMAILS` env var; it seeds the site-admin allowlist AND auto-approves
+those addresses at the signup gate (`instructorAuth.isApprovedToSignup`).
+
+**The trap:** after a staged deploy you promote with
+`update-traffic --to-tags candidate=100`, which *pins* traffic to that
+tagged revision. A later `gcloud run services update --update-env-vars`
+creates a NEW revision with the changed var but gives it **zero traffic** —
+so the change is live in the revision list yet the running site still serves
+the old value. Symptom: you edit `ADMIN_EMAILS`, but the person still hits
+"not on a course roster" / lacks admin.
+
+**Do one of these instead:**
+- **Cloud Run console → Edit & Deploy New Revision → Variables** — the UI
+  shifts traffic to the new revision for you. Simplest.
+- **CLI, then shift traffic explicitly:**
+  ```bash
+  # JSON arrays have commas, so pass via a flags-file (--update-env-vars
+  # mis-splits on the commas otherwise):
+  #   flags.yaml:
+  #     --update-env-vars:
+  #       ADMIN_EMAILS: '["a@x.com","b@y.com"]'
+  gcloud run services update trinket --flags-file=flags.yaml \
+    --project <proj> --region us-central1
+  # then move traffic to the revision the update just created:
+  gcloud run services update-traffic trinket --to-revisions=<new-rev>=100 \
+    --project <proj> --region us-central1
+  ```
+- **Re-run the deploy script** (it promotes as part of the flow).
+
+No caching is involved — `isAdminEmail` reads the env on every call. If the
+serving revision has the value, it's effective immediately.
+
 ---
 
 ## Workflow 1: Staged deploy (recommended)
