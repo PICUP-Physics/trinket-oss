@@ -414,9 +414,132 @@ var VARS_HELPER = [
   '        _n = len(_val)',
   '    except Exception:',
   '        _n = None',
-  "    _out.append({'name': _name, 'type': type(_val).__name__, 'kind': _kind, 'repr': _r, 'len': _n})",
+  // Phase 3: flag whether the row can be drilled into (a container, or an object
+  // with a non-empty instance __dict__). Only value-kind rows are expandable.
+  '    _exp = False',
+  "    if _kind == 'value':",
+  '        if isinstance(_val, (dict, list, tuple, set, frozenset, range)):',
+  '            _exp = True',
+  '        else:',
+  '            try:',
+  '                _d = vars(_val)',
+  '                _exp = isinstance(_d, dict) and len(_d) > 0',
+  '            except TypeError:',
+  '                _exp = False',
+  "    _out.append({'name': _name, 'type': type(_val).__name__, 'kind': _kind, 'repr': _r, 'len': _n, 'expandable': _exp})",
   "_out.sort(key=lambda d: (d['kind'] != 'value', d['name']))",
   'json.dumps(_out)'
+].join('\n');
+
+// Phase 3 — lazily fetch ONE level of children for the node reached by walking
+// `_path` (a list of positional child-indices) from top-level var `_root_name`
+// in the live user globals. Positional navigation (i-th child) handles arbitrary
+// dict keys and set members without serializing them. Returns first _MAX children
+// plus the true total, each child's repr/type/len, whether it is itself
+// expandable, and whether it is a cycle back to an ancestor (so the UI can stop).
+var EXPAND_HELPER = [
+  'import json, itertools',
+  // Navigation step: return (found, i-th child value) WITHOUT building labels.
+  // Sequences index in O(1); dict/set/attrs do a single unlabeled pass. repr is
+  // deliberately absent here — labeling every key of every ancestor container
+  // on each expand made a click O(path_len x container_size) repr calls, a
+  // visible freeze on e.g. 100k-key dicts. Iteration order matches
+  // _child_pairs below (same unmutated object), so indices stay consistent.
+  'def _child_at(_obj, _i):',
+  '    if _i < 0:',
+  '        return False, None',
+  '    if isinstance(_obj, (list, tuple, range)):',
+  '        if _i < len(_obj):',
+  '            return True, _obj[_i]',
+  '        return False, None',
+  '    if isinstance(_obj, dict):',
+  '        _it = _obj.values()',
+  '    elif isinstance(_obj, (set, frozenset)):',
+  '        _it = _obj',
+  '    else:',
+  '        try:',
+  '            _d = vars(_obj)',
+  '        except TypeError:',
+  '            return False, None',
+  '        if not isinstance(_d, dict):',
+  '            return False, None',
+  '        _it = _d.values()',
+  '    try:',
+  '        for _j, _v in enumerate(_it):',
+  '            if _j == _i:',
+  '                return True, _v',
+  '    except Exception:',
+  '        pass',
+  '    return False, None',
+  // Labeled children for the FINAL node only: (total, first _max pairs).
+  // islice caps the labeling work — a 100k-key dict reprs only _max keys.
+  'def _child_pairs(_obj, _max):',
+  '    if isinstance(_obj, dict):',
+  '        _out = []',
+  '        try:',
+  '            for _k, _v in itertools.islice(_obj.items(), _max):',
+  '                try:',
+  '                    _lab = repr(_k)',
+  '                except Exception:',
+  "                    _lab = '<key>'",
+  '                _out.append((_lab, _v))',
+  '        except Exception:',
+  '            return 0, []',
+  '        return len(_obj), _out',
+  '    if isinstance(_obj, (list, tuple, range)):',
+  "        return len(_obj), [('[%d]' % _i, _obj[_i]) for _i in range(min(len(_obj), _max))]",
+  '    if isinstance(_obj, (set, frozenset)):',
+  "        return len(_obj), [('{%d}' % _i, _v) for _i, _v in enumerate(itertools.islice(_obj, _max))]",
+  '    try:',
+  '        _d = vars(_obj)',
+  '    except TypeError:',
+  '        return 0, []',
+  '    if isinstance(_d, dict):',
+  '        return len(_d), list(itertools.islice(_d.items(), _max))',
+  '    return 0, []',
+  'def _is_container(_obj):',
+  '    if isinstance(_obj, (dict, list, tuple, set, frozenset, range)):',
+  '        return True',
+  '    try:',
+  '        _d = vars(_obj)',
+  '        return isinstance(_d, dict) and len(_d) > 0',
+  '    except TypeError:',
+  '        return False',
+  '_node = user_ns.get(_root_name)',
+  '_ok = _root_name in user_ns',
+  '_anc = [id(_node)]',
+  'for _i in _path:',
+  '    _found, _node = _child_at(_node, _i)',
+  '    if not _found:',
+  '        _ok = False',
+  '        break',
+  '    _anc.append(id(_node))',
+  'if not _ok:',
+  "    _result = {'ok': False, 'total': 0, 'children': []}",
+  'else:',
+  '    _total, _pairs = _child_pairs(_node, _MAX)',
+  '    _out = []',
+  '    for _label, _v in _pairs:',
+  '        try:',
+  '            _r = repr(_v)',
+  '        except Exception as _e:',
+  "            _r = '<unrepresentable: %r>' % (_e,)",
+  "        if len(_r) > 300: _r = _r[:300] + '...'",
+  '        try:',
+  '            _n = len(_v)',
+  '        except Exception:',
+  '            _n = None',
+  '        _cyc = id(_v) in _anc',
+  '        _out.append({',
+  "            'label': _label,",
+  "            'type': type(_v).__name__,",
+  "            'repr': _r,",
+  "            'len': _n,",
+  "            'expandable': (not _cyc) and _is_container(_v),",
+  "            'cyclic': _cyc,",
+  '        })',
+  "    _result = {'ok': True, 'total': _total, 'children': _out}",
+  'json.dumps(_result)'
 ].join('\n');
 
 // True when the Variables explorer is enabled via config
@@ -437,6 +560,37 @@ function snapshotVariables() {
     return JSON.parse(json);
   } catch (e) {
     return [];
+  } finally {
+    if (ns && typeof ns.destroy === 'function') {
+      try { ns.destroy(); } catch (e) {}
+    }
+  }
+}
+
+// Phase 3 guards. MAX_CHILDREN caps how many children we serialize/render per
+// node (the rest are summarized as "… N more"); MAX_DEPTH caps how deep the tree
+// can be expanded so pathological structures can't be walked forever.
+var MAX_CHILDREN = 200;
+var MAX_DEPTH = 12;
+
+// Fetch one level of children for the node at `path` under top-level var `root`.
+// Returns { ok, total, children:[{label,type,repr,len,expandable,cyclic}] } or
+// null on failure. Navigates the live globals fresh each call, so it always
+// reflects current state.
+function expandNode(root, path) {
+  if (!pyodide || !pyodideReady) return null;
+  var ns = null;
+  try {
+    ns = pyodide.toPy({
+      user_ns: pyodide.globals,
+      _root_name: root,
+      _path: path || [],
+      _MAX: MAX_CHILDREN
+    });
+    var json = pyodide.runPython(EXPAND_HELPER, { globals: ns });
+    return JSON.parse(json);
+  } catch (e) {
+    return null;
   } finally {
     if (ns && typeof ns.destroy === 'function') {
       try { ns.destroy(); } catch (e) {}
@@ -487,6 +641,58 @@ function renderVariables(vars) {
   paintVariables();
 }
 
+function varLenBadge(type, len) {
+  if (len != null && SIZED_TYPES[type]) {
+    return ' <span class="var-len">(' + len + ')</span>';
+  }
+  return '';
+}
+
+// Build one <tr>. `node` fields: displayName, type, repr, len, expandable,
+// cyclic, kind. `meta`: root (top-level var name), path (positional path to THIS
+// node), depth, isChild. The path + root are stashed on the row so the expand
+// handler can lazily fetch this node's children.
+function varRowHtml(node, meta) {
+  var depth = meta.depth;
+  var canExpand = node.expandable && depth < MAX_DEPTH;
+  var toggle = canExpand
+    ? '<span class="var-toggle" role="button" tabindex="0" aria-expanded="false" title="Expand"><i class="fa fa-caret-right"></i></span>'
+    : '<span class="var-toggle-spacer"></span>';
+  var cyc = node.cyclic ? '<span class="var-cyclic" title="circular reference">↻</span> ' : '';
+  var indent = 'padding-left:' + (8 + depth * 16) + 'px';
+  var kind = node.kind || 'value';
+  return '<tr class="var-row var-kind-' + kind + (meta.isChild ? ' var-child' : '') + '"'
+    + ' data-root="' + escHtml(meta.root) + '"'
+    + " data-path='" + JSON.stringify(meta.path) + "'"
+    + ' data-depth="' + depth + '" data-expanded="0">'
+    // title = full name: the cell ellipsizes at max-width 220px (deep indents
+    // eat into it), so hover must be able to reveal what got clipped.
+    + '<td class="var-name" style="' + indent + '" title="' + escHtml(node.displayName) + '">' + toggle + kindIcon(kind) + cyc + escHtml(node.displayName) + '</td>'
+    + '<td class="var-type">' + escHtml(node.type) + varLenBadge(node.type, node.len) + '</td>'
+    + '<td class="var-value"><span class="var-value-text">' + escHtml(node.repr) + '</span>'
+    + '<button type="button" class="var-copy" title="Copy value" aria-label="Copy value" tabindex="-1">'
+    + '<i class="fa fa-clone"></i></button></td>'
+    + '</tr>';
+}
+
+// Row shown when a node has more children than MAX_CHILDREN, or is empty.
+function varNoteRowHtml(depth, text) {
+  return '<tr class="var-more" data-depth="' + depth + '">'
+    + '<td colspan="3" style="padding-left:' + (8 + depth * 16) + 'px">' + escHtml(text) + '</td></tr>';
+}
+
+// Remove every row that follows $row while it is deeper than $row — i.e. the
+// whole lazily-rendered subtree beneath it.
+function collapseSubtree($row) {
+  var depth = parseInt($row.attr('data-depth'), 10);
+  var $next = $row.next();
+  while ($next.length && parseInt($next.attr('data-depth'), 10) > depth) {
+    var $remove = $next;
+    $next = $next.next();
+    $remove.remove();
+  }
+}
+
 function paintVariables() {
   var $body = $('#variables-table tbody');
   if (!$body.length) return; // no Variables panel (e.g. outputOnly embed)
@@ -509,22 +715,60 @@ function paintVariables() {
     return;
   }
 
+  // Repaint drops any expanded subtrees (they can be re-opened) — the snapshot
+  // this reflects is fresh, so stale expansions shouldn't linger.
   var html = '';
   for (var j = 0; j < shown.length; j++) {
     var v = shown[j];
-    var typeCell = escHtml(v.type);
-    if (v.len != null && SIZED_TYPES[v.type]) {
-      typeCell += ' <span class="var-len">(' + v.len + ')</span>';
-    }
-    html += '<tr class="var-row var-kind-' + v.kind + '">'
-      + '<td class="var-name">' + kindIcon(v.kind) + escHtml(v.name) + '</td>'
-      + '<td class="var-type">' + typeCell + '</td>'
-      + '<td class="var-value"><span class="var-value-text">' + escHtml(v.repr) + '</span>'
-      + '<button type="button" class="var-copy" title="Copy value" aria-label="Copy value" tabindex="-1">'
-      + '<i class="fa fa-clone"></i></button></td>'
-      + '</tr>';
+    html += varRowHtml({
+      displayName: v.name, type: v.type, repr: v.repr, len: v.len,
+      expandable: v.expandable, cyclic: false, kind: v.kind
+    }, { root: v.name, path: [], depth: 0, isChild: false });
   }
   $body.html(html);
+}
+
+// Expand/collapse a container row: on first expand, lazily fetch one level of
+// children and insert them as indented rows beneath; on collapse, drop them.
+function toggleVarRow($row) {
+  var $btn = $row.children('.var-name').find('.var-toggle');
+  if ($row.attr('data-expanded') === '1') {
+    collapseSubtree($row);
+    $row.attr('data-expanded', '0');
+    $btn.attr('aria-expanded', 'false').find('i').removeClass('fa-caret-down').addClass('fa-caret-right');
+    return;
+  }
+
+  var root = $row.attr('data-root');
+  var path = JSON.parse($row.attr('data-path'));
+  var depth = parseInt($row.attr('data-depth'), 10);
+  var res = expandNode(root, path);
+  if (!res || !res.ok) {
+    $row.after(varNoteRowHtml(depth + 1, '(could not read children)'));
+    $row.attr('data-expanded', '1');
+    $btn.attr('aria-expanded', 'true').find('i').removeClass('fa-caret-right').addClass('fa-caret-down');
+    return;
+  }
+
+  var childDepth = depth + 1;
+  var html = '';
+  for (var i = 0; i < res.children.length; i++) {
+    var c = res.children[i];
+    html += varRowHtml({
+      displayName: c.label, type: c.type, repr: c.repr, len: c.len,
+      expandable: c.expandable, cyclic: c.cyclic, kind: 'value'
+    }, { root: root, path: path.concat(i), depth: childDepth, isChild: true });
+  }
+  if (res.total > res.children.length) {
+    html += varNoteRowHtml(childDepth,
+      '… ' + (res.total - res.children.length) + ' more not shown (' + res.total + ' total)');
+  }
+  if (!html) {
+    html = varNoteRowHtml(childDepth, '(empty)');
+  }
+  $row.after(html);
+  $row.attr('data-expanded', '1');
+  $btn.attr('aria-expanded', 'true').find('i').removeClass('fa-caret-right').addClass('fa-caret-down');
 }
 
 function showVariables() {
@@ -773,6 +1017,15 @@ window.TrinketAPI = {
         var $i = $btn.find('i');
         $i.removeClass('fa-clone').addClass('fa-check');
         setTimeout(function() { $i.removeClass('fa-check').addClass('fa-clone'); }, 900);
+      });
+
+      // Phase 3: expand/collapse a container row to inspect one level of its
+      // children (lazily fetched from the live namespace on first expand).
+      $('#variables-table').on('click keydown', '.var-toggle', function(e) {
+        if (e.type === 'keydown' && e.which !== 13 && e.which !== 32) return;
+        e.preventDefault();
+        e.stopPropagation();
+        toggleVarRow($(this).closest('tr'));
       });
     }
 
