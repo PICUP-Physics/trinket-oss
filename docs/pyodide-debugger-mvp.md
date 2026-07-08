@@ -45,6 +45,14 @@ Trade-offs accepted:
 - VPython/GlowScript runs are **excluded** (they're rewritten/async and render
   continuously; stepping a 60fps animation loop is meaningless). The Debug
   button hides for programs that `usesVPython()`.
+- **Step-through runs in a fresh namespace; normal Run does not.** Run execs
+  in the persistent `pyodide.globals`, so state accumulates across Run clicks
+  (define `x` in one Run, delete the line, the next Run still sees `x`).
+  Step-through always executes the program as a standalone script in a fresh
+  dict — the same code can therefore `NameError` under Step-through while Run
+  "works". The fresh namespace is the more honest semantics for teaching (it
+  shows what the program does on its own); the button tooltip says so
+  ("Records your program running from scratch…").
 
 ## Integration points (verified in code)
 
