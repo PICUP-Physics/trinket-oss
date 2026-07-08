@@ -21,6 +21,10 @@ services:
       TRINKET_DEPLOY: "${TRINKET_DEPLOY:-}"
       NODE_CONFIG: |
         {
+          "db": {
+            "mongo": { "host": "mongodb" },
+            "redis": { "enabled": false }
+          },
           "features": {
             "assets": true
           },
