@@ -267,6 +267,15 @@
     background: rgba(255, 213, 79, 0.45);
     z-index: 4;
   }
+  /* Phase 3: breakpoint dot in the gutter (Ace's setBreakpoint adds the class
+     but ships no styling) + red-tinted jump buttons so they read as
+     breakpoint controls. */
+  .ace_editor .ace_gutter-cell.ace_breakpoint {
+    border-radius: 20px 0 0 20px;
+    box-shadow: 0 0 1px 2px rgba(192, 57, 43, 0.85) inset;
+  }
+  #embed_content_python #variables-toolbar .debug-bp-btn { color: #a94442; }
+  #embed_content_python #variables-toolbar .debug-bp-btn:hover { color: #7c2f2e; }
   {% endif %}
   {% endif %}
 </style>
@@ -375,6 +384,8 @@
             <span id="debug-pos">0 / 0</span>
             <span id="debug-fwd" class="debug-btn" role="button" tabindex="0" title="Next step (→)"><i class="fa fa-step-forward"></i></span>
             <span id="debug-last" class="debug-btn" role="button" tabindex="0" title="Last step"><i class="fa fa-fast-forward"></i></span>
+            <span id="debug-prev-bp" class="debug-btn debug-bp-btn" role="button" tabindex="0" title="Previous breakpoint (Shift+←)"><i class="fa fa-chevron-circle-left"></i></span>
+            <span id="debug-next-bp" class="debug-btn debug-bp-btn" role="button" tabindex="0" title="Next breakpoint (Shift+→)"><i class="fa fa-chevron-circle-right"></i></span>
             <span id="debug-note"></span>
             <span id="debug-exit" class="debug-btn" role="button" tabindex="0" title="Exit step-through"><i class="fa fa-times"></i></span>
           </span>

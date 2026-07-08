@@ -164,7 +164,7 @@ dependencies. Same blast-radius discipline as the explorer.
     open) before highlighting;
   - **changed-variable highlighting** (pulled forward from Phase 3): rows
     whose value is new or different from the previous step get `.var-changed`.
-- **Phase 3 — polish (deferred until 1–2 prove out):**
+- **Phase 3 — breakpoints (implemented):**
 
   - **Gutter breakpoints** (supersedes the earlier "run to line" idea —
     instructor-suggested refinement). Clicking left of a line number toggles a
@@ -185,8 +185,11 @@ dependencies. Same blast-radius discipline as the explorer.
     breakpoints set, the tracer stays dormant (no snapshots, minimal
     overhead) until execution first touches a breakpoint line, then records
     normally — letting students skip past long preambles rather than merely
-    navigating within what got recorded. Moderate effort (~0.5–1 d),
-    recorder-side.
+    navigating within what got recorded. Implementation notes: dormant line
+    events are still counted and capped (`_max_dormant`, 200 000) so an
+    infinite loop *before* any breakpoint can't spin forever; the result
+    carries `armed`/`skipped` so the UI can say "recording started at the
+    first breakpoint" or "no breakpoint was reached — nothing recorded".
   - **Loop-iteration jump** ("next time line 8 runs") — largely subsumed by
     next-breakpoint navigation on a breakpointed line; keep only if a
     dedicated control proves necessary.
