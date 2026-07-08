@@ -153,6 +153,17 @@ dependencies. Same blast-radius discipline as the explorer.
 - **Phase 2 — frames & console sync (~1–2 d):** function-call frames (show the
   executing frame's locals + "called from" breadcrumb), stdout revealed in
   step-sync, slider + keyboard navigation.
+  **Implemented** (stdout sync + keyboard nav landed early, in Phase 1):
+  - step **slider** for scrubbing (live line/vars/console while dragging);
+  - **"called from line N"** breadcrumb — the recorder captures the nearest
+    user call-site frame (`from_line`/`from_file`), shown as
+    `inside f() — called from [helper.py ]line N`;
+  - **multi-file stepping** — the tracer follows user modules imported from
+    the Pyodide FS (`_user_prefix`), labels steps with the file, and replay
+    switches editor tabs via `editor.selectFile` (only for files actually
+    open) before highlighting;
+  - **changed-variable highlighting** (pulled forward from Phase 3): rows
+    whose value is new or different from the previous step get `.var-changed`.
 - **Phase 3 — polish (deferred until 1–2 prove out):** "run to line"
   (click a gutter line → jump to first step that hits it), loop-iteration
   jump ("next time line 8 runs"), diff-highlighting of changed variables

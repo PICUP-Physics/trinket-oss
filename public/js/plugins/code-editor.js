@@ -2183,7 +2183,7 @@
       return "";
     },
 
-    selectFile : function(fileName) {
+    selectFile : function(fileName, noFocus) {
       var $tab, i;
 
       for (i = 0; i < this._files.length; i++) {
@@ -2198,7 +2198,10 @@
         i    = this._files.length - 1;
       }
 
-      this._selectTab(i);
+      // noFocus: switch the visible tab without moving keyboard focus into the
+      // editor (e.g. the step-debugger following execution across files must
+      // not steal focus from its own controls).
+      this._selectTab(i, noFocus);
     },
 
     serialize : function(opts) {
