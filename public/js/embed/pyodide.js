@@ -79,6 +79,12 @@ function initConsoleOutput() {
 }
 
 function resetOutput(consoleOnly) {
+  // Clearing output while a step-through replay is active would otherwise
+  // leave a half-state: blank console but replay-locked variables and live
+  // step controls. Exit replay first (quiet — this reset IS the console
+  // rewrite). No-op when replay isn't active.
+  exitReplay(true);
+
   if (editor) {
     editor.clearTabMarkers();
   }
@@ -389,6 +395,9 @@ function showRichHtml(html) {
 // _plt, _vpy, _js_scene, _wrapped_rate).
 var VARS_HELPER = [
   'import json, types',
+  // KEEP IN SYNC with RECORD_HELPER's _SKIP + _snap_ns filters (the step
+  // debugger's per-step snapshots): a runner-injected name added here but not
+  // there makes the debugger show internals the explorer hides, or vice versa.
   "_SKIP = {'__user_source__', '_plt', '_vpy', '_js_scene', '_wrapped_rate'}",
   "_baseline = user_ns.get('__trinket_baseline__') or set()",
   '_out = []',
@@ -627,6 +636,10 @@ var DEBUG_MAX_BYTES = 2 * 1024 * 1024;
 // last line to the terminal state.
 var RECORD_HELPER = [
   'import sys, json, types, io, traceback',
+  // KEEP IN SYNC with VARS_HELPER's _SKIP + filters (the live explorer): both
+  // must hide the same runner-injected names. They live in separate helper
+  // strings/namespaces, so a shared definition would add more machinery than
+  // it removes — this cross-reference is the guard.
   "_SKIP = {'__user_source__', '_plt', '_vpy', '_js_scene', '_wrapped_rate'}",
   'class _TrinketStopRecording(Exception): pass',
   '_steps = []',
@@ -634,6 +647,7 @@ var RECORD_HELPER = [
   '_size = [0]',
   '_truncated = [False]',
   '_buf = io.StringIO()',
+  '_last_out = [0]',
   'def _snap_ns(_ns):',
   '    _out = []',
   '    for _name, _val in list(_ns.items()):',
@@ -666,6 +680,11 @@ var RECORD_HELPER = [
   '        return _tracer',
   "    if _event != 'line':",
   '        return _tracer',
+  // The byte cap must bound the WHOLE payload, not just snapshot reprs: count
+  // stdout growth since the last event (a single huge print would otherwise
+  // sail past the cap into a multi-MB JSON) plus per-step dict overhead.
+  '    _size[0] += (_buf.tell() - _last_out[0]) + 40',
+  '    _last_out[0] = _buf.tell()',
   '    if len(_steps) >= _max_steps or _size[0] > _max_bytes:',
   '        _truncated[0] = True',
   '        raise _TrinketStopRecording()',
@@ -750,6 +769,13 @@ function paintReplaySnap(snap, st) {
   $body.html(html);
 }
 
+// Console sync state: the output offset (and whether the error line is shown)
+// currently rendered in the console. Most steps print nothing, so tracking
+// this lets stepping skip the console entirely instead of Reset+rewriting the
+// whole output on every keypress (flicker + O(total output) DOM work per step).
+var debugLastOut = -1;      // -1 = console not synced yet (forces full paint)
+var debugErrShown = false;
+
 function renderDebugStep() {
   if (!debugRec) return;
   var st = debugRec.steps[debugIdx];
@@ -758,12 +784,23 @@ function renderDebugStep() {
   paintReplaySnap(debugRec.snaps[debugIdx], st);
   debugHighlightLine(st.line);
   if (jqconsole) {
-    jqconsole.Reset();
-    jqconsole.Append(loadingHeader());
-    jqconsole.Write(debugRec.output.slice(0, st.out));
-    if (isEnd && debugRec.error) {
-      jqconsole.Write('\n' + debugRec.error + '\n', 'jqconsole-error', false);
+    var wantErr = isEnd && !!debugRec.error;
+    if (debugLastOut === -1 || st.out < debugLastOut || wantErr !== debugErrShown) {
+      // First paint, stepping backward past output, or the error line toggled:
+      // rebuild from scratch.
+      jqconsole.Reset();
+      jqconsole.Append(loadingHeader());
+      jqconsole.Write(debugRec.output.slice(0, st.out));
+      if (wantErr) {
+        jqconsole.Write('\n' + debugRec.error + '\n', 'jqconsole-error', false);
+      }
+    } else if (st.out > debugLastOut) {
+      // Forward over new output: append just the delta.
+      jqconsole.Write(debugRec.output.slice(debugLastOut, st.out));
     }
+    // st.out === debugLastOut with no error change: console untouched.
+    debugLastOut = st.out;
+    debugErrShown = wantErr;
   }
 }
 
@@ -776,6 +813,8 @@ function debugStepTo(idx) {
 function enterReplay(rec) {
   debugRec = rec;
   debugIdx = 0;
+  debugLastOut = -1;
+  debugErrShown = false;
   $('#debug-recording').addClass('hide');
   $('#debug-launch').addClass('hide');
   $('#debug-controls').removeClass('hide');
@@ -787,10 +826,17 @@ function enterReplay(rec) {
   renderDebugStep();
 }
 
-function exitReplay() {
+// Leave replay mode. `quiet` skips the console restore — used by callers that
+// are about to reset or rewrite the console themselves (a fresh run, the
+// Reset Output button), where restoring the recording's output first would be
+// wasted or actively wrong. The ✕ button uses the default (restore), so
+// exiting by hand leaves the full recorded output visible.
+function exitReplay(quiet) {
   if (!debugRec) return;
   var rec = debugRec;
   debugRec = null;
+  debugLastOut = -1;
+  debugErrShown = false;
   debugHighlightLine(null);
   $('#debug-controls').addClass('hide');
   $('#debug-note').text('');
@@ -798,7 +844,7 @@ function exitReplay() {
   $('#debug-recording').addClass('hide');
   // Restore the console to the full recorded output and the table to the live
   // post-run explorer view.
-  if (jqconsole) {
+  if (!quiet && jqconsole) {
     jqconsole.Reset();
     jqconsole.Append(loadingHeader());
     jqconsole.Write(rec.output);
@@ -826,7 +872,7 @@ function runStepThrough() {
   }
 
   ensurePyodide().then(function() {
-    if (debugCancelled) return null;
+    if (debugCancelled || running) return null; // cancelled, or a normal run got in first
     var prog = syncFilesToFS(editor.getAllFiles(), mainFile);
     if (usesVPython(prog)) {
       $('#debug-note').text('Step through is not available for VPython programs');
@@ -834,7 +880,7 @@ function runStepThrough() {
       return null;
     }
     return pyodide.loadPackagesFromImports(prog).then(function() {
-      if (debugCancelled) return null;
+      if (debugCancelled || running) return null; // cancelled, or a normal run got in first
       var setup = Promise.resolve();
       if (usesMatplotlib(prog)) {
         window.document.pyodideMplTarget = document.getElementById('graphic');
@@ -842,7 +888,7 @@ function runStepThrough() {
         setup = pyodide.runPythonAsync(MATPLOTLIB_SETUP_CODE);
       }
       return setup.then(function() {
-        if (debugCancelled) return null;
+        if (debugCancelled || running) return null; // cancelled, or a normal run got in first
         var ns = null;
         try {
           ns = pyodide.toPy({
@@ -1090,6 +1136,12 @@ function finishRun(serializedCode, err) {
 
 function runCode() {
   $('.reveal-modal').foundation('reveal', 'close');
+
+  // A step-through recording is in flight (its async pre-exec phases —
+  // Pyodide load, package fetch — leave `running` false). Starting a normal
+  // run now would interleave the two pipelines: double FS sync, matplotlib
+  // target contention, console writes mixed into the recorded output offsets.
+  if (debugRecording) return;
 
   if (running) {
     // A run is already in flight. For a VPython program (which yields at rate())
@@ -1517,8 +1569,9 @@ window.TrinketAPI = {
 
     $('#codeOutputTab').addClass('active');
     $('#instructionsTab').removeClass('active');
-    hideVariables();  // a run always returns focus to the Result pane
-    exitReplay();     // a fresh run invalidates any step-through recording
+    hideVariables();     // a run always returns focus to the Result pane
+    exitReplay(true);    // a fresh run invalidates any step-through recording
+                         // (quiet: runCode resets the console right after)
 
     runCode();
 
@@ -1557,6 +1610,7 @@ window.TrinketAPI = {
     }
   },
   replaceMain : function(trinket) {
+    exitReplay(true); // the recording no longer matches the replaced code
     editor.setValue(trinket.code);
     editor.assets(trinket.assets ? trinket.assets.slice() : []);
   },
