@@ -819,7 +819,10 @@ function paintReplaySnap(snap, st, prevSnap) {
     html += varNoteRowHtml(0, crumbs.join(' · '));
   }
 
-  var prev = {};
+  // Prototype-less map: a variable legitimately named "toString"/"constructor"
+  // etc. would otherwise resolve through Object.prototype and read as always
+  // changed. Object.create(null) has no inherited keys.
+  var prev = Object.create(null);
   var hasPrev = false;
   if (prevSnap) {
     hasPrev = true;
