@@ -79,6 +79,12 @@ function initConsoleOutput() {
 }
 
 function resetOutput(consoleOnly) {
+  // Clearing output while a step-through replay is active would otherwise
+  // leave a half-state: blank console but replay-locked variables and live
+  // step controls. Exit replay first (quiet — this reset IS the console
+  // rewrite). No-op when replay isn't active.
+  exitReplay(true);
+
   if (editor) {
     editor.clearTabMarkers();
   }
@@ -392,6 +398,9 @@ function showRichHtml(html) {
 // _plt, _vpy, _js_scene, _wrapped_rate).
 var VARS_HELPER = [
   'import json, types',
+  // KEEP IN SYNC with RECORD_HELPER's _SKIP + _snap_ns filters (the step
+  // debugger's per-step snapshots): a runner-injected name added here but not
+  // there makes the debugger show internals the explorer hides, or vice versa.
   "_SKIP = {'__user_source__', '_plt', '_vpy', '_js_scene', '_wrapped_rate'}",
   "_baseline = user_ns.get('__trinket_baseline__') or set()",
   '_out = []',
@@ -598,6 +607,409 @@ function expandNode(root, path) {
   }
 }
 
+// --- Step-through debugger (record & replay) --------------------------------
+//
+// Design: docs/pyodide-debugger-mvp.md. Clicking "Step through" re-runs the
+// program under a sys.settrace recorder that captures, per user-code line
+// event: line number, function, call depth, a compact variable snapshot of the
+// executing frame, and the stdout offset. Replay then steps forward/backward
+// through the recording. Requires features.stepDebugger (and the explorer,
+// whose tab/table it reuses).
+
+function stepDebuggerEnabled() {
+  return variableExplorerEnabled()
+    && !!(window.trinket && window.trinket.config && window.trinket.config.stepDebugger);
+}
+
+// Recorder caps (see the MVP doc). The step/size caps abort the traced exec
+// from INSIDE the tracer — that's what bounds `while True:` on the main
+// thread, where JS cannot interrupt synchronous Python.
+var DEBUG_MAX_STEPS = 5000;
+var DEBUG_MAX_VARS = 50;
+var DEBUG_MAX_REPR = 120;
+var DEBUG_MAX_DEPTH = 20;
+var DEBUG_MAX_BYTES = 2 * 1024 * 1024;
+
+// The user program is compiled with filename '<debug>' and exec'd in a fresh
+// namespace: user frames are exactly the '<debug>' frames (functions defined in
+// the main file included), library/site-packages frames are never traced, and
+// the real pyodide.globals namespace is untouched. stdout/stderr are captured
+// into a buffer so replay can reveal output step-by-step. A synthetic '<end>'
+// step (full output, final globals) is appended so students can step past the
+// last line to the terminal state.
+var RECORD_HELPER = [
+  'import sys, json, types, io, traceback',
+  // KEEP IN SYNC with VARS_HELPER's _SKIP + filters (the live explorer): both
+  // must hide the same runner-injected names. They live in separate helper
+  // strings/namespaces, so a shared definition would add more machinery than
+  // it removes — this cross-reference is the guard.
+  "_SKIP = {'__user_source__', '_plt', '_vpy', '_js_scene', '_wrapped_rate'}",
+  'class _TrinketStopRecording(Exception): pass',
+  '_steps = []',
+  '_snaps = []',
+  '_size = [0]',
+  '_truncated = [False]',
+  '_buf = io.StringIO()',
+  '_last_out = [0]',
+  'def _snap_ns(_ns):',
+  '    _out = []',
+  '    for _name, _val in list(_ns.items()):',
+  '        if _name in _SKIP: continue',
+  "        if _name.startswith('__') and _name.endswith('__'): continue",
+  '        if isinstance(_val, types.ModuleType): continue',
+  '        if isinstance(_val, (types.FunctionType, types.BuiltinFunctionType, types.LambdaType)): continue',
+  '        if isinstance(_val, type): continue',
+  '        try:',
+  '            _r = repr(_val)',
+  '        except Exception:',
+  "            _r = '<unrepresentable>'",
+  "        if len(_r) > _max_repr: _r = _r[:_max_repr] + '...'",
+  "        _out.append({'name': _name, 'type': type(_val).__name__, 'repr': _r})",
+  '        _size[0] += len(_r) + len(_name) + 24',
+  '        if len(_out) >= _max_vars: break',
+  '    return _out',
+  // Phase 2: trace the main file AND user modules imported from the Pyodide FS
+  // (relative names or paths under _user_prefix) — never library frames.
+  'def _is_user(_fname):',
+  "    if _fname == '<debug>': return True",
+  "    if not _fname.endswith('.py'): return False",
+  "    return _fname.startswith(_user_prefix) or not _fname.startswith('/')",
+  // Display label: None for the main file, basename for user modules.
+  'def _file_label(_fname):',
+  "    if _fname == '<debug>': return None",
+  "    return _fname.rsplit('/', 1)[-1]",
+  'def _depth_of(_frame):',
+  '    _d = 0',
+  '    _f = _frame.f_back',
+  '    while _f is not None:',
+  '        if _is_user(_f.f_code.co_filename): _d += 1',
+  '        _f = _f.f_back',
+  '    return _d',
+  // Nearest user frame above: the call site shown as "called from line N".
+  'def _call_site(_frame):',
+  '    _f = _frame.f_back',
+  '    while _f is not None:',
+  '        if _is_user(_f.f_code.co_filename):',
+  '            return _f.f_lineno, _file_label(_f.f_code.co_filename)',
+  '        _f = _f.f_back',
+  '    return None, None',
+  'def _tracer(_frame, _event, _arg):',
+  '    if not _is_user(_frame.f_code.co_filename):',
+  '        return None',
+  "    if _event == 'call':",
+  '        if _depth_of(_frame) >= _max_depth: return None',
+  '        return _tracer',
+  "    if _event != 'line':",
+  '        return _tracer',
+  // The byte cap must bound the WHOLE payload, not just snapshot reprs: count
+  // stdout growth since the last event (a single huge print would otherwise
+  // sail past the cap into a multi-MB JSON) plus per-step dict overhead.
+  '    _size[0] += (_buf.tell() - _last_out[0]) + 40',
+  '    _last_out[0] = _buf.tell()',
+  '    if len(_steps) >= _max_steps or _size[0] > _max_bytes:',
+  '        _truncated[0] = True',
+  '        raise _TrinketStopRecording()',
+  '    _d = _depth_of(_frame)',
+  '    _fl, _ff = _call_site(_frame) if _d > 0 else (None, None)',
+  "    _steps.append({'line': _frame.f_lineno, 'func': _frame.f_code.co_name, 'depth': _d, 'out': _buf.tell(), 'file': _file_label(_frame.f_code.co_filename), 'from_line': _fl, 'from_file': _ff})",
+  '    _snaps.append(_snap_ns(_frame.f_locals))',
+  '    return _tracer',
+  "_g = {'__name__': '__main__'}",
+  '_err = None',
+  '_old_out, _old_err = sys.stdout, sys.stderr',
+  'sys.stdout = _buf',
+  'sys.stderr = _buf',
+  'try:',
+  "    _code = compile(_user_source, '<debug>', 'exec')",
+  '    sys.settrace(_tracer)',
+  '    try:',
+  '        exec(_code, _g)',
+  '    finally:',
+  '        sys.settrace(None)',
+  'except _TrinketStopRecording:',
+  '    pass',
+  'except BaseException as _e:',
+  "    _err = ''.join(traceback.format_exception_only(type(_e), _e)).strip()",
+  'finally:',
+  '    sys.stdout, sys.stderr = _old_out, _old_err',
+  "_steps.append({'line': None, 'func': '<end>', 'depth': 0, 'out': _buf.tell(), 'file': None, 'from_line': None, 'from_file': None})",
+  '_snaps.append(_snap_ns(_g))',
+  "json.dumps({'error': _err, 'truncated': _truncated[0], 'output': _buf.getvalue(), 'steps': _steps, 'snaps': _snaps})"
+].join('\n');
+
+var debugRec = null;       // active recording ({error, truncated, output, steps, snaps}) or null
+var debugIdx = 0;          // current step index into debugRec.steps
+var debugRecording = false;
+var debugCancelled = false;
+var debugMarkerId = null;      // ace marker id for the current-line highlight
+var debugMarkerSession = null; // ace session the marker was added to
+
+// Highlight the replay's current line in the (active) Ace editor with our own
+// marker class — deliberately NOT editor.highlight(), which applies the red
+// error styling and flags the file tab with an error icon.
+function debugHighlightLine(line) {
+  if (debugMarkerSession && debugMarkerId != null) {
+    try { debugMarkerSession.removeMarker(debugMarkerId); } catch (e) {}
+    debugMarkerId = null;
+    debugMarkerSession = null;
+  }
+  if (line == null) return;
+  try {
+    var aceEd = editor && editor._editor && editor._editor.aceInstance;
+    if (!aceEd || !window.ace) return; // e.g. plain-textarea mode: step without highlight
+    var session = aceEd.getSession();
+    var Range = window.ace.require('ace/range').Range;
+    var lineText = session.getLine(line - 1) || '';
+    debugMarkerId = session.addMarker(
+      new Range(line - 1, 0, line - 1, Math.max(lineText.length, 1)),
+      'debug-current-line', 'fullLine');
+    debugMarkerSession = session;
+    aceEd.scrollToLine(line - 1, true, true, function() {});
+  } catch (e) { /* highlight is best-effort */ }
+}
+
+// Phase 2: highlight the step's line in the file it belongs to. Switches the
+// editor tab (via the plugin's public selectFile) only when the step's file is
+// actually open, and only when the file changes — repeated selectFile calls
+// per step would flash/refocus the tab bar.
+var debugShownFile = null; // file whose tab replay last selected
+function debugShowLine(st) {
+  if (!st || st.line == null) {
+    debugHighlightLine(null);
+    return;
+  }
+  var file = st.file || mainFile;
+  try {
+    var files = editor.getAllFiles();
+    if (!files || !files.hasOwnProperty(file)) {
+      // Not open in the editor (e.g. hidden file): step without a highlight
+      // rather than marking a line in the wrong file.
+      debugHighlightLine(null);
+      return;
+    }
+    if (file !== debugShownFile && typeof editor.selectFile === 'function') {
+      // noFocus=true: switching tabs must not move keyboard focus into Ace —
+      // that killed arrow-key stepping (arrows would start moving the editor
+      // cursor instead of the replay).
+      editor.selectFile(file, true); // safe: only called for files that exist
+      debugShownFile = file;
+    }
+  } catch (e) { /* tab switching is best-effort */ }
+  debugHighlightLine(st.line);
+}
+
+// Render the variables table for a recorded step (flat, no expansion — the
+// recording is a snapshot; live Phase 3 expansion would show FINAL state and
+// lie about this step). prevSnap (the step before) drives changed-variable
+// highlighting: rows whose value is new or different since the previous step
+// get .var-changed so students can see what the line did.
+function paintReplaySnap(snap, st, prevSnap) {
+  var $body = $('#variables-table tbody');
+  if (!$body.length) return;
+  var html = '';
+
+  // Breadcrumb: where execution is (file for user modules, frame, call site).
+  var crumbs = [];
+  if (st && st.file) crumbs.push('in ' + st.file);
+  if (st && st.func && st.func !== '<module>' && st.func !== '<end>') {
+    var c = 'inside ' + st.func + '()';
+    if (st.from_line != null) {
+      c += ' — called from ' + (st.from_file ? st.from_file + ' line ' : 'line ') + st.from_line;
+    }
+    crumbs.push(c);
+  }
+  if (crumbs.length) {
+    html += varNoteRowHtml(0, crumbs.join(' · '));
+  }
+
+  // Prototype-less map: a variable legitimately named "toString"/"constructor"
+  // etc. would otherwise resolve through Object.prototype and read as always
+  // changed. Object.create(null) has no inherited keys.
+  var prev = Object.create(null);
+  var hasPrev = false;
+  if (prevSnap) {
+    hasPrev = true;
+    for (var p = 0; p < prevSnap.length; p++) prev[prevSnap[p].name] = prevSnap[p].repr;
+  }
+
+  if (!snap || !snap.length) {
+    html += '<tr class="vars-empty"><td colspan="3">No variables at this step.</td></tr>';
+  } else {
+    for (var i = 0; i < snap.length; i++) {
+      var v = snap[i];
+      var changed = hasPrev && (!(v.name in prev) || prev[v.name] !== v.repr);
+      html += varRowHtml({
+        displayName: v.name, type: v.type, repr: v.repr, len: null,
+        expandable: false, cyclic: false, kind: 'value'
+      }, { root: v.name, path: [], depth: 0, isChild: false,
+           rowClass: changed ? 'var-changed' : '' });
+    }
+  }
+  $body.html(html);
+}
+
+// Console sync state: the output offset (and whether the error line is shown)
+// currently rendered in the console. Most steps print nothing, so tracking
+// this lets stepping skip the console entirely instead of Reset+rewriting the
+// whole output on every keypress (flicker + O(total output) DOM work per step).
+var debugLastOut = -1;      // -1 = console not synced yet (forces full paint)
+var debugErrShown = false;
+
+function renderDebugStep() {
+  if (!debugRec) return;
+  var st = debugRec.steps[debugIdx];
+  var isEnd = st.func === '<end>';
+  $('#debug-pos').text(isEnd ? 'end' : (debugIdx + 1) + ' / ' + (debugRec.steps.length - 1));
+  var $slider = $('#debug-slider');
+  if ($slider.length) {
+    $slider.attr('max', debugRec.steps.length - 1);
+    $slider.val(debugIdx);
+  }
+  paintReplaySnap(debugRec.snaps[debugIdx],
+                  st,
+                  debugIdx > 0 ? debugRec.snaps[debugIdx - 1] : null);
+  debugShowLine(st);
+  if (jqconsole) {
+    var wantErr = isEnd && !!debugRec.error;
+    if (debugLastOut === -1 || st.out < debugLastOut || wantErr !== debugErrShown) {
+      // First paint, stepping backward past output, or the error line toggled:
+      // rebuild from scratch.
+      jqconsole.Reset();
+      jqconsole.Append(loadingHeader());
+      jqconsole.Write(debugRec.output.slice(0, st.out));
+      if (wantErr) {
+        jqconsole.Write('\n' + debugRec.error + '\n', 'jqconsole-error', false);
+      }
+    } else if (st.out > debugLastOut) {
+      // Forward over new output: append just the delta.
+      jqconsole.Write(debugRec.output.slice(debugLastOut, st.out));
+    }
+    // st.out === debugLastOut with no error change: console untouched.
+    debugLastOut = st.out;
+    debugErrShown = wantErr;
+  }
+}
+
+function debugStepTo(idx) {
+  if (!debugRec) return;
+  debugIdx = Math.max(0, Math.min(idx, debugRec.steps.length - 1));
+  renderDebugStep();
+}
+
+function enterReplay(rec) {
+  debugRec = rec;
+  debugIdx = 0;
+  debugLastOut = -1;
+  debugErrShown = false;
+  $('#debug-recording').addClass('hide');
+  $('#debug-launch').addClass('hide');
+  $('#debug-controls').removeClass('hide');
+  var note = '';
+  if (rec.truncated) note = 'recording stopped after ' + (rec.steps.length - 1) + ' steps';
+  else if (rec.error) note = 'ends with an error';
+  $('#debug-note').text(note);
+  showVariables();
+  renderDebugStep();
+}
+
+// Leave replay mode. `quiet` skips the console restore — used by callers that
+// are about to reset or rewrite the console themselves (a fresh run, the
+// Reset Output button), where restoring the recording's output first would be
+// wasted or actively wrong. The ✕ button uses the default (restore), so
+// exiting by hand leaves the full recorded output visible.
+function exitReplay(quiet) {
+  if (!debugRec) return;
+  var rec = debugRec;
+  debugRec = null;
+  debugLastOut = -1;
+  debugErrShown = false;
+  debugShownFile = null;
+  debugHighlightLine(null);
+  $('#debug-controls').addClass('hide');
+  $('#debug-note').text('');
+  $('#debug-launch').removeClass('hide');
+  $('#debug-recording').addClass('hide');
+  // Restore the console to the full recorded output and the table to the live
+  // post-run explorer view.
+  if (!quiet && jqconsole) {
+    jqconsole.Reset();
+    jqconsole.Append(loadingHeader());
+    jqconsole.Write(rec.output);
+    if (rec.error) jqconsole.Write('\n' + rec.error + '\n', 'jqconsole-error', false);
+  }
+  paintVariables();
+}
+
+// Run the program under the recorder, then enter replay. Mirrors startRun's
+// pre-steps (FS sync, package auto-load, matplotlib target) but execs in a
+// fresh namespace under trace. Normal Run is untouched.
+function runStepThrough() {
+  if (running || debugRecording) return;
+  if (debugRec) exitReplay();
+
+  debugRecording = true;
+  debugCancelled = false;
+  $('#debug-launch').addClass('hide');
+  $('#debug-recording').removeClass('hide');
+
+  function recordingDone() {
+    debugRecording = false;
+    $('#debug-recording').addClass('hide');
+    if (!debugRec) $('#debug-launch').removeClass('hide');
+  }
+
+  ensurePyodide().then(function() {
+    if (debugCancelled || running) return null; // cancelled, or a normal run got in first
+    var prog = syncFilesToFS(editor.getAllFiles(), mainFile);
+    if (usesVPython(prog)) {
+      $('#debug-note').text('Step through is not available for VPython programs');
+      setTimeout(function() { $('#debug-note').text(''); }, 4000);
+      return null;
+    }
+    return pyodide.loadPackagesFromImports(prog).then(function() {
+      if (debugCancelled || running) return null; // cancelled, or a normal run got in first
+      var setup = Promise.resolve();
+      if (usesMatplotlib(prog)) {
+        window.document.pyodideMplTarget = document.getElementById('graphic');
+        showGraphic();
+        setup = pyodide.runPythonAsync(MATPLOTLIB_SETUP_CODE);
+      }
+      return setup.then(function() {
+        if (debugCancelled || running) return null; // cancelled, or a normal run got in first
+        var ns = null;
+        try {
+          ns = pyodide.toPy({
+            _user_source: prog,
+            // Secondary .py files sync to the Pyodide FS home dir; frames from
+            // there are user code the tracer should step through (Phase 2).
+            _user_prefix: '/home/pyodide/',
+            _max_steps: DEBUG_MAX_STEPS,
+            _max_vars: DEBUG_MAX_VARS,
+            _max_repr: DEBUG_MAX_REPR,
+            _max_depth: DEBUG_MAX_DEPTH,
+            _max_bytes: DEBUG_MAX_BYTES
+          });
+          return JSON.parse(pyodide.runPython(RECORD_HELPER, { globals: ns }));
+        } finally {
+          if (ns && typeof ns.destroy === 'function') {
+            try { ns.destroy(); } catch (e) {}
+          }
+        }
+      });
+    });
+  }).then(function(rec) {
+    recordingDone();
+    if (rec && !debugCancelled) {
+      initConsoleOutput();
+      enterReplay(rec);
+    }
+  }).catch(function(err) {
+    recordingDone();
+    $('#debug-note').text('recording failed');
+    setTimeout(function() { $('#debug-note').text(''); }, 4000);
+  });
+}
+
 function escHtml(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -661,7 +1073,8 @@ function varRowHtml(node, meta) {
   var cyc = node.cyclic ? '<span class="var-cyclic" title="circular reference">↻</span> ' : '';
   var indent = 'padding-left:' + (8 + depth * 16) + 'px';
   var kind = node.kind || 'value';
-  return '<tr class="var-row var-kind-' + kind + (meta.isChild ? ' var-child' : '') + '"'
+  return '<tr class="var-row var-kind-' + kind + (meta.isChild ? ' var-child' : '')
+    + (meta.rowClass ? ' ' + meta.rowClass : '') + '"'
     + ' data-root="' + escHtml(meta.root) + '"'
     + " data-path='" + JSON.stringify(meta.path) + "'"
     + ' data-depth="' + depth + '" data-expanded="0">'
@@ -694,6 +1107,7 @@ function collapseSubtree($row) {
 }
 
 function paintVariables() {
+  if (debugRec) return; // replay owns the table; exitReplay repaints on the way out
   var $body = $('#variables-table tbody');
   if (!$body.length) return; // no Variables panel (e.g. outputOnly embed)
 
@@ -813,6 +1227,12 @@ function finishRun(serializedCode, err) {
 
 function runCode() {
   $('.reveal-modal').foundation('reveal', 'close');
+
+  // A step-through recording is in flight (its async pre-exec phases —
+  // Pyodide load, package fetch — leave `running` false). Starting a normal
+  // run now would interleave the two pipelines: double FS sync, matplotlib
+  // target contention, console writes mixed into the recorded output offsets.
+  if (debugRecording) return;
 
   if (running) {
     // A run is already in flight. For a VPython program (which yields at rate())
@@ -1027,6 +1447,43 @@ window.TrinketAPI = {
         e.stopPropagation();
         toggleVarRow($(this).closest('tr'));
       });
+
+      // Step-through debugger controls (record & replay). Markup only exists
+      // when features.stepDebugger is on; handlers are harmless no-ops without it.
+      if (stepDebuggerEnabled()) {
+        var debugActivate = function(handler) {
+          return function(e) {
+            if (e.type === 'keydown' && e.which !== 13 && e.which !== 32) return;
+            e.preventDefault();
+            handler();
+          };
+        };
+        $('#debug-start').on('click keydown', debugActivate(runStepThrough));
+        $('#debug-cancel').on('click keydown', debugActivate(function() { debugCancelled = true; }));
+        $('#debug-first').on('click keydown', debugActivate(function() { debugStepTo(0); }));
+        $('#debug-back').on('click keydown', debugActivate(function() { debugStepTo(debugIdx - 1); }));
+        $('#debug-fwd').on('click keydown', debugActivate(function() { debugStepTo(debugIdx + 1); }));
+        $('#debug-last').on('click keydown', debugActivate(function() { debugStepTo(debugRec ? debugRec.steps.length - 1 : 0); }));
+        $('#debug-exit').on('click keydown', debugActivate(exitReplay));
+
+        // Phase 2: scrub through the recording. 'input' fires continuously
+        // while dragging, so the line highlight / variables / console follow
+        // the thumb live.
+        $('#debug-slider').on('input change', function() {
+          debugStepTo(parseInt(this.value, 10) || 0);
+        });
+
+        // Arrow-key stepping while replaying (ignored while typing in the
+        // editor or any input, so it never hijacks code editing).
+        $(document).on('keydown.stepDebugger', function(e) {
+          if (!debugRec) return;
+          if (e.which !== 37 && e.which !== 39) return;
+          var t = $(e.target);
+          if (t.is('input, textarea') || t.closest('.ace_editor').length) return;
+          e.preventDefault();
+          debugStepTo(debugIdx + (e.which === 39 ? 1 : -1));
+        });
+      }
     }
 
     $(document).on('assets.change', function() {
@@ -1204,7 +1661,9 @@ window.TrinketAPI = {
 
     $('#codeOutputTab').addClass('active');
     $('#instructionsTab').removeClass('active');
-    hideVariables();  // a run always returns focus to the Result pane
+    hideVariables();     // a run always returns focus to the Result pane
+    exitReplay(true);    // a fresh run invalidates any step-through recording
+                         // (quiet: runCode resets the console right after)
 
     runCode();
 
@@ -1243,6 +1702,7 @@ window.TrinketAPI = {
     }
   },
   replaceMain : function(trinket) {
+    exitReplay(true); // the recording no longer matches the replaced code
     editor.setValue(trinket.code);
     editor.assets(trinket.assets ? trinket.assets.slice() : []);
   },

@@ -200,6 +200,74 @@
     color: #999; font-style: italic; white-space: nowrap;
   }
   #embed_content_python #variables-table .var-cyclic { color: #b08800; font-style: normal; }
+
+  {% if config.features.stepDebugger %}
+  /* --- Step-through debugger (record & replay) ---------------------------- */
+  /* Foundation makes <label> display:block (full width), which would push the
+     debug controls onto their own line — lay the toolbar out as one flex row
+     instead, with the controls pinned right. */
+  #embed_content_python #variables-toolbar {
+    display: flex;
+    align-items: center;
+  }
+  #embed_content_python #variables-toolbar label {
+    flex: 0 0 auto;
+    margin: 0;
+  }
+  #embed_content_python #variables-toolbar #debug-launch,
+  #embed_content_python #variables-toolbar #debug-controls {
+    margin-left: auto;
+  }
+  #embed_content_python #variables-toolbar .debug-btn {
+    display: inline-block;
+    color: #2b6c9e;
+    cursor: pointer;
+    padding: 0 4px;
+    -webkit-user-select: none; -moz-user-select: none; user-select: none;
+  }
+  #embed_content_python #variables-toolbar .debug-btn:hover { color: #14435f; }
+  #embed_content_python #variables-toolbar .debug-start {
+    border: 1px solid #c6d8e4;
+    border-radius: 3px;
+    padding: 1px 8px;
+    background: #f2f8fc;
+  }
+  #embed_content_python #variables-toolbar #debug-pos {
+    display: inline-block;
+    min-width: 70px;
+    text-align: center;
+    color: #333;
+  }
+  #embed_content_python #variables-toolbar #debug-note {
+    color: #b06000;
+    margin: 0 6px;
+  }
+  #embed_content_python #variables-toolbar #debug-recording { color: #b06000; }
+  /* Phase 2: step scrubber. Foundation styles input[type=range] minimally;
+     keep it compact so the toolbar stays one line. */
+  #embed_content_python #variables-toolbar #debug-slider {
+    display: inline-block;
+    width: 110px;
+    margin: 0 6px;
+    vertical-align: middle;
+    cursor: pointer;
+  }
+  /* Phase 2: variables whose value is new or changed since the previous step —
+     lets students see what the just-executed line did. */
+  #embed_content_python #variables-table tr.var-changed td.var-value {
+    background: #fff8d6;
+  }
+  #embed_content_python #variables-table tr.var-changed td.var-name {
+    font-weight: bold;
+  }
+  /* Current-line marker in the Ace editor during replay (deliberately NOT the
+     red error styling that editor.highlight() applies). */
+  .ace_editor .debug-current-line {
+    position: absolute;
+    background: rgba(255, 213, 79, 0.45);
+    z-index: 4;
+  }
+  {% endif %}
   {% endif %}
 </style>
 
@@ -295,6 +363,22 @@
       <div id="variables-inner">
         <div id="variables-toolbar">
           <label><input type="checkbox" id="variables-show-callables"> Show functions &amp; classes</label>
+          {% if config.features.stepDebugger %}
+          <span id="debug-launch">
+            <span id="debug-start" class="debug-btn debug-start" role="button" tabindex="0" title="Records your program running from scratch (as a standalone script — nothing carries over from earlier runs), then lets you step through it"><i class="fa fa-step-forward"></i> Step through</span>
+            <span id="debug-recording" class="hide">recording&hellip; <span id="debug-cancel" class="debug-btn" role="button" tabindex="0" title="Cancel">cancel</span></span>
+          </span>
+          <span id="debug-controls" class="hide">
+            <span id="debug-first" class="debug-btn" role="button" tabindex="0" title="First step"><i class="fa fa-fast-backward"></i></span>
+            <span id="debug-back" class="debug-btn" role="button" tabindex="0" title="Previous step (←)"><i class="fa fa-step-backward"></i></span>
+            <input type="range" id="debug-slider" min="0" max="0" value="0" step="1" title="Scrub through the steps" aria-label="Step position">
+            <span id="debug-pos">0 / 0</span>
+            <span id="debug-fwd" class="debug-btn" role="button" tabindex="0" title="Next step (→)"><i class="fa fa-step-forward"></i></span>
+            <span id="debug-last" class="debug-btn" role="button" tabindex="0" title="Last step"><i class="fa fa-fast-forward"></i></span>
+            <span id="debug-note"></span>
+            <span id="debug-exit" class="debug-btn" role="button" tabindex="0" title="Exit step-through"><i class="fa fa-times"></i></span>
+          </span>
+          {% endif %}
         </div>
         <div id="variables-scroll" aria-live="polite">
           <table id="variables-table">
