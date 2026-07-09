@@ -40,3 +40,47 @@ describe.skipIf(!FB_MODE)('Firebase Auth session establishment', () => {
     expect(r.body.data).toBeUndefined();
   });
 });
+
+// GHSA-w66h-rw9x-7h24 — account takeover via unverified Firebase email.
+// The session handler must NOT resolve/link by email when the token's email is
+// unverified (Firebase issues email/password tokens with email_verified:false
+// immediately on signup). Same scenario, verified vs unverified token.
+describe.skipIf(!FB_MODE)('Account-takeover protection (email_verified gate)', () => {
+  const victimEmail = 'victim@example.com';
+
+  async function makeVictim() {
+    // A pre-existing account with NO firebaseUid (e.g. created via a course
+    // invitation or import) — the takeover target.
+    return new Promise((res, rej) => {
+      const u = new User({ email: victimEmail, username: 'victim-acct', fullname: 'Victim' });
+      u.save((e) => e ? rej(e) : res(u));
+    });
+  }
+  function reloadVictim() {
+    return new Promise((res, rej) => User.findByLogin(victimEmail, (e, d) => e ? rej(e) : res(d)));
+  }
+
+  it('rejects an UNVERIFIED token and does NOT link the existing account', async () => {
+    await makeVictim();
+    await flow.switchUser('');                       // anonymous jar (the attacker)
+    const token = await flow.mintFirebaseToken({ email: victimEmail, password: 'attacker1' }, { verified: false });
+    const r = await flow.post('/api/auth/session', { idToken: token });
+
+    expect(r.statusCode).toBe(403);
+    expect(r.body.code).toBe('EMAIL_NOT_VERIFIED');
+
+    const after = await reloadVictim();
+    expect(after.firebaseUid).toBeFalsy();           // NOT taken over
+  });
+
+  it('allows a VERIFIED token to link the same account (legitimate user)', async () => {
+    await makeVictim();
+    await flow.switchUser('');
+    const token = await flow.mintFirebaseToken({ email: victimEmail, password: 'legit1' }, { verified: true });
+    const r = await flow.post('/api/auth/session', { idToken: token });
+
+    expect(r.statusCode).toBe(200);
+    const after = await reloadVictim();
+    expect(after.firebaseUid).toBeTruthy();          // linked, as intended
+  });
+});

@@ -28,6 +28,16 @@
       </div>
     </div>
   </div>
+
+  <div id="auth-verify" class="row" style="display:none">
+    <div class="medium-8 medium-offset-2 small-12 columns">
+      <div data-alert class="alert-box info radius">
+        <p id="auth-verify-message" style="margin-bottom:0.5rem"></p>
+        <button id="auth-verify-resend" class="tiny button radius">Resend link</button>
+        <button id="auth-verify-continue" class="tiny button radius secondary">I've verified — continue</button>
+      </div>
+    </div>
+  </div>
 </div>
 {% endblock %}
 
@@ -53,6 +63,52 @@
     document.getElementById('auth-error').style.display = 'block';
   }
 
+  // Exchange the Firebase user's ID token for a server session. forceRefresh so
+  // that after a user verifies + reloads, the fresh token carries email_verified.
+  function postSession(fbUser) {
+    return fbUser.getIdToken(true).then(function(idToken) {
+      return fetch('/api/auth/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ idToken: idToken })
+      });
+    })
+    .then(function(response) {
+      return response.json().then(function(data) { return { ok: response.ok, data: data }; });
+    })
+    .then(function(result) {
+      if (result.ok) {
+        window.location.href = result.data.redirect || '/welcome';
+      } else if (result.data && result.data.code === 'EMAIL_NOT_VERIFIED') {
+        showVerifyNotice(fbUser);   // keep fbUser signed in for resend / continue
+      } else {
+        showError((result.data && result.data.message) || 'Access denied.');
+        firebase.auth().signOut();
+      }
+    })
+    .catch(function() {
+      showError('Something went wrong. Please try again.');
+      firebase.auth().signOut();
+    });
+  }
+
+  function showVerifyNotice(fbUser) {
+    var addr = fbUser.email || 'your address';
+    document.getElementById('auth-error').style.display = 'none';
+    document.getElementById('auth-verify-message').textContent =
+      'We emailed a verification link to ' + addr + '. Click it, then choose "I\'ve verified — continue".';
+    document.getElementById('auth-verify').style.display = 'block';
+    document.getElementById('auth-verify-resend').onclick = function() {
+      fbUser.sendEmailVerification().then(function() {
+        document.getElementById('auth-verify-message').textContent = 'Sent again — check your inbox for ' + addr + '.';
+      }).catch(function() { showError('Could not resend right now. Please try again shortly.'); });
+    };
+    document.getElementById('auth-verify-continue').onclick = function() {
+      fbUser.reload().then(function() { return postSession(fbUser); });
+    };
+  }
+
   ui.start('#firebaseui-auth-container', {
     signInOptions: [
       firebase.auth.EmailAuthProvider.PROVIDER_ID,
@@ -61,32 +117,18 @@
     signInFlow: 'popup',
     callbacks: {
       signInSuccessWithAuthResult: function(authResult) {
-        authResult.user.getIdToken().then(function(idToken) {
-          return fetch('/api/auth/session', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'same-origin',
-            body: JSON.stringify({ idToken: idToken })
-          });
-        })
-        .then(function(response) {
-          return response.json().then(function(data) {
-            return { ok: response.ok, status: response.status, data: data };
-          });
-        })
-        .then(function(result) {
-          if (result.ok) {
-            window.location.href = result.data.redirect || '/welcome';
-          } else {
-            var msg = (result.data && result.data.message) || 'Access denied.';
-            showError(msg);
-            firebase.auth().signOut();
-          }
-        })
-        .catch(function(err) {
-          showError('Something went wrong. Please try again.');
-          firebase.auth().signOut();
-        });
+        var fbUser = authResult.user;
+        var isNew  = !!(authResult.additionalUserInfo && authResult.additionalUserInfo.isNewUser);
+        var isPassword = (fbUser.providerData || []).some(function(p) { return p.providerId === 'password'; });
+
+        // Fresh email/password signup with an unverified email: send the Firebase
+        // verification link now, so the user can complete verification. (Google
+        // sign-ins are already verified and skip this.)
+        var pre = (isNew && isPassword && !fbUser.emailVerified)
+          ? fbUser.sendEmailVerification().catch(function() {})
+          : Promise.resolve();
+
+        pre.then(function() { return postSession(fbUser); });
 
         return false; // prevent FirebaseUI from handling the redirect
       },

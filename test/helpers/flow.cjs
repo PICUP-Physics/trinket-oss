@@ -304,9 +304,18 @@ var flow = {
 // the account already exists within a test file. Fixture passwords can be
 // shorter than Firebase's 6-char minimum, so the emulator account uses a
 // derived password — it never has to match the local-auth bcrypt one.
-async function firebaseIdToken(creds) {
-  var base = 'http://' + process.env.FIREBASE_AUTH_EMULATOR_HOST +
-             '/identitytoolkit.googleapis.com/v1/accounts:';
+//
+// By default the account is admin-marked email-verified (via the emulator's
+// accounts:update with `Authorization: Bearer owner`) and a FRESH token is
+// re-minted, so the token carries email_verified:true — representing a
+// legitimate user (Google, or a password user who verified). This is required
+// now that POST /api/auth/session rejects unverified emails (GHSA-w66h-rw9x-7h24).
+// Pass { verified: false } to mint an UNVERIFIED token (the attacker's token in
+// the account-takeover security test).
+async function mintFirebaseToken(creds, options) {
+  options = options || {};
+  var host = process.env.FIREBASE_AUTH_EMULATOR_HOST;
+  var base = 'http://' + host + '/identitytoolkit.googleapis.com/v1/accounts:';
   var body = JSON.stringify({
     email: creds.email,
     password: 'emu-' + creds.password + '-000000',
@@ -323,7 +332,26 @@ async function firebaseIdToken(creds) {
   if (!json.idToken) {
     throw new Error('Auth emulator gave no idToken: ' + JSON.stringify(json.error || json).slice(0, 300));
   }
-  return json.idToken;
+
+  if (options.verified === false) return json.idToken;   // unverified (email_verified:false)
+
+  // Admin-mark the account verified, then re-sign-in so the fresh token has email_verified:true.
+  await fetch(base + 'update?key=fake-api-key', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'Authorization': 'Bearer owner' },
+    body: JSON.stringify({ localId: json.localId, emailVerified: true })
+  });
+  var res2  = await fetch(base + 'signInWithPassword?key=fake-api-key', opts);
+  var json2 = await res2.json();
+  if (!json2.idToken) {
+    throw new Error('Auth emulator re-sign-in failed: ' + JSON.stringify(json2.error || json2).slice(0, 300));
+  }
+  return json2.idToken;
 }
+
+async function firebaseIdToken(creds) { return mintFirebaseToken(creds, { verified: true }); }
+
+// Exposed for the account-takeover security test.
+flow.mintFirebaseToken = mintFirebaseToken;
 
 module.exports = flow;
