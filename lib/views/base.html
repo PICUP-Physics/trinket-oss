@@ -177,7 +177,7 @@
                   {% endif %}
                   <li class="divider" role="presentation"></li>
                   <li><a href="/account"><i class="fa fa-gear"></i> My Settings</a></li>
-                  {% if user.isInstructor %}
+                  {% if user.isInstructor or user.hasRole("admin") %}
                   <li><a href="/lti/connect"><i class="fa fa-plug"></i> Connect LMS</a></li>
                   {% endif %}
                   {% if user.hasRole("admin") or user.loggedInAs() %}
