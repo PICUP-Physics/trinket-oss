@@ -9,6 +9,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: vpython async-transform tests (python, no deps)
+        run: python3 test/lib/wvpython/test_async_transform.py
       - uses: actions/setup-node@v4
         with:
           node-version: '20'

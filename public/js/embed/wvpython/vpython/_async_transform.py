@@ -68,13 +68,42 @@ def _scope_calls(func_node):
                 yield n
 
 
-def _is_trigger_call(call, async_names, async_methods):
+def _vpython_module_aliases(tree):
+    """Names bound to the ``vpython`` *module* by an ``import`` statement.
+
+    ``import vpython`` / ``import vpython.foo`` bind ``vpython``; ``import
+    vpython as vp`` binds ``vp``. Only the top-level package binding counts —
+    ``import vpython.foo as bar`` binds the submodule, not ``vpython``, so it's
+    excluded. Used so namespaced primitive calls (``vp.rate(...)``) are awaited
+    while look-alike attributes on unrelated objects (``meter.rate()``) are not.
+    """
+    aliases = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for a in node.names:
+                if a.name == 'vpython':
+                    aliases.add(a.asname or 'vpython')
+                elif a.name.startswith('vpython.') and a.asname is None:
+                    aliases.add('vpython')
+    return aliases
+
+
+def _is_trigger_call(call, async_names, async_methods, vp_aliases):
     """True if this Call should be awaited given what we know is async so far."""
     func = call.func
     if isinstance(func, ast.Name):
         return func.id in _BASE_AWAIT_NAMES or func.id in async_names
     if isinstance(func, ast.Attribute):
-        return func.attr in _BASE_AWAIT_ATTRS or func.attr in async_methods
+        # Instance-method primitives (scene.waitfor) and user async methods:
+        # matched by attribute name on any object (as before).
+        if func.attr in _BASE_AWAIT_ATTRS or func.attr in async_methods:
+            return True
+        # Namespaced module primitives (vp.rate(), vpython.sleep()): only when
+        # the object is a vpython-module alias, so `meter.rate()` on some
+        # unrelated object is never awaited (awaiting a non-coroutine raises).
+        return (func.attr in _BASE_AWAIT_NAMES
+                and isinstance(func.value, ast.Name)
+                and func.value.id in vp_aliases)
     return False
 
 
@@ -96,7 +125,7 @@ def _collect_functions(tree):
     return funcs
 
 
-def _compute_async(tree):
+def _compute_async(tree, vp_aliases):
     """Find which functions must be async. Returns (ids, names, methods)."""
     funcs = _collect_functions(tree)
 
@@ -116,7 +145,7 @@ def _compute_async(tree):
         for node, is_method in funcs:
             if id(node) in async_ids:
                 continue
-            if any(_is_trigger_call(c, async_names, async_methods)
+            if any(_is_trigger_call(c, async_names, async_methods, vp_aliases)
                    for c in _scope_calls(node)):
                 async_ids.add(id(node))
                 (async_methods if is_method else async_names).add(node.name)
@@ -175,7 +204,8 @@ def transform_source(src):
     except SyntaxError:
         return src
 
-    async_ids, async_names, async_methods = _compute_async(tree)
+    vp_aliases = _vpython_module_aliases(tree)
+    async_ids, async_names, async_methods = _compute_async(tree, vp_aliases)
 
     awaited_calls = {
         id(n.value)
@@ -198,7 +228,7 @@ def transform_source(src):
         if (isinstance(node, ast.Call)
                 and id(node) not in awaited_calls
                 and id(node) not in lambda_calls
-                and _is_trigger_call(node, async_names, async_methods)):
+                and _is_trigger_call(node, async_names, async_methods, vp_aliases)):
             insertions.append((node.lineno, node.col_offset, 'await '))
 
     return _apply_insertions(src, insertions)
