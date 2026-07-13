@@ -315,6 +315,36 @@ describe('resolvePositionalUpdates', function() {
     patch.users[0].roles.should.deep.equal(['course-owner']);
     patch.users[0].displayName.should.equal('Alice Admin');
   });
+
+  // recordView sets "users.$.lastView.viewedOn" — the sub-path itself is
+  // dotted. It must land as a NESTED object on the element, not a literal
+  // "lastView.viewedOn" key (which is what Mongo's positional $set means).
+  it('nests a dotted sub-path instead of writing a literal dotted key', function() {
+    var filter = { _id: 'c1', users: { $elemMatch: { userId: 'u1' } } };
+    var docView = { users: [{ userId: 'u1', lastView: { count: 3 } }] };
+    var when = new Date('2026-07-12T00:00:00Z');
+    var patch = resolvePositionalUpdates({ 'users.$.lastView.viewedOn': when }, filter, docView);
+    patch.users[0].lastView.viewedOn.should.equal(when);
+    patch.users[0].lastView.count.should.equal(3);          // siblings preserved
+    patch.users[0].should.not.have.property('lastView.viewedOn');
+  });
+
+  it('creates missing intermediate objects for a dotted sub-path', function() {
+    var filter = { _id: 'c1', users: { $elemMatch: { userId: 'u1' } } };
+    var docView = { users: [{ userId: 'u1' }] };            // no lastView yet
+    var when = new Date('2026-07-12T00:00:00Z');
+    var patch = resolvePositionalUpdates({ 'users.$.lastView.viewedOn': when }, filter, docView);
+    patch.users[0].lastView.viewedOn.should.equal(when);
+    patch.users[0].should.not.have.property('lastView.viewedOn');
+  });
+
+  it('does not mutate the original element when nesting a dotted sub-path', function() {
+    var filter = { _id: 'c1', users: { $elemMatch: { userId: 'u1' } } };
+    var original = { userId: 'u1', lastView: { count: 3 } };
+    var docView = { users: [original] };
+    resolvePositionalUpdates({ 'users.$.lastView.viewedOn': new Date() }, filter, docView);
+    should.not.exist(original.lastView.viewedOn);
+  });
 });
 
 // ---------------------------------------------------------------------------
