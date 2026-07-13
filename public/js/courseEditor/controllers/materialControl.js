@@ -203,10 +203,11 @@
         // — the file just silently never appeared (issue #4's 415s).
         self.$scope.uploadStarted = false;
         self.$scope.uploadProgress = 0;
-        var message = response && response.data && response.data.message;
-        if (!message && response && response.status === 413) {
-          message = 'That file is too large — the maximum size is 10MB.';
-        }
+        // 413's server message is raw ("Payload content length greater than
+        // maximum allowed: 10485760") — always use the friendly wording.
+        var message = response && response.status === 413
+          ? 'That file is too large — the maximum size is 10MB.'
+          : response && response.data && response.data.message;
         self.$scope.uploadError = 'Upload failed: ' + (message || 'please try again.');
       }, function(evt) {
         var progress = parseInt(100.0 * evt.loaded / evt.total);
