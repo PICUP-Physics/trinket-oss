@@ -55,6 +55,10 @@
     </a>
     <trinket-search toolbar="true" on-select="insertSelectedTrinket" placeholder-text="search for a trinket to insert"></trinket-search>
   </div>
+  <div class="alert-box alert" ng-show="uploadError">
+    {{ uploadError }}
+    <a class="close" ng-click="uploadError = null">&times;</a>
+  </div>
   <div class="editor">
     <div>
       <div id="markdown" class="mathjax-ignore"></div>
@@ -71,6 +75,10 @@
     <div class="progress">
       <span ng-style="{width:uploadProgress+'%'}"  class="meter"></span>
     </div>
+  </div>
+  <div class="alert-box alert" ng-show="uploadError">
+    {{ uploadError }}
+    <a class="close" ng-click="uploadError = null">&times;</a>
   </div>
   <div class="content">
     <div class="dropzone"

@@ -91,6 +91,32 @@ describe('Files', () => {
       });
     });
 
+    describe('When the storage backend rejects the upload', () => {
+      beforeEach(async () => {
+        // Storage write fails (bucket down / bad credentials / network). The
+        // error used to be console.logged and swallowed (_fileToContainer),
+        // so the controller replied 200 and minted a File doc whose URL
+        // points at an object that was never stored — a dead file link.
+        vi.spyOn(FileUtil, 'uploadMaterialFile').mockImplementation((upload, cb) => {
+          cb(new Error('storage backend unavailable'));
+        });
+        await flow.switchUser('user');
+        await flow.uploadFile('application/json, text/plain, */*');
+      });
+
+      it('should reply with a clean error, not success', () => {
+        expect(flow.lastResponse.statusCode).toBe(500);
+        expect(flow.lastResponse.body).toHaveProperty('message');
+        expect(flow.lastResponse.body).not.toHaveProperty('id');
+      });
+
+      it('should not create a file document', async () => {
+        const docs = await new Promise((resolve, reject) =>
+          File.find({}, (err, d) => (err ? reject(err) : resolve(d))));
+        expect(docs).toHaveLength(0);
+      });
+    });
+
     describe('When I upload an ipython notebook', () => {
       beforeEach(async () => {
         await flow.switchUser('user');

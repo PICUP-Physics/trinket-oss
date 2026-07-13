@@ -115,13 +115,18 @@ var flow = {
   // Multipart upload over server.inject: build a fully-encoded multipart body
   // with form-data, then pass its buffer + headers (plus the active cookie)
   // to inject. supertest's .field()/.attach() aren't available without a port.
-  async injectMultipart(urlPath, type, filePath) {
+  async injectMultipart(urlPath, type, filePath, accept) {
     var form = new FormData();
     if (type !== undefined) form.append('type', type);
     form.append('upload', fs.readFileSync(filePath), { filename: path.basename(filePath) });
 
     var server = await getServer();
     var headers = form.getHeaders();
+    // Pass accept='application/json, text/plain, */*' to mirror the real
+    // uploader (Angular $http via ng-file-upload) — that Accept is what keeps
+    // error replies JSON instead of HTML error pages (app.js onPreResponse).
+    // Without it, requests behave like a plain HTML form post.
+    if (accept) headers.accept = accept;
     if (this.cookies[this.activeUser]) {
       headers.cookie = cookieHeader(this.cookies[this.activeUser]);
     }
@@ -236,7 +241,7 @@ var flow = {
     return this.put('/api/courses/' + courseId + '/lessons/' + lessonId + '/materials/' + materialId + '/draft', { isDraft: true });
   },
 
-  uploadFile()  { return this.injectMultipart('/file', defaults.file.type, defaults.file.upload); },
+  uploadFile(accept) { return this.injectMultipart('/file', defaults.file.type, defaults.file.upload, accept); },
   uploadIpynb() { return this.injectMultipart('/file', defaults.ipynb.type, defaults.ipynb.upload); },
 
   downloadFile(fileId) { return this.get('/api/files/' + fileId + '/download'); },

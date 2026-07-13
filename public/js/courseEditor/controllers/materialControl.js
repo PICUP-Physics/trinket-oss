@@ -163,6 +163,7 @@
     var self = this;
     self.$scope.uploadStarted = true;
     self.$scope.uploadProgress = 0;
+    self.$scope.uploadError = null;
     for (var i = 0; i < files.length; i++) {
       self.Upload.upload({
         url:    '/file',
@@ -197,7 +198,17 @@
           self.editor.insert(embed + '[' + data.name + '](' + url + ' "' + data.name + '")');
           self.editor.focus();
         });
-      }, null, function(evt) {
+      }, function(response) {
+        // A rejected upload used to show NOTHING (the error callback was null)
+        // — the file just silently never appeared (issue #4's 415s).
+        self.$scope.uploadStarted = false;
+        self.$scope.uploadProgress = 0;
+        var message = response && response.data && response.data.message;
+        if (!message && response && response.status === 413) {
+          message = 'That file is too large — the maximum size is 10MB.';
+        }
+        self.$scope.uploadError = 'Upload failed: ' + (message || 'please try again.');
+      }, function(evt) {
         var progress = parseInt(100.0 * evt.loaded / evt.total);
         self.$scope.uploadProgress = progress;
       });

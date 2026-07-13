@@ -801,6 +801,15 @@
 
       self.$scope.course.remove().then(function() {
         self.$window.location = '/home';
+      }, function(response) {
+        // A failed delete used to show NOTHING — the dialog just sat there and
+        // the course quietly survived (issue #2's 500s).
+        $('#deleteCourseDialog').foundation('reveal', 'close');
+        var message = response && response.data && response.data.message;
+        $('#course-notifications').notify(
+          'We couldn\'t delete the course' + (message ? ': ' + message : '. Please try again.')
+          , { className : 'alert' }
+        );
       });
     },
 
