@@ -65,7 +65,7 @@
 
   // Exchange the Firebase user's ID token for a server session. forceRefresh so
   // that after a user verifies + reloads, the fresh token carries email_verified.
-  function postSession(fbUser) {
+  function postSession(fbUser, sentThisAttempt) {
     return fbUser.getIdToken(true).then(function(idToken) {
       return fetch('/api/auth/session', {
         method: 'POST',
@@ -81,7 +81,7 @@
       if (result.ok) {
         window.location.href = result.data.redirect || '/welcome';
       } else if (result.data && result.data.code === 'EMAIL_NOT_VERIFIED') {
-        showVerifyNotice(fbUser);   // keep fbUser signed in for resend / continue
+        showVerifyNotice(fbUser, sentThisAttempt);   // keep fbUser signed in for resend / continue
       } else {
         showError((result.data && result.data.message) || 'Access denied.');
         firebase.auth().signOut();
@@ -93,11 +93,12 @@
     });
   }
 
-  function showVerifyNotice(fbUser) {
+  function showVerifyNotice(fbUser, sentThisAttempt) {
     var addr = fbUser.email || 'your address';
     document.getElementById('auth-error').style.display = 'none';
-    document.getElementById('auth-verify-message').textContent =
-      'We emailed a verification link to ' + addr + '. Click it, then choose "I\'ve verified — continue".';
+    document.getElementById('auth-verify-message').textContent = sentThisAttempt
+      ? 'We emailed a verification link to ' + addr + '. Click it, then choose "I\'ve verified — continue".'
+      : 'Your email address (' + addr + ') isn\'t verified yet. Check your inbox for the verification link — or resend it below — then choose "I\'ve verified — continue".';
     document.getElementById('auth-verify').style.display = 'block';
     document.getElementById('auth-verify-resend').onclick = function() {
       fbUser.sendEmailVerification().then(function() {
@@ -123,12 +124,15 @@
 
         // Fresh email/password signup with an unverified email: send the Firebase
         // verification link now, so the user can complete verification. (Google
-        // sign-ins are already verified and skip this.)
-        var pre = (isNew && isPassword && !fbUser.emailVerified)
+        // sign-ins are already verified and skip this.) Returning unverified users
+        // are NOT auto-re-sent — they use the Resend button — so the notice copy
+        // must not claim an email just went out; thread whether one actually did.
+        var willSend = (isNew && isPassword && !fbUser.emailVerified);
+        var pre = willSend
           ? fbUser.sendEmailVerification().catch(function() {})
           : Promise.resolve();
 
-        pre.then(function() { return postSession(fbUser); });
+        pre.then(function() { return postSession(fbUser, willSend); });
 
         return false; // prevent FirebaseUI from handling the redirect
       },
