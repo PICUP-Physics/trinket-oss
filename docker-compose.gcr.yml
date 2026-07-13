@@ -10,7 +10,13 @@ services:
     command: firebase emulators:start --only auth,firestore,storage --project demo-trinket
     ports:
       - "4000:4000"   # Emulator UI
-      - "8088:8080"   # Firestore (host 8088 avoids Canvas testbed's host 8080; container port + firebase:8080 unchanged)
+      # Firestore is published 1:1 — the Emulator UI's Firestore tab connects
+      # from the BROWSER to 127.0.0.1:8080 (per firebase.json) and to the
+      # request-monitor websocket on 9150, so both must be reachable on the
+      # host. (The old 8088 remap dodged the local Canvas testbed, which now
+      # lives at canvas.spvi.net instead — the UI tab was blank under it.)
+      - "8080:8080"   # Firestore
+      - "9150:9150"   # Emulator UI firestore-requests websocket
       - "9099:9099"   # Auth
       - "9199:9199"   # Storage
     healthcheck:
