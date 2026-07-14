@@ -11,7 +11,13 @@
       // Resolve the embed "Powered by" badge from config.app.logo (exposed via
       // embed/base.html), falling back to the bundled asset so the badge still
       // renders on any instance that leaves logo unset.
-      return this.prefix(this.get('logo') || '/img/trinket-logo.png');
+      var logo = this.get('logo') || '/img/trinket-logo.png';
+      // Absolute and protocol-relative URLs pass through untouched —
+      // prefix() would mangle them into a local path.
+      if (/^(https?:)?\/\//.test(logo)) {
+        return logo;
+      }
+      return this.prefix(logo);
     },
     prefix : function(path, type) {
       if (path.charAt(0) !== '/') {
