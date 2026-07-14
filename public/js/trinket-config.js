@@ -7,6 +7,12 @@
       var plans = this.get('plans');
       return _.find(plans, plan)[plan];
     },
+    logo : function() {
+      // Resolve the embed "Powered by" badge from config.app.logo (exposed via
+      // embed/base.html), falling back to the bundled asset so the badge still
+      // renders on any instance that leaves logo unset.
+      return this.prefix(this.get('logo') || '/img/trinket-logo.png');
+    },
     prefix : function(path, type) {
       if (path.charAt(0) !== '/') {
         path = '/' + path;
