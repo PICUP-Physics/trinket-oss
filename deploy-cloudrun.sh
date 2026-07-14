@@ -523,6 +523,33 @@ if [[ -z "${_LIVE_SERVICE_URL}" ]]; then
     --quiet
 fi
 
+# Promote traffic to the just-built revision. A plain `gcloud run deploy` only
+# shifts traffic automatically while the service's traffic spec is "latest";
+# the first manual pin (e.g. promoting a candidate by revision name) sticks
+# forever, after which every deploy builds a revision that never serves.
+# --to-latest both routes this revision AND resets the spec so future deploys
+# route automatically again. The tag (if one exists) follows the serving
+# revision so it doesn't hold the old one.
+echo "--- Promoting traffic to the new revision ---"
+_LATEST_REV=$(gcloud run services describe "${SERVICE_NAME}" \
+  --region="${GOOGLE_CLOUD_REGION}" \
+  --project="${GOOGLE_CLOUD_PROJECT}" \
+  --format='value(status.latestCreatedRevisionName)')
+_TAG_ARGS=()
+if gcloud run services describe "${SERVICE_NAME}" \
+    --region="${GOOGLE_CLOUD_REGION}" \
+    --project="${GOOGLE_CLOUD_PROJECT}" \
+    --format='value(status.traffic[].tag)' | tr ';' '\n' | grep -qx "${TAG}"; then
+  _TAG_ARGS=(--update-tags "${TAG}=${_LATEST_REV}")
+fi
+gcloud run services update-traffic "${SERVICE_NAME}" \
+  --region="${GOOGLE_CLOUD_REGION}" \
+  --project="${GOOGLE_CLOUD_PROJECT}" \
+  --to-latest \
+  ${_TAG_ARGS[@]+"${_TAG_ARGS[@]}"} \
+  --quiet
+echo "    Serving 100% on ${_LATEST_REV} (traffic spec reset to 'latest')"
+
 fi # end SKIP_DEPLOY
 
 # Set up a weekly Firestore backup schedule (idempotent — skips if one exists).
