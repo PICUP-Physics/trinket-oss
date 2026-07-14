@@ -150,7 +150,7 @@ function initConsoleOutput() {
   jqconsole.Write("\x1b[0m");
   jqconsole.Reset();
 
-  jqconsole.Append('<span class="jqconsole-header" aria-hidden="true" role="presentation">Powered by <img id="powered-by-trinket" src="' + trinketConfig.prefix('/img/trinket-logo.png') + '">\n</span>');
+  jqconsole.Append('<span class="jqconsole-header" aria-hidden="true" role="presentation">Powered by <img id="powered-by-trinket" src="' + trinketConfig.logo() + '">\n</span>');
 }
 
 function showSplitOutput() {
@@ -284,7 +284,7 @@ function resetOutput(consoleOnly) {
     // reset any ANSI escape code graphics
     jqconsole.Write("\x1b[0m");
     jqconsole.Reset();
-    jqconsole.Append('<span class="jqconsole-header" aria-hidden="true" role="presentation">Powered by <img id="powered-by-trinket" src="' + trinketConfig.prefix('/img/trinket-logo.png') + '">\n</span>');
+    jqconsole.Append('<span class="jqconsole-header" aria-hidden="true" role="presentation">Powered by <img id="powered-by-trinket" src="' + trinketConfig.logo() + '">\n</span>');
   }
 
   if (!consoleOnly) {

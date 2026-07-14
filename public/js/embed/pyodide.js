@@ -58,8 +58,8 @@ var pyodideLoading = null;
 var running = false;
 
 function loadingHeader() {
-  var src = (window.trinketConfig && trinketConfig.prefix)
-    ? trinketConfig.prefix('/img/trinket-logo.png')
+  var src = (window.trinketConfig && trinketConfig.logo)
+    ? trinketConfig.logo()
     : '/img/trinket-logo.png';
   return '<span class="jqconsole-header" aria-hidden="true" role="presentation">Powered by '
     + '<img id="powered-by-trinket" src="' + src + '">\n</span>';

@@ -275,7 +275,7 @@ function resetServerTimer() {
 
 function consoleHeader() {
   if (jqconsole) {
-    jqconsole.Append('<span id="powered-by" class="jqconsole-header" aria-hidden="true">Powered by <img id="powered-by-trinket" src="' + trinketConfig.prefix('/img/trinket-logo.png') + '"></span>');
+    jqconsole.Append('<span id="powered-by" class="jqconsole-header" aria-hidden="true">Powered by <img id="powered-by-trinket" src="' + trinketConfig.logo() + '"></span>');
   }
 }
 

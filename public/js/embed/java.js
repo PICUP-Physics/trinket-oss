@@ -105,7 +105,7 @@ function resetOutput() {
     // reset any ANSI escape code graphics
     jqconsole.Write("\x1b[0m");
     jqconsole.Reset();
-    jqconsole.Write('Powered by <img id="powered-by-trinket" src="' + trinketConfig.prefix('/img/trinket-logo.png') + '">\n', 'jqconsole-header', false);
+    jqconsole.Write('Powered by <img id="powered-by-trinket" src="' + trinketConfig.logo() + '">\n', 'jqconsole-header', false);
   }
 }
 
