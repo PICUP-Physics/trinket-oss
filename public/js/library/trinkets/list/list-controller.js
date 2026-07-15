@@ -257,6 +257,9 @@ function($scope, $state, $stateParams, $window, $timeout, $filter, $http, trinke
         $timeout(function() {
           $(document).foundation();
         }, 0, false);
+      })
+      .catch(function() {
+        loading = false;
       });
   };
 

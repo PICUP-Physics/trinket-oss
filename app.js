@@ -15,9 +15,23 @@ if (!Promise.prototype.fail) {
   Promise.prototype.fail = Promise.prototype.catch;
 }
 
+
+// node-config 0.4 persists any runtime config mutation to config/runtime.json
+// and reloads that file WITH TOP PRIORITY on the next boot — so a stale file
+// silently overrides yaml/env config edits (it burned both the test harness
+// and a deploy). We never use the runtime.json paradigm; disable it before
+// the first require('config').
+process.env.NODE_CONFIG_PERSIST_ON_CHANGE = process.env.NODE_CONFIG_PERSIST_ON_CHANGE || 'N';
+process.env.NODE_CONFIG_DISABLE_FILE_WATCH = process.env.NODE_CONFIG_DISABLE_FILE_WATCH || 'Y';
+
+// Resolve the per-deploy overlay folder (TRINKET_DEPLOY) BEFORE anything
+// requires 'config' — it extends NODE_CONFIG_DIR, which node-config reads once.
+require('./config/deploy-dir');
+
 // initialize the global logger
 log = require('./config/log');
 
+const startupCheck   = require('./lib/util/startup-check');
 const Hapi           = require('@hapi/hapi');
 const Boom           = require('@hapi/boom');
 const Inert          = require('@hapi/inert');
@@ -36,18 +50,34 @@ try {
 }
 const mailer         = require('./lib/util/mailer');
 const viewEngine     = require('./lib/util/nunjucks');
-const CatboxMongoose = require('./lib/util/catbox-mongoose');
+const dbBackend    = (config.db && config.db.backend) || 'mongoose';
+const sessionCacheBackend = (config.app.plugins.session.cache && config.app.plugins.session.cache.backend) || dbBackend;
+const CatboxEngine = sessionCacheBackend === 'memory'
+  ? { Engine: require('@hapi/catbox-memory') }
+  : sessionCacheBackend === 'firestore'
+    ? require('./lib/util/catbox-firestore')
+    : require('./lib/util/catbox-mongoose');
 const fs             = require('fs');
 const path           = require('path');
 
-config.viewEngine = viewEngine;
 
 const cache_control = 'private, s-maxage=0, max-age=0, no-cache, no-store, must-revalidate, proxy-revalidate';
 
 // Main async initialization
 const init = async () => {
-  // Validate required configuration
-  const sessionPassword = config.app.plugins.session.cookieOptions.password;
+  // Validate required configuration — allow env var override for Cloud Run
+  const sessionPassword = process.env.SESSION_PASSWORD || config.app.plugins.session.cookieOptions.password;
+  if (process.env.SESSION_PASSWORD) {
+    config.app.plugins.session.cookieOptions.password = process.env.SESSION_PASSWORD;
+  }
+
+  if (process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_SECRET || process.env.GOOGLE_CALLBACK_URL) {
+    if (!config.app.auth) config.app.auth = {};
+    if (!config.app.auth.google) config.app.auth.google = {};
+    if (process.env.GOOGLE_CLIENT_ID) config.app.auth.google.clientID = process.env.GOOGLE_CLIENT_ID;
+    if (process.env.GOOGLE_CLIENT_SECRET) config.app.auth.google.clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    if (process.env.GOOGLE_CALLBACK_URL) config.app.auth.google.callbackURL = process.env.GOOGLE_CALLBACK_URL;
+  }
   if (!sessionPassword || sessionPassword.length < 32) {
     console.error('\n' + '='.repeat(70));
     console.error('ERROR: Session cookie password not configured!');
@@ -67,24 +97,41 @@ const init = async () => {
   // Create server with Hapi 20+ configuration
   const server = Hapi.server({
     host: config.app.hostname || 'localhost',
-    port: config.app.port || 3000,
+    port: process.env.PORT || config.app.port || 3000,
     routes: {
       cors: config.app.cors || false,
       state: {
         failAction: 'log'
       }
     },
-    // Hapi 20+ debug config format
-    debug: config.isDev ? { request: ['error'] } : false,
-    // Configure MongoDB session cache
+    // Disable built-in debug logging; we install our own listener below (includes path)
+    debug: false,
+    // Configure server-side session cache
     cache: [{
       name: 'sessions',
       provider: {
-        constructor: CatboxMongoose.Engine,
+        constructor: CatboxEngine.Engine,
         options: {}
       }
     }]
   });
+
+  // Log request errors with path so we can identify the source
+  if (config.isDev) {
+    server.events.on({ name: 'request', filter: ['error'] }, function(request, event) {
+      // Suppress browser devtools source-map probes — harmless 404s
+      if (/\.map$/.test(request.path)) return;
+      var data = event.error || event.data;
+      var msg  = data ? '\n    ' + (data.stack || (typeof data === 'object' ? JSON.stringify(data) : data)) : '';
+      console.error('Debug:', event.tags.join(', '), request.method.toUpperCase(), request.path + msg);
+    });
+  }
+
+  // The session cookie is SameSite=None;Secure in any HTTPS context — production (config isSecure:true)
+  // or a tunnel where app.url.protocol=https — so it is sent when trinket is embedded cross-site in an
+  // LMS iframe (LTI). Over plain http, SameSite=None is invalid (it requires Secure), so fall back to Lax.
+  const sessionSecure = config.app.plugins.session.cookieOptions.isSecure !== false
+    || !!(config.app.url && config.app.url.protocol === 'https');
 
   // Register plugins
   await server.register([
@@ -96,11 +143,13 @@ const init = async () => {
         storeBlank: false,
         cookieOptions: {
           password: config.app.plugins.session.cookieOptions.password,
-          isSecure: config.app.plugins.session.cookieOptions.isSecure !== false,
-          isSameSite: 'Lax'
+          isSecure: sessionSecure,
+          isSameSite: sessionSecure ? 'None' : 'Lax'
         },
-        // Store sessions server-side in MongoDB
-        maxCookieSize: 0,
+        // Store sessions in the cookie when they fit (most cases), fall
+        // back to the server-side cache for anything that exceeds the
+        // cookie size limit.
+        maxCookieSize: 3500,
         name: config.app.plugins.session.name || 'session',
         cache: {
           cache: 'sessions',
@@ -200,8 +249,19 @@ const init = async () => {
     return h.continue;
   });
 
-  // Add onPreResponse extension for cookie expiration
-  const cookieIsSecure = config.app.plugins.session.cookieOptions.isSecure !== false;
+  // Inject request hostname into every view context so templates render
+  // correctly regardless of which domain served the request.
+  server.ext('onPreResponse', (request, h) => {
+    const response = request.response;
+    if (response && response.variety === 'view' &&
+        response.source && response.source.context) {
+      response.source.context._hostname = request.info.hostname;
+    }
+    return h.continue;
+  });
+
+  // Add onPreResponse extension for cookie expiration (SameSite/Secure are set on the cookie by
+  // Yar's cookieOptions above, driven by sessionSecure).
   server.ext('onPreResponse', (request, h) => {
     // if this is a cookie-setting request and we have a _header method
     if (request.cookie && request.response && typeof request.response._header === "function") {
@@ -223,10 +283,6 @@ const init = async () => {
               // add a custom expires if an expires is not already present
               if (!value[i].match(/;\s*Expires=/i)) {
                 value[i] += "; Expires=" + nextYear.toUTCString();
-              }
-              // Only add Secure flag if isSecure is true in config
-              if (cookieIsSecure) {
-                value[i] += "; SameSite=None; Secure";
               }
             }
           }
@@ -302,6 +358,12 @@ const init = async () => {
 
   // Register routes
   server.route(config.routes);
+
+  // Verify backend connectivity before accepting traffic
+  const checkPassed = await startupCheck.run();
+  if (!checkPassed) {
+    process.exit(1);
+  }
 
   // Start the server
   if (config.app.start) {

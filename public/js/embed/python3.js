@@ -131,7 +131,7 @@ function resetOutput() {
 
 function consoleHeader() {
   if (jqconsole) {
-    jqconsole.Append('<span class="jqconsole-header" aria-hidden="true">' + poweredByText + ' <img id="powered-by-trinket" src="' + trinketConfig.prefix('/img/trinket-logo.png') + '">\n</span>');
+    jqconsole.Append('<span class="jqconsole-header" aria-hidden="true">' + poweredByText + ' <img id="powered-by-trinket" src="' + trinketConfig.logo() + '">\n</span>');
   }
 }
 

@@ -15,7 +15,7 @@
       <li class="side-nav-heading">
         <h4>Pages</h4>
       </li>
-    {% for link in ['Users', 'Featured-Courses'] %}
+    {% for link in ['Users', 'Featured-Courses', 'Lti-Registrations'] %}
       <li>
         <a {% if page == link.toLowerCase() %}class="active"{% endif %} href="/admin/{{ link | lower }}">{{ link | replace('-', ' ') }}</a>
       </li>

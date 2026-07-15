@@ -1,0 +1,45 @@
+# Cloud Run production DEFAULTS — shared across all deploys (committed).
+# Loaded by node-config when NODE_ENV=production and NODE_APP_INSTANCE=cloudrun.
+#
+# Per-deploy values (app.url.knownHosts, aws/gcs buckets, auth.firebase.projectId,
+# lti.instructorAuthority, extra features.trinkets) live in a gitignored
+# config/local-production.yaml in each deploy worktree, which node-config loads
+# AFTER this file. Keep this file deploy-neutral.
+#
+# Secrets: SESSION_PASSWORD from Secret Manager; app.url.hostname, adminEmails and
+# firebase.clientConfig are injected via NODE_CONFIG env by deploy-cloudrun.sh.
+
+app:
+  url:
+    protocol: https
+    hostname: ''   # Overridden at runtime via NODE_CONFIG — see deploy-cloudrun.sh
+    port:
+    # knownHosts is deploy-specific → set in config/local-production.yaml.
+  hostname: 0.0.0.0
+  plugins:
+    session:
+      cookieOptions:
+        password: ''   # Injected via SESSION_PASSWORD env var from Secret Manager
+        domain: ''
+        isSecure: true
+        isSameSite: 'None'
+      cache:
+        backend: firestore
+
+db:
+  backend: firestore   # No MongoDB required
+  redis:
+    enabled: false
+  # db.firestore.projectId not set here; the Firestore SDK reads GOOGLE_CLOUD_PROJECT.
+
+storage:
+  backend: gcs
+
+features:
+  assets: true
+
+# adminEmails and firebase.clientConfig are injected via NODE_CONFIG env var at deploy time.
+auth:
+  adminEmails: []
+  firebase:
+    clientConfig: {}

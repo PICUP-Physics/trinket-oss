@@ -28,6 +28,16 @@ export default defineConfig({
     preprocessorOptions: {
       scss: {
         loadPaths: ['.'],
+        quietDeps: true,
+        silenceDeprecations: [
+          'legacy-js-api',
+          'import',
+          'global-builtin',
+          'color-functions',
+          'slash-div',
+          'if-function',
+          'function-units',
+        ],
       },
     },
   },

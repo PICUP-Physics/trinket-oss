@@ -42,12 +42,11 @@
           {% if not config.features or not config.features.trinkets or config.features.trinkets.python %}
           { lang : 'python',     image : '{{config.aws.buckets.appassets.host}}/python.png',     label : 'Python'                                     },
           {% endif %}
-          {# 'pyodide' is intentionally omitted from the New Trinket menu: new Python
-             trinkets are created as 'python3' (which also runs on Pyodide). The
-             pyodide feature flag stays enabled so existing lang=pyodide trinkets
-             still view/run — this is a menu-only choice, not a runtime change. #}
+          {% if not config.features or not config.features.trinkets or config.features.trinkets.pyodide %}
+          { lang : 'pyodide',    image : '{{config.aws.buckets.appassets.host}}/python.png',     label : 'Pyodide' },
+          {% endif %}
           {% if not config.features or not config.features.trinkets or config.features.trinkets.python3 %}
-          { lang : 'python3',    image : '{{config.aws.buckets.appassets.host}}/python.png',     label : 'Python' },
+          { lang : 'python3',    image : '{{config.aws.buckets.appassets.host}}/python.png',     label : 'Python3' },
           {% endif %}
           {% if not config.features or not config.features.trinkets or config.features.trinkets.pygame %}
           { lang : 'pygame',     image : '{{config.aws.buckets.appassets.host}}/python.png',     label : 'Pygame' },
@@ -89,11 +88,6 @@
   {% for script in config.app.assets.jshead %}
     <script src="{{ script | cachePrefix }}"></script>
   {% endfor %}
-  <script>
-    if (window._ && !_.contains && _.includes) {
-      _.contains = _.includes;
-    }
-  </script>
   {% include "includes/recaptcha.html" %}
   {% block extra_head %}{% endblock %}
 </head>
@@ -167,42 +161,25 @@
                     </a>
                   </li>
                   {% endif %}
+                  {% set newTrinketTypes = enabledNewTrinketTypes(config.features) %}
+                  {% if newTrinketTypes.length == 1 %}
+                  {# Only one trinket type enabled — skip the dropdown, offer a direct create button #}
+                  <li role="menuitem"><a href="/library/trinkets/create?lang={{ newTrinketTypes[0].lang }}">New {{ newTrinketTypes[0].label }} Trinket</a></li>
+                  {% elif newTrinketTypes.length > 1 %}
                   <li class="has-dropdown" role="menuitem" >
                     <a role="button" aria-controls="new_trinket_list">New Trinket</a>
                     <ul id="new_trinket_list" class="dropdown" role="group" role="menu">
-                      {% if not config.features or not config.features.trinkets or config.features.trinkets.python %}
-                      <li><a href="/library/trinkets/create?lang=python"><i class="lang-sprite lang-sprite-python"></i> Python</a></li>
-                      {% endif %}
-                      {# 'pyodide' intentionally omitted here too — see the trinketTypes
-                         array above. New Python trinkets are created as 'python3'. #}
-                      {% if not config.features or not config.features.trinkets or config.features.trinkets.python3 %}
-                      <li><a href="/library/trinkets/create?lang=python3"><i class="lang-sprite lang-sprite-python"></i> Python</a></li>
-                      {% endif %}
-                      {% if not config.features or not config.features.trinkets or config.features.trinkets.pygame %}
-                      <li><a href="/library/trinkets/create?lang=pygame"><i class="lang-sprite lang-sprite-pygame"></i> Pygame</a></li>
-                      {% endif %}
-                      {% if not config.features or not config.features.trinkets or config.features.trinkets.R %}
-                      <li><a href="/library/trinkets/create?lang=R"><i class="lang-sprite lang-sprite-R"></i> R</a></li>
-                      {% endif %}
-                      {% if not config.features or not config.features.trinkets or config.features.trinkets.blocks %}
-                      <li><a href="/library/trinkets/create?lang=blocks"><i class="lang-sprite lang-sprite-blocks"></i> Blocks</a></li>
-                      {% endif %}
-                      {% if not config.features or not config.features.trinkets or config.features.trinkets.html %}
-                      <li><a href="/library/trinkets/create?lang=html"><i class="lang-sprite lang-sprite-html"></i> HTML</a></li>
-                      {% endif %}
-                      {% if not config.features or not config.features.trinkets or config.features.trinkets.glowscript %}
-                      <li><a href="/library/trinkets/create?lang=glowscript"><i class="lang-sprite lang-sprite-glowscript"></i> Web VPython</a></li>
-                      {% endif %}
-                      {% if not config.features or not config.features.trinkets or config.features.trinkets.java %}
-                      <li><a href="/library/trinkets/create?lang=java"><i class="lang-sprite lang-sprite-java"></i> Java</a></li>
-                      {% endif %}
-                      {% if not config.features or not config.features.trinkets or config.features.trinkets.music %}
-                      <li><a href="/library/trinkets/create?lang=music"><i class="lang-sprite lang-sprite-music"></i> Music</a></li>
-                      {% endif %}
+                      {% for t in newTrinketTypes %}
+                      <li><a href="/library/trinkets/create?lang={{ t.lang }}"><i class="lang-sprite {{ t.icon }}"></i> {{ t.label }}</a></li>
+                      {% endfor %}
                     </ul>
                   </li>
+                  {% endif %}
                   <li class="divider" role="presentation"></li>
                   <li><a href="/account"><i class="fa fa-gear"></i> My Settings</a></li>
+                  {% if user.isInstructor or user.hasRole("admin") %}
+                  <li><a href="/lti/connect"><i class="fa fa-plug"></i> Connect LMS</a></li>
+                  {% endif %}
                   {% if user.hasRole("admin") or user.loggedInAs() %}
                   <li><a href="/admin"><i class="fa fa-lock"></i> Admin</a></li>
                   {% endif %}
@@ -248,7 +225,7 @@
       <div class="row">
         <div class="small-12 columns">
           <p style="margin: 0;">
-            <a href="https://github.com/trinketapp/trinket-oss" style="color: #333;"><i class="fa fa-github"></i> Open Source on GitHub</a>
+            <a href="https://github.com/trinketapp/trinket-oss" style="color: #333;"><i class="fa fa-github"></i> Based on Trinket Open Source on GitHub</a>
             &nbsp;&middot;&nbsp;
             CC0 1.0
           </p>

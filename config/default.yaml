@@ -1,3 +1,6 @@
+storage:
+  backend: s3   # s3 (aws-sdk) or gcs (@google-cloud/storage)
+
 features:
   courses: true   # Enable/disable courses feature entirely
   assets: false   # Enable/disable asset uploads (requires S3 or compatible storage)
@@ -5,6 +8,7 @@ features:
   variableExplorer: false  # Show the Variables tab (namespace inspector) in Pyodide/Python3 trinkets
   stepDebugger: false  # "Step through" record & replay debugger in the Variables tab (requires variableExplorer)
   requireAuthToFork: false  # Require login to fork/share a trinket; false = allow anonymous forks (trinket.io default)
+  courseImport: true   # Show an "Import a Course" button on the home page. Instructor-only via canCreateCourse; deploys without an instructor concept render it hidden regardless of the flag.
   trinkets:
     # Client-side languages - work out of the box
     python: false      # Skulpt-based Python 2/3 (disabled; superseded by pyodide, which is shown as "Python")
@@ -23,6 +27,39 @@ features:
     pygame: false      # Requires Pygame backend
     R: false           # Requires R backend
   pyodideVersion: '0.28.1'  # Pyodide CDN version — single source of truth for bootstrap script and indexURL
+
+auth:
+  # Auth provider — a deployment uses exactly ONE ('local' or 'firebase').
+  # 'local' = stock email/password (login form, bcrypt, forgot-pass flow).
+  # 'firebase' = FirebaseUI + Google OAuth; set in the deploy overlay along
+  # with the firebase client config below. See config/auth_routes.js.
+  provider: local
+  # Emails that bypass the instructor/roster check and have full admin access
+  adminEmails: []
+  # Approval-tier profile (instructor-run deployments). When true, forking/creating
+  # trinkets requires an approved account (user.approved) or site admin; when false
+  # (default) any authenticated user passes — stock behavior.
+  requireApprovedAccount: false
+  # When true, restrict course create/copy/import to site admins and approved
+  # instructors (user.isInstructor). Default false: any authenticated user may
+  # create courses — stock behavior.
+  restrictCourseCreation: false
+  firebase:
+    projectId: ''   # Your GCP/Firebase project ID — override in local.yaml
+    clientConfig:   # Firebase web SDK config from Project Settings > Your apps
+      apiKey: ''
+      authDomain: ''
+      projectId: ''
+      storageBucket: ''
+      messagingSenderId: ''
+      appId: ''
+
+lti:
+  # Display name this deployment registers under in the LMS (client_name -> the
+  # Developer Keys / Apps entry name). Set per deploy in the production overlay so
+  # multiple Trinket servers in one LMS are distinguishable (e.g. 'UIndy Trinket',
+  # 'M&I Trinket'). Defaults to 'Trinket'.
+  toolName: 'Trinket'
 
 app:
   siteName: 'Trinket'
@@ -393,6 +430,11 @@ workers:
     outputDir: '/tmp/' # should be readable by nginx
     templateUrl: 'http://127.0.0.1/tmp/' # should be an nginx alias pointing to outputDir
 db:
+  # Stock deployments use MongoDB via Mongoose. Firestore deployments override
+  # this in their overlay (production-cloudrun.yaml already sets it).
+  backend: mongoose
+  firestore:
+    projectId: ''   # Override in local.yaml or via GOOGLE_CLOUD_PROJECT env var
   mongo:
     host: localhost
     port: 27017
@@ -419,6 +461,13 @@ db:
     sandbox:
       host: localhost
       port: 6379
+gcs:
+  buckets:
+    snapshots:
+      # deploy-specific → set in config/local-production.yaml (placeholder default)
+      name: 'your-snapshots-bucket'
+      host: 'https://your-snapshots-bucket.example.com'
+
 aws:
   key: ''
   keyId: ''

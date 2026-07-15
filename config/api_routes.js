@@ -8,11 +8,28 @@ var recaptchaValidation = (config.app.recaptcha && config.app.recaptcha.secretke
   : Joi.string().allow('').optional();
 
 module.exports = [
+  // Firebase Auth session endpoint — exchanges an ID token for a server session
   {
-    // create a new course
+    route  : 'POST /api/auth/session auth.session',
+    config : {
+      cors : true,
+      validate : {
+        payload : {
+          idToken : Joi.string().required()
+        }
+      }
+    }
+  },
+  {
+    route  : 'POST /api/auth/logout auth.logout',
+    config : { cors : true }
+  },
+  {
+    // create a new course — instructors, admins, and elevated course staff
     route  : 'POST /api/courses course.createCourse',
     config : {
       auth: 'session',
+      pre : ['canCreateCourse(user)'],
       validate : {
         payload : {
           name           : Joi.string().max(140).required(),
@@ -73,7 +90,7 @@ module.exports = [
     route : 'POST /api/courses/{courseId}/copy course.copyCourse',
     config : {
       auth: 'session',
-      pre  : ['course(params.courseId)'],
+      pre  : ['canCreateCourse(user)', 'course(params.courseId)'],
       validate : {
         payload : {
           name : Joi.string().required()
@@ -457,7 +474,12 @@ module.exports = [
       pre  : ['course(params.courseId)'],
       validate : {
         payload : {
-          emailList : Joi.array().required()
+          students : Joi.array().items(
+            Joi.object({
+              email : Joi.string().required(),
+              name  : Joi.string().allow('').optional()
+            })
+          ).required()
         }
       }
     }
@@ -550,6 +572,13 @@ module.exports = [
   },
   {
     route : 'GET /api/courses/{courseId}/lessons/{lessonId}/materials/{materialId}/submissions course.getMaterialSubmissionsForAllUsers',
+    config : {
+      auth: 'session',
+      pre : ['course(params.courseId)']
+    }
+  },
+  {
+    route : 'GET /api/courses/{courseId}/materials/{materialId}/feedback.csv course.exportMaterialFeedbackCsv',
     config : {
       auth: 'session',
       pre : ['course(params.courseId)']
@@ -897,6 +926,7 @@ module.exports = [
     route : 'POST /api/trinkets trinket.create',
     config : {
       cors : true,
+      pre  : ['isApproved(user)'],
       payload : {
         maxBytes : 10 * (1024 * 1024) // 10MB
       },
@@ -1098,33 +1128,6 @@ module.exports = [
     }
   },
   {
-    route : 'POST /api/users/login users.login',
-    cookie : true,
-    config  : {
-      pre : [{ method : helpers.lowerUserFields }, { method : function(req, reply) { return reply(true) }, assign : 'encryptRoles' }],
-      validate : {
-        payload : {
-          email    : Joi.string().required(),
-          password : Joi.string()
-        }
-      }
-    }
-  },
-  {
-    route : 'POST /api/users users.create',
-    cookie: true,
-    config : {
-      pre : [{ method: helpers.lowerUserFields }],
-      validate  : {
-        payload : {
-          email    : Joi.string().email().required(),
-          password : Joi.string().min(3).regex(/^[\w`~!@#$%^&*+=:;'"<>,.?{}\-\/\(\)\[\]\|\\\s]*$/).required(),
-          interest : Joi.string().allow('').optional()
-        }
-      }
-    }
-  },
-  {
     route : 'DELETE /api/users users.remove',
     config : {
       auth: 'session',
@@ -1241,8 +1244,7 @@ module.exports = [
       auth: 'session',
       payload : {
         maxBytes  : 1048576 * 5, // 5MB
-        output : 'file',
-        multipart : true // Hapi v19+ rejects multipart/form-data with 415 unless opted in
+        output : 'file'
       },
       validate : {
         payload : {
@@ -1258,8 +1260,7 @@ module.exports = [
       pre : ['file(params.fileId)'],
       payload : {
         maxBytes : 1048576 * 5, // 5MB
-        output : 'file',
-        multipart : true // Hapi v19+ rejects multipart/form-data with 415 unless opted in
+        output : 'file'
       },
       validate : {
         payload : {
@@ -1312,80 +1313,6 @@ module.exports = [
   },
   {
     route : 'POST /api/ohnoes admin.ohnoes'
-  },
-  {
-    route : 'POST /api/users/password users.changePassword',
-    config : {
-      auth: 'session',
-      validate : {
-        payload : {
-          currentPassword : Joi.string().required(),
-          newPassword : Joi.string().required(),
-          confirmPassword : Joi.string().required()
-        }
-      }
-    }
-  },
-  {
-    route : 'POST /api/users/email users.sendEmailChange', // checks for dups, sends confirmation
-    config : {
-      auth: 'session',
-      pre : [{ method : helpers.lowerUserFields }],
-      validate : {
-        payload : {
-          email : Joi.string().email().required()
-        }
-      }
-    }
-  },
-  {
-    route : 'GET /change-email users.changeEmail', // actually change user email
-    success : {
-      redirect: 'account/email'
-    },
-    fail : {
-      redirect: 'account/email'
-    },
-    config : {
-      validate : {
-        query : {
-          key : Joi.string().required()
-        }
-      }
-    }
-  },
-  {
-    route : 'GET /api/users/resendEmailChange users.resendEmailChange',
-    config : {
-      auth: 'session'
-    }
-  },
-  {
-    route : 'POST /api/users/verify-email users.sendEmailVerification',
-    config : {
-      auth: 'session',
-      validate : {
-        payload : {
-          'g-recaptcha-response' : recaptchaValidation
-        }
-      }
-    }
-  },
-  {
-    route : 'GET /verify-email users.verifyEmail', // actually verify user email
-    success : {
-      redirect: 'account/email'
-    },
-    fail : {
-      redirect: 'account/email'
-    },
-    config : {
-      validate : {
-        query : {
-          key : Joi.string().required()
-        }
-      }
-    }
   },
   {
     route : 'POST /api/admin/user/{userId} admin.updateUser',
@@ -1535,9 +1462,10 @@ module.exports = [
     route : 'POST /api/imports/trinkets imports.importTrinkets',
     config : {
       auth: 'session',
+      pre : ['canCreateCourse(user)'],
       payload : {
-        maxBytes  : 50 * 1024 * 1024,
-        multipart : { output: 'file' }
+        maxBytes   : 50 * (1024 * 1024), // 50MB
+        multipart  : { output: 'file' }
       },
       validate : {
         payload : {
@@ -1551,9 +1479,10 @@ module.exports = [
     route : 'POST /api/imports/course imports.importCourse',
     config : {
       auth: 'session',
+      pre : ['canCreateCourse(user)'],
       payload : {
-        maxBytes  : 50 * 1024 * 1024,
-        multipart : { output: 'file' }
+        maxBytes   : 50 * (1024 * 1024), // 50MB
+        multipart  : { output: 'file' }
       },
       validate : {
         payload : {

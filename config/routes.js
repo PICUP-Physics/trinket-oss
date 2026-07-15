@@ -19,21 +19,6 @@ routes = [
     enable : true
   },
   {
-    route : 'GET /signup pages.signup',
-    html  : 'signup.html'
-  },
-  {
-    route : 'GET /login pages.login',
-    html  : 'login.html',
-    config : {
-      validate : {
-        query : {
-          next : Joi.string().optional()
-        }
-      }
-    }
-  },
-  {
     route  : 'GET /welcome pages.welcome',
     config : { auth: 'session' }
   },
@@ -41,60 +26,6 @@ routes = [
     route  : 'GET /home pages.home',
     html   : 'home.html',
     config : { auth: 'session' }
-  },
-  {
-    route   : 'POST /login users.login',
-    cookie  : true,
-    success : {
-      redirect : '/home'
-    },
-    fail    : {
-      redirect : '/login'
-    },
-    config  : {
-      pre : [{ method : helpers.lowerUserFields }],
-      validate : {
-        payload : {
-          email    : Joi.string().required(),
-          password : Joi.string()
-        }
-      }
-    }
-  },
-  {
-    route    : 'GET /logout users.logout',
-    cookie  : true,
-    redirect : '/'
-  },
-  {
-    route : 'POST /users users.create',
-    cookie  : true,
-    success : {
-      redirect : '/welcome'
-    },
-    fail : {
-      redirect : '/{formName}'
-    },
-    config : {
-      pre : [{ method: helpers.lowerUserFields }],
-      validate  : {
-        payload : {
-          formName : Joi.string().required(),
-          fullname : Joi.string().max(50).optional(),
-          username : Joi.string().min(3).max(20).regex(/^[a-z][a-z0-9\-\_]*$/i).optional().invalid(...reservedUsernames),
-          email    : Joi.string().email().required(),
-          password : Joi.string().min(3).regex(/^[\w`~!@#$%^&*+=:;'"<>,.?{}\-\/\(\)\[\]\|\\\s]*$/).required(),
-          interest : Joi.string().allow('').optional(),
-          next     : Joi.string().allow('').optional(),
-          'g-recaptcha-response' : recaptchaValidation
-        },
-        language : {
-          username : {
-            "regular expression" : "Usernames must begin with a letter and must only contain alphanumeric characters and hyphens (-)."
-          }
-        }
-      }
-    }
   },
   {
     route : 'GET /account-deleted users.deleted'
@@ -122,7 +53,7 @@ routes = [
     html   : 'courses/create.html',
     config : {
       auth: 'session',
-      pre : [helpers.coursesEnabled]
+      pre : [helpers.coursesEnabled, 'canCreateCourse(user)']
     }
   },
   {
@@ -135,7 +66,7 @@ routes = [
     },
     config : {
       auth: 'session',
-      pre : [helpers.coursesEnabled],
+      pre : [helpers.coursesEnabled, 'canCreateCourse(user)'],
       validate: {
         payload : {
           name: Joi.string().min(1).max(140).required(),
@@ -156,7 +87,7 @@ routes = [
     },
     config : {
       auth: 'session',
-      pre:  [helpers.coursesEnabled, 'user(params.userSlug)', {method:helpers.courseBySlug, assign:'course'}]
+      pre:  [helpers.coursesEnabled, 'canCreateCourse(user)', 'user(params.userSlug)', {method:helpers.courseBySlug, assign:'course'}]
     }
   },
   {
@@ -239,6 +170,13 @@ routes = [
     }
   },
   {
+    route : 'POST /admin/lti-registrations/activate admin.activateLtiRegistration',
+    config : {
+      auth : 'session',
+      pre  : ['isAdmin(user)']
+    }
+  },
+  {
     route : 'GET /account users.account',
     html  : 'users/account.html',
     config : {
@@ -250,87 +188,6 @@ routes = [
     html  : 'users/account.html',
     config : {
       auth: 'session'
-    }
-  },
-  {
-    route : 'GET /forgot-pass pages.forgotPasswordForm',
-    html  : 'users/forgotpass.html'
-  },
-  {
-    route : 'POST /send-pass-reset users.sendPassReset',
-    html  : 'users/sendpassreset.html',
-    fail  : {
-      redirect : '/forgot-pass'
-    },
-    config : {
-      pre : [{ method : helpers.lowerUserFields }],
-      validate : {
-        payload : {
-          email : Joi.string().email().required(),
-          'g-recaptcha-response' : recaptchaValidation
-        }
-      }
-    }
-  },
-  {
-    route : 'GET /reset-pass users.resetPasswordForm',
-    html  : 'users/resetpass.html',
-    fail  : {
-      redirect : '/forgot-pass'
-    },
-    config : {
-      validate : {
-        query : {
-          key : Joi.string().required()
-        }
-      }
-    }
-  },
-  {
-    route : 'POST /save-pass users.savePassword',
-    html  : 'users/savepass.html',
-    fail  : {
-      redirect : '/forgot-pass'
-    },
-    config : {
-      validate : {
-        payload : {
-          key             : Joi.string().required(),
-          password        : Joi.string().required(),
-          password_verify : Joi.string().required()
-        }
-      }
-    }
-  },
-  {
-    route : 'GET /activate-account users.activateAccountForm',
-    html  : 'users/activateaccount.html',
-    fail  : {
-      redirect : '/{redirectTo}'
-    },
-    config : {
-      validate : {
-        query : {
-          key : Joi.string().allow('').optional() // optional to allow for meaningful redirects
-        }
-      }
-    }
-  },
-  {
-    route : 'POST /activate-account users.activateAccount',
-    success : {
-      redirect : '/welcome'
-    },
-    fail  : {
-      redirect : '/{redirectTo}'
-    },
-    config : {
-      validate : {
-        payload : {
-          key      : Joi.string().required(),
-          password : Joi.string().required()
-        }
-      }
     }
   },
   {
@@ -560,20 +417,75 @@ routes = [
     route : 'GET /docs/colors pages.index',
     html  : 'docs/colors.html'
   },
+  // ── LTI 1.3 — Connect your LMS (instructor-gated) ───────────────────────────
+  // Approved instructors mint a Dynamic Registration link to hand to their LMS admin.
   {
-    route : 'GET /auth/google auth.google',
+    route : 'GET /lti/connect connectLms.page',
+    html  : 'lti/connect-lms.html',
+    config : { auth : 'session', pre : [ 'canInitiateLtiRegistration(user)' ] }
+  },
+  {
+    route : 'POST /lti/connect/token connectLms.createToken',
+    config : { auth : 'session', pre : [ 'canInitiateLtiRegistration(user)' ] }
+  },
+  // ── LTI 1.3 (Tool) ──────────────────────────────────────────────────────────
+  // Public (no session); the launch establishes the session. See LTI-SPEC.md.
+  {
+    route : 'GET /lti/jwks lti.jwks',
     config : {
       auth : false
     }
   },
   {
-    route : 'GET /auth/google/callback auth.googleCallback',
-    cookie  : true,
-    success: {
-      redirect:  '{redirectTo}'
+    route : 'GET /lti/login lti.loginInit',
+    config : {
+      auth : false
+    }
+  },
+  {
+    route : 'POST /lti/login lti.loginInit',
+    config : {
+      auth : false
+    }
+  },
+  {
+    route : 'POST /lti/launch lti.launch',
+    config : {
+      auth : false
+    }
+  },
+  {
+    route : 'GET /lti/deep-link lti.deepLinkPicker',
+    html  : 'lti/deep-link-picker.html',
+    config: { auth: 'session' }
+  },
+  {
+    route : 'POST /lti/deep-link/select lti.deepLinkSelect',
+    html  : 'lti/deep-link-response.html',
+    config: { auth: 'session' }
+  },
+  {
+    // DEV-ONLY: preview the deep-link picker with mock data (no LMS launch). Handler 404s
+    // outside NODE_ENV=development. ?mode=both|content|assignment. For fast local UI iteration.
+    route : 'GET /lti/_preview-picker lti.deepLinkPreview',
+    html  : 'lti/deep-link-picker.html',
+    config: { auth: false }
+  },
+  {
+    route : 'GET /lti/register lti.registerInit',
+    html  : 'lti/register-confirm.html',
+    fail  : {
+      html : 'lti/register-error.html'
     },
-    fail: {
-      redirect: '/signup'
+    config : {
+      auth : false
+    }
+  },
+  {
+    route : 'POST /lti/register lti.registerComplete',
+    html  : 'lti/register-close.html',
+    fail  : {
+      html : 'lti/register-error.html'
     },
     config : {
       auth : false
@@ -641,5 +553,12 @@ config.constants.trinketLangs.forEach(function(lang) {
       }
   });
 });
+
+// Auth provider routes — a deploy uses exactly ONE provider
+// (config.auth.provider: 'local' | 'firebase'); everything provider-specific
+// (login/signup pages, session establishment, password flows, OAuth redirects)
+// lives behind config/auth_routes.js. The rest of the app only sees the
+// session ('request.user').
+routes = routes.concat(require('./auth_routes'));
 
 module.exports = routes;

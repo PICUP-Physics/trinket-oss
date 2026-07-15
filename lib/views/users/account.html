@@ -11,7 +11,9 @@
       </li>
     {% set pages = ['Profile', 'Email', 'Password', 'Trinket-Editor', 'Data', 'Import', 'Delete-Account'] %}
     {% for link in pages %}
+      {% if link != 'Import' or canImport %}
       <li><a {% if page == link.toLowerCase() %}class="active"{% endif %} href="/account/{{ link | lower }}">{{ link | replace('-', ' ') }}</a></li>
+      {% endif %}
     {% endfor %}
     </ul>
   </div>

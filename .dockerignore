@@ -1,1 +1,10 @@
 **/.git
+node_modules
+test/
+config/local.yaml
+config/local.yaml~
+config/local.*.yaml
+config/firebase-service-account.json
+*.log
+.env
+.gcloudignore

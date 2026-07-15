@@ -37,10 +37,21 @@
       $scope.showUser       = {};
       $scope.showInvitation = {};
 
-      var emailList; // array
       $scope.inviteForm = {
-        emailList : ""
+        studentList : ""
       };
+
+      function parseCsvInput(text) {
+        return text.split('\n')
+          .map(function(line) { return line.trim(); })
+          .filter(function(line) { return line.length > 0; })
+          .map(function(line) {
+            var parts = line.split(',').map(function(p) { return p.trim(); });
+            var email = parts[parts.length - 1];
+            var name  = parts.length > 1 ? parts.slice(0, -1).join(' ') : '';
+            return { email: email, name: name };
+          });
+      }
 
       $scope.addingUser         = false;
       $scope.sendingInvitations = false;
@@ -165,6 +176,7 @@
       }
 
       $scope.updateUserRole = function(user, role) {
+        $('#user-role-' + user.userId).foundation('dropdown', 'closeall');
         $scope.course.customPOST({ user : user.userId, role : role }, "roles")
           .then(
             function(result) {
@@ -182,15 +194,15 @@
       $scope.inviteUsersToCourse = function() {
         $scope.sendingInvitations = true;
 
-        emailList = $scope.inviteForm.emailList.split('\n');
-        $scope.course.customPOST({ emailList : emailList }, "invitations")
+        var students = parseCsvInput($scope.inviteForm.studentList);
+        $scope.course.customPOST({ students : students }, "invitations")
           .then(
             function(result) {
               var invitationsSent = 0;
 
               $timeout(function() {
-                $scope.sendingInvitations   = false;
-                $scope.inviteForm.emailList = "";
+                $scope.sendingInvitations    = false;
+                $scope.inviteForm.studentList = "";
               }, 500);
 
               if (result.success) {
@@ -203,13 +215,13 @@
 
                 if (invitationsSent) {
                   $("#invitations-sent-messages").notify(
-                    invitationsSent + " new invitation(s) sent."
+                    invitationsSent + " student(s) added. They can now sign up with their email address."
                     , { className : 'success' }
                   );
                 }
                 else {
                   $("#invitations-sent-messages").notify(
-                    "No new invitations sent."
+                    "No new students added."
                     , { className : 'warning' }
                   );
                 }
@@ -309,6 +321,22 @@
           }
         });
       }
+
+      $scope.uploadCsvFile = function(file) {
+        if (!file) { return; }
+        var reader = new FileReader();
+        reader.onload = function(e) {
+          $scope.$apply(function() {
+            $scope.inviteForm.studentList = e.target.result;
+          });
+        };
+        reader.readAsText(file);
+      };
+
+      $scope.openCsvUpload = function() {
+        var el = document.getElementById('csv-upload-input');
+        if (el) { el.click(); }
+      };
 
       $scope.generateAccessCode = function() {
         $scope.generatingCode = true;

@@ -1,0 +1,61 @@
+<div id="lti-registrations">
+  {% if not data.registrations or data.registrations.length == 0 %}
+    <p>No pending LMS registrations.</p>
+  {% else %}
+  <table class="full-width">
+    <thead>
+      <tr>
+        <th>LMS</th>
+        <th>Issuer</th>
+        <th>Initiated by</th>
+        <th>Approval record</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for r in data.registrations %}
+      <tr data-issuer="{{ r.issuer }}" data-client-id="{{ r.clientId }}">
+        <td>{{ r.productFamily or r.name or '—' }}<br><small>{{ r.deploymentIds | join(', ') }}</small></td>
+        <td><code>{{ r.issuer }}</code></td>
+        <td>{{ r.initiatedByEmail }}</td>
+        <td>
+          {% if r.record %}
+            <strong>{{ r.record.name }}</strong><br>
+            <small>official: {{ r.record.emailOfficial }} · signin: {{ r.record.emailSignin }}</small><br>
+            <small>authorized: {{ r.record.authorized }} · rejected: {{ r.record.rejected }}</small><br>
+            <small>approved {{ r.record.date }} by {{ r.record.processedby }}</small>
+            {% if r.record.verification %}<br><small>verification: {{ r.record.verification }}</small>{% endif %}
+            {% if r.record.comments %}<br><small>notes: {{ r.record.comments }}</small>{% endif %}
+          {% else %}
+            <small>{{ r.initiatedByEmail }} (no approval record available)</small>
+          {% endif %}
+        </td>
+        <td>
+          <button class="button tiny lti-approve">Approve</button>
+          <button class="button tiny alert lti-reject">Reject</button>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+<script>
+(function(){
+  function act(row, action){
+    fetch('/admin/lti-registrations/activate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ issuer: row.dataset.issuer, clientId: row.dataset.clientId, action: action })
+    }).then(function(r){ if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(function(res){ if (!res || !res.ok) throw new Error('rejected'); row.parentNode.removeChild(row); }).catch(function(e){ alert('Could not update registration: ' + e.message); });
+  }
+  document.querySelectorAll('.lti-approve').forEach(function(b){
+    b.addEventListener('click', function(){ act(this.closest('tr'), 'approve'); });
+  });
+  document.querySelectorAll('.lti-reject').forEach(function(b){
+    b.addEventListener('click', function(){
+      if (confirm('Reject and delete this pending registration?')) act(this.closest('tr'), 'reject');
+    });
+  });
+})();
+</script>

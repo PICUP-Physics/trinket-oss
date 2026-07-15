@@ -155,9 +155,17 @@
 
             $scope.users = [];
             $scope.hiddenUsers = [];
+            $scope.lmsGrading = null;
 
             $scope.material.customGETLIST("submissions")
               .then(function(users) {
+                // Pick up LMS gradebook link from any entry (all share the same course-level URL).
+                if (users.length && users[0].lmsGradebookUrl) {
+                  $scope.lmsGrading = {
+                    url:  users[0].lmsGradebookUrl,
+                    name: users[0].lmsName || 'LMS'
+                  };
+                }
                 // split user list into current and hidden lists
                 angular.forEach(users, function(user) {
                   user.id = user.trinketId;

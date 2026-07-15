@@ -1,0 +1,28 @@
+# Rules from .gitignore apply
+#!include:.gitignore
+
+# ...but the per-deploy config overlay (gitignored) MUST reach the build image.
+!config/local-production.yaml
+
+# ...and the per-deploy brand logo (gitignored) MUST be baked into the image.
+!public/img/brand/
+!public/img/brand/**
+
+# Not needed to build the image
+test/
+*.md
+.nvmrc
+.bowerrc
+.agignore
+Vagrantfile
+deploy-cloudrun.sh
+cleanup-cloudrun.sh
+scripts/
+SETUP.md
+docker-compose.yml
+
+# Per-deploy overlay folders ride along to Cloud Build (config/views/public),
+# but never their .env (tooling-only secrets; the app gets env from Cloud Run).
+!deploys/
+!deploys/**
+deploys/*/.env

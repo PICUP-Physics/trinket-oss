@@ -233,6 +233,13 @@ TrinketIO.export('library.trinkets.detail.controller', [
 
   $scope.emailModal = function() {
     $('#emailModalForm').data('trinket-id', $scope.trinket.id);
+    var tokenEl = $('#emailToken');
+    if (tokenEl.length && !tokenEl.val() && $scope.trinket.shortCode) {
+      try {
+        var stored = localStorage.getItem('emailToken:' + $scope.trinket.shortCode);
+        if (stored) tokenEl.val(stored);
+      } catch (e) {}
+    }
     $('#emailModal').foundation('reveal', 'open');
   }
   $scope.linkModal = function() {

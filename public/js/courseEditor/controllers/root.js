@@ -49,7 +49,7 @@
     this.$scope.isOwner          = trinketRoles.hasRole("course-owner", "course", { id : this.$scope.courseId });
     this.$scope.canDeleteCourse  = trinketRoles.hasPermission("delete-course", "course", { id : this.$scope.courseId });
     this.$scope.canUpdateCourse  = trinketRoles.hasPermission("update-course-details", "course", { id : this.$scope.courseId });
-    this.$scope.canUpdateContent = trinketRoles.hasPermission("manage-course-content", "course", { id : this.$scope.courseId });
+    this.$scope.canUpdateContent = this.$scope.canEdit || trinketRoles.hasPermission("manage-course-content", "course", { id : this.$scope.courseId });
     this.$scope.canManageAccess  = trinketRoles.hasPermission("manage-course-access", "course", { id : this.$scope.courseId });
     this.$scope.canCopyThisCourse = this.$scope.canCopyThisCourse || trinketRoles.hasPermission("make-course-copy", "course", { id : this.$scope.courseId });
     this.$scope.canArchiveThisCourse = this.$scope.isOwner;
@@ -63,7 +63,7 @@
       && this.$scope.canManageAssignments;
 
     this.$scope.canAssignAssocRole
-      =  trinketRoles.hasRole("trinket-connect")
+      =  this.$scope.isAdmin
       && this.$scope.canManageAccess;
 
     this.$scope.canViewSubmissions = trinketRoles.hasPermission("view-assignment-submissions", "course", { id : this.$scope.courseId });
@@ -801,6 +801,15 @@
 
       self.$scope.course.remove().then(function() {
         self.$window.location = '/home';
+      }, function(response) {
+        // A failed delete used to show NOTHING — the dialog just sat there and
+        // the course quietly survived (issue #2's 500s).
+        $('#deleteCourseDialog').foundation('reveal', 'close');
+        var message = response && response.data && response.data.message;
+        $('#course-notifications').notify(
+          'We couldn\'t delete the course' + (message ? ': ' + message : '. Please try again.')
+          , { className : 'alert' }
+        );
       });
     },
 

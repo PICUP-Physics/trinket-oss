@@ -80,7 +80,7 @@ function initConsoleOutput() {
   }
 
   jqconsole = $('#console-output').jqconsole();
-  jqconsole.Write('Powered by <img src="' + trinketConfig.prefix('/img/trinket-logo.png') + '">\n', 'jqconsole-header', false);
+  jqconsole.Write('Powered by <img src="' + trinketConfig.logo() + '">\n', 'jqconsole-header', false);
 }
 
 function getSkulptFocusLayer() {
@@ -129,7 +129,7 @@ function resetOutput(consoleOnly) {
     // reset any ANSI escape code graphics
     jqconsole.Write("\x1b[0m");
     jqconsole.Reset();
-    jqconsole.Write('Powered by <img src="' + trinketConfig.prefix('/img/trinket-logo.png') + '">\n', 'jqconsole-header', false);
+    jqconsole.Write('Powered by <img src="' + trinketConfig.logo() + '">\n', 'jqconsole-header', false);
   }
 
   if (!consoleOnly) {

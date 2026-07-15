@@ -1,4 +1,9 @@
 *.DS_Store
+.env
+config/firebase-service-account.json
+
+.claude
+CLAUDE.md
 
 .claude
 CLAUDE.md
@@ -21,6 +26,7 @@ Vagrantfile
 
 config/runtime.json
 config/runtime.json.tmp-*
+config/firebase-service-account.json
 config/development.yaml
 config/development.yml
 config/development.json
@@ -57,3 +63,30 @@ public/_published
 *.swp
 
 .agignore
+
+.claude
+*~
+
+*.log
+
+lti-private-key.pem
+firestore-debug.log
+
+# local, untracked runbooks/notes
+*.local.md
+
+# never commit env backups (contain secrets)
+.env.bak
+*.env.bak
+
+# per-deploy config overlay — lives in each deploy worktree, never committed.
+# (Un-ignored in .gcloudignore so it still reaches the Cloud Build image.)
+config/local-production.yaml
+config/local-production-cloudrun.yaml
+
+# Per-deploy brand assets (logos) — each worktree carries its own; never shared
+public/img/brand/
+coverage
+
+# Per-deploy customization folders (private clones; see config/deploy-dir.js)
+deploys/
