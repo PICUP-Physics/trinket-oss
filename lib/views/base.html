@@ -40,37 +40,37 @@
         vendorHost     : '{{ config.aws.buckets.vendorassets.host }}',
         trinketTypes   : [
           {% if not config.features or not config.features.trinkets or config.features.trinkets.python %}
-          { lang : 'python',     image : '{{config.aws.buckets.appassets.host}}/python.png',     label : 'Python'                                     },
+          { lang : 'python',     image : '{{config.aws.buckets.appassets.host}}/python.png',     label : {{ (config.features.trinketLabels.python or 'Python') | json | safe }} },
           {% endif %}
           {% if not config.features or not config.features.trinkets or config.features.trinkets.pyodide %}
-          { lang : 'pyodide',    image : '{{config.aws.buckets.appassets.host}}/python.png',     label : 'Pyodide' },
+          { lang : 'pyodide',    image : '{{config.aws.buckets.appassets.host}}/python.png',     label : {{ (config.features.trinketLabels.pyodide or 'Pyodide') | json | safe }} },
           {% endif %}
           {% if not config.features or not config.features.trinkets or config.features.trinkets.python3 %}
-          { lang : 'python3',    image : '{{config.aws.buckets.appassets.host}}/python.png',     label : 'Python3' },
+          { lang : 'python3',    image : '{{config.aws.buckets.appassets.host}}/python.png',     label : {{ (config.features.trinketLabels.python3 or 'Python3') | json | safe }} },
           {% endif %}
           {% if not config.features or not config.features.trinkets or config.features.trinkets.pygame %}
-          { lang : 'pygame',     image : '{{config.aws.buckets.appassets.host}}/python.png',     label : 'Pygame' },
+          { lang : 'pygame',     image : '{{config.aws.buckets.appassets.host}}/python.png',     label : {{ (config.features.trinketLabels.pygame or 'Pygame') | json | safe }} },
           {% endif %}
           {% if not config.features or not config.features.trinkets or config.features.trinkets.java %}
-          { lang : 'java',       image : '{{config.aws.buckets.appassets.host}}/java.png',       label : 'Java' },
+          { lang : 'java',       image : '{{config.aws.buckets.appassets.host}}/java.png',       label : {{ (config.features.trinketLabels.java or 'Java') | json | safe }} },
           {% endif %}
           {% if not config.features or not config.features.trinkets or config.features.trinkets.R %}
-          { lang : 'R',          image : '{{config.aws.buckets.appassets.host}}/R.png',          label : 'R' },
+          { lang : 'R',          image : '{{config.aws.buckets.appassets.host}}/R.png',          label : {{ (config.features.trinketLabels.R or 'R') | json | safe }} },
           {% endif %}
           {% if not config.features or not config.features.trinkets or config.features.trinkets.blocks %}
-          { lang : 'blocks',     image : '{{config.aws.buckets.appassets.host}}/blocks.png',     label : 'Blocks'                                     },
+          { lang : 'blocks',     image : '{{config.aws.buckets.appassets.host}}/blocks.png',     label : {{ (config.features.trinketLabels.blocks or 'Blocks') | json | safe }} },
           {% endif %}
           {% if not config.features or not config.features.trinkets or config.features.trinkets.html %}
-          { lang : 'html',       image : '{{config.aws.buckets.appassets.host}}/html.png',       label : 'HTML'                                       },
+          { lang : 'html',       image : '{{config.aws.buckets.appassets.host}}/html.png',       label : {{ (config.features.trinketLabels.html or 'HTML') | json | safe }} },
           {% endif %}
           {% if not config.features or not config.features.trinkets or config.features.trinkets.glowscript %}
-          { lang : 'glowscript', image : '{{config.aws.buckets.appassets.host}}/glowscript.png', label : 'Web VPython'                                },
+          { lang : 'glowscript', image : '{{config.aws.buckets.appassets.host}}/glowscript.png', label : {{ (config.features.trinketLabels.glowscript or 'Web VPython') | json | safe }} },
           {% endif %}
           {% if config.features and config.features.trinkets and config.features.trinkets['glowscript-blocks'] %}
-          { lang : 'glowscript-blocks', image : '{{config.aws.buckets.appassets.host}}/glowscript.png', label : 'Web VPython Blocks'                  },
+          { lang : 'glowscript-blocks', image : '{{config.aws.buckets.appassets.host}}/glowscript.png', label : {{ (config.features.trinketLabels['glowscript-blocks'] or 'Web VPython Blocks') | json | safe }} },
           {% endif %}
           {% if not config.features or not config.features.trinkets or config.features.trinkets.music %}
-          { lang : 'music',      image : '{{config.aws.buckets.appassets.host}}/music.png',      label : 'Music'                                      },
+          { lang : 'music',      image : '{{config.aws.buckets.appassets.host}}/music.png',      label : {{ (config.features.trinketLabels.music or 'Music') | json | safe }} },
           {% endif %}
         ],
         autorun           : ["{{ config.app.autorun      | join('","') | safe }}"],

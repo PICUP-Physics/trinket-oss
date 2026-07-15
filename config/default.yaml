@@ -26,6 +26,22 @@ features:
     java: false        # Requires Java backend
     pygame: false      # Requires Pygame backend
     R: false           # Requires R backend
+  # Display labels for the New Trinket menu. base.html builds the menu from
+  # features.trinkets.* (which entries show) and reads each entry's label here,
+  # so labels are config-driven — never hardcoded. Per-deploy overlays override
+  # individual labels (e.g. pyodide -> 'Python'); keys mirror features.trinkets.
+  trinketLabels:
+    python: 'Python'
+    pyodide: 'Pyodide'
+    python3: 'Python3'
+    pygame: 'Pygame'
+    java: 'Java'
+    R: 'R'
+    blocks: 'Blocks'
+    html: 'HTML'
+    glowscript: 'Web VPython'
+    glowscript-blocks: 'Web VPython Blocks'
+    music: 'Music'
   pyodideVersion: '0.28.1'  # Pyodide CDN version — single source of truth for bootstrap script and indexURL
 
 auth:
