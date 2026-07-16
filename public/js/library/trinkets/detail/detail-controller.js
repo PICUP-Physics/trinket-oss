@@ -388,6 +388,8 @@ TrinketIO.export('library.trinkets.detail.controller', [
 
       $('#unpublishTrinket').prop('disabled', false);
       $('#unpublishTrinket').removeClass('disabled');
+
+      $('#publish-help').removeClass('hide');
     }
     else {
       $('#unpublishTrinket').prop('disabled', true);
@@ -396,6 +398,8 @@ TrinketIO.export('library.trinkets.detail.controller', [
       $('#publishTrinket').prop('disabled', false);
       $('#publishTrinket').removeClass('disabled');
       $('#publishTrinket').html('<i class="fa fa-book"></i> Publish');
+
+      $('#publish-help').addClass('hide');
     }
 
     $('#publishModal').foundation('reveal', 'open');
@@ -483,6 +487,8 @@ TrinketIO.export('library.trinkets.detail.controller', [
           $('#unpublishTrinket').prop('disabled', false);
           $('#unpublishTrinket').removeClass('disabled');
 
+          $('#publish-help').removeClass('hide');
+
           $scope.trinket.published = true;
           libraryState.resetList();
         });
@@ -499,6 +505,8 @@ TrinketIO.export('library.trinkets.detail.controller', [
           $('#publishTrinket').prop('disabled', false);
           $('#publishTrinket').removeClass('disabled');
           $('#publishTrinket').html('<i class="fa fa-book"></i> Publish');
+
+          $('#publish-help').addClass('hide');
 
           $scope.trinket.published = false;
           libraryState.resetList();
