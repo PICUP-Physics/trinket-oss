@@ -807,10 +807,12 @@ function debugShowLine(st) {
   }
   var file = st.file || mainFile;
   try {
-    var files = editor.getAllFiles();
+    // getAllVisibleFiles() (NOT getAllFiles()) so an instructor-hidden file is
+    // treated as "not shown": stepping into it suppresses the highlight instead
+    // of selectFile()-ing its content pane and leaking its source to a student
+    // whose tab is hidden. getAllFiles() only excludes binaries. See issue #46.
+    var files = editor.getAllVisibleFiles();
     if (!files || !files.hasOwnProperty(file)) {
-      // Not open in the editor (e.g. hidden file): step without a highlight
-      // rather than marking a line in the wrong file.
       debugHighlightLine(null);
       return;
     }
