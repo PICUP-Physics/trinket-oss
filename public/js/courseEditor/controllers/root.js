@@ -112,6 +112,12 @@
       $('#archiveCourseModal').foundation('reveal', 'open');
     }
 
+    // Same dialog the trash icon in the course-details modal opens; this lets
+    // the course-actions menu reach it too, next to Archive.
+    this.$scope.openDeleteCourseModal = function() {
+      $('#deleteCourseDialog').foundation('reveal', 'open');
+    }
+
     // for downloading a course
     this.$scope.generatingDownload = {
         html : false
