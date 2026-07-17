@@ -629,6 +629,10 @@ var DEBUG_MAX_VARS = 50;
 var DEBUG_MAX_REPR = 120;
 var DEBUG_MAX_DEPTH = 20;
 var DEBUG_MAX_BYTES = 2 * 1024 * 1024;
+// Phase 3: with breakpoints set the tracer idles (no snapshots) until one is
+// hit — but an infinite loop BEFORE the first breakpoint would otherwise spin
+// forever, so dormant line events are capped too (cheap: a set lookup each).
+var DEBUG_MAX_DORMANT = 200000;
 
 // The user program is compiled with filename '<debug>' and exec'd in a fresh
 // namespace: user frames are exactly the '<debug>' frames (functions defined in
@@ -693,6 +697,16 @@ var RECORD_HELPER = [
   '            return _f.f_lineno, _file_label(_f.f_code.co_filename)',
   '        _f = _f.f_back',
   '    return None, None',
+  // Phase 3: deferred recording. With breakpoints set, stay dormant (no
+  // snapshots, no step cap) until execution first touches a breakpoint line —
+  // long preambles don't burn the cap. Dormant line events are still counted
+  // and capped so an infinite loop BEFORE any breakpoint can't spin forever.
+  '_bp_set = set()',
+  'for _k in _bp:',
+  '    for _l in _bp[_k]:',
+  '        _bp_set.add((_k, _l))',
+  '_armed = [not _bp_set]',
+  '_dormant = [0]',
   'def _tracer(_frame, _event, _arg):',
   '    if not _is_user(_frame.f_code.co_filename):',
   '        return None',
@@ -703,9 +717,22 @@ var RECORD_HELPER = [
   '        return _tracer',
   // The byte cap must bound the WHOLE payload, not just snapshot reprs: count
   // stdout growth since the last event (a single huge print would otherwise
-  // sail past the cap into a multi-MB JSON) plus per-step dict overhead.
-  '    _size[0] += (_buf.tell() - _last_out[0]) + 40',
+  // sail past the cap into a multi-MB JSON). Counted in the dormant phase too —
+  // pre-breakpoint prints still ship in the recording's output.
+  '    _size[0] += _buf.tell() - _last_out[0]',
   '    _last_out[0] = _buf.tell()',
+  '    if not _armed[0]:',
+  "        _lbl = _file_label(_frame.f_code.co_filename) or '<main>'",
+  '        if (_lbl, _frame.f_lineno) in _bp_set:',
+  '            _armed[0] = True',
+  '        else:',
+  '            _dormant[0] += 1',
+  '            if _dormant[0] > _max_dormant or _size[0] > _max_bytes:',
+  '                _truncated[0] = True',
+  '                raise _TrinketStopRecording()',
+  '            return _tracer',
+  // Armed path: per-step dict overhead joins the accounting.
+  '    _size[0] += 40',
   '    if len(_steps) >= _max_steps or _size[0] > _max_bytes:',
   '        _truncated[0] = True',
   '        raise _TrinketStopRecording()',
@@ -734,7 +761,7 @@ var RECORD_HELPER = [
   '    sys.stdout, sys.stderr = _old_out, _old_err',
   "_steps.append({'line': None, 'func': '<end>', 'depth': 0, 'out': _buf.tell(), 'file': None, 'from_line': None, 'from_file': None})",
   '_snaps.append(_snap_ns(_g))',
-  "json.dumps({'error': _err, 'truncated': _truncated[0], 'output': _buf.getvalue(), 'steps': _steps, 'snaps': _snaps})"
+  "json.dumps({'error': _err, 'truncated': _truncated[0], 'armed': _armed[0], 'skipped': _dormant[0], 'output': _buf.getvalue(), 'steps': _steps, 'snaps': _snaps})"
 ].join('\n');
 
 var debugRec = null;       // active recording ({error, truncated, output, steps, snaps}) or null
@@ -780,10 +807,12 @@ function debugShowLine(st) {
   }
   var file = st.file || mainFile;
   try {
-    var files = editor.getAllFiles();
+    // getAllVisibleFiles() (NOT getAllFiles()) so an instructor-hidden file is
+    // treated as "not shown": stepping into it suppresses the highlight instead
+    // of selectFile()-ing its content pane and leaking its source to a student
+    // whose tab is hidden. getAllFiles() only excludes binaries. See issue #46.
+    var files = editor.getAllVisibleFiles();
     if (!files || !files.hasOwnProperty(file)) {
-      // Not open in the editor (e.g. hidden file): step without a highlight
-      // rather than marking a line in the wrong file.
       debugHighlightLine(null);
       return;
     }
@@ -796,6 +825,104 @@ function debugShowLine(st) {
     }
   } catch (e) { /* tab switching is best-effort */ }
   debugHighlightLine(st.line);
+}
+
+// --- Phase 3: gutter breakpoints ---------------------------------------------
+//
+// A breakpoint in the record & replay model pauses nothing — it is a
+// navigation filter over the finished recording (next/prev-breakpoint jumps
+// debugIdx to the nearest matching step), plus a recorder hint: when
+// breakpoints are set, the tracer stays dormant until execution first touches
+// one, so long preambles don't burn the step cap ("deferred recording").
+// Fully dynamic: toggling breakpoints mid-replay updates jump targets
+// instantly.
+
+var debugBreakpoints = {}; // file name -> { line(1-based): true }
+
+function debugToggleBreakpoint(file, line) {
+  var bp = debugBreakpoints[file] || (debugBreakpoints[file] = {});
+  if (bp[line]) delete bp[line]; else bp[line] = true;
+  return !!bp[line];
+}
+
+function debugHasBreakpoints() {
+  for (var f in debugBreakpoints) {
+    for (var l in debugBreakpoints[f]) return true;
+  }
+  return false;
+}
+
+// Breakpoint payload for the recorder: file label -> [lines]. The main file is
+// keyed '<main>' (its frames carry no file label).
+function debugBreakpointPayload() {
+  var out = {};
+  for (var f in debugBreakpoints) {
+    var lines = [];
+    for (var l in debugBreakpoints[f]) lines.push(parseInt(l, 10));
+    if (lines.length) out[f === mainFile ? '<main>' : f] = lines;
+  }
+  return out;
+}
+
+// Wire a gutter-click handler on every file's Ace instance (idempotent — safe
+// to call repeatedly; files added later get wired via codeeditor.tabChanged).
+function ensureGutterBreakpointHandlers() {
+  try {
+    var files = editor && editor._files;
+    if (!files) return;
+    for (var i = 0; i < files.length; i++) {
+      (function(f) {
+        var aceEd = f.editor && f.editor.aceInstance;
+        if (!aceEd || aceEd._trinketBpWired) return; // textarea mode / already wired
+        aceEd._trinketBpWired = true;
+        aceEd.on('guttermousedown', function(e) {
+          // Only the line-number cell (not fold widgets), left button only.
+          var t = e.domEvent.target;
+          if (!t || String(t.className).indexOf('ace_gutter-cell') === -1) return;
+          if (e.domEvent.button !== 0) return;
+          var row = e.getDocumentPosition().row;
+          var on = debugToggleBreakpoint(f.name, row + 1);
+          var session = aceEd.getSession();
+          if (on) session.setBreakpoint(row, 'ace_breakpoint');
+          else session.clearBreakpoint(row);
+          e.stop();
+        });
+      })(files[i]);
+    }
+  } catch (e) { /* breakpoints are best-effort */ }
+}
+
+// The persistent replay note (truncated/error/deferred-start) that transient
+// flashes must restore rather than clobber.
+var debugBaseNote = '';
+var debugNoteTimer = null;
+function flashDebugNote(msg) {
+  $('#debug-note').text(msg);
+  if (debugNoteTimer) clearTimeout(debugNoteTimer);
+  debugNoteTimer = setTimeout(function() {
+    debugNoteTimer = null;
+    $('#debug-note').text(debugBaseNote);
+  }, 2500);
+}
+
+// Jump to the nearest recorded step (dir = +1/-1) whose (file, line) has a
+// breakpoint.
+function debugJumpBreakpoint(dir) {
+  if (!debugRec) return;
+  if (!debugHasBreakpoints()) {
+    flashDebugNote('no breakpoints — click left of a line number to add one');
+    return;
+  }
+  for (var i = debugIdx + dir; i >= 0 && i < debugRec.steps.length; i += dir) {
+    var st = debugRec.steps[i];
+    if (st.line == null) continue;
+    var f = st.file || mainFile;
+    if (debugBreakpoints[f] && debugBreakpoints[f][st.line]) {
+      debugStepTo(i);
+      return;
+    }
+  }
+  flashDebugNote(dir > 0 ? 'no breakpoint ahead' : 'no breakpoint behind');
 }
 
 // Render the variables table for a recorded step (flat, no expansion — the
@@ -904,10 +1031,15 @@ function enterReplay(rec) {
   $('#debug-recording').addClass('hide');
   $('#debug-launch').addClass('hide');
   $('#debug-controls').removeClass('hide');
-  var note = '';
-  if (rec.truncated) note = 'recording stopped after ' + (rec.steps.length - 1) + ' steps';
-  else if (rec.error) note = 'ends with an error';
-  $('#debug-note').text(note);
+  var notes = [];
+  // rec.armed is false only when breakpoints were set but never hit;
+  // rec.skipped counts dormant line events before the first breakpoint fired.
+  if (rec.armed === false) notes.push('no breakpoint was reached — nothing recorded');
+  else if (rec.skipped) notes.push('recording started at the first breakpoint');
+  if (rec.truncated) notes.push('recording stopped after ' + (rec.steps.length - 1) + ' steps');
+  if (rec.error) notes.push('ends with an error');
+  debugBaseNote = notes.join(' · ');
+  $('#debug-note').text(debugBaseNote);
   showVariables();
   renderDebugStep();
 }
@@ -926,6 +1058,8 @@ function exitReplay(quiet) {
   debugShownFile = null;
   debugHighlightLine(null);
   $('#debug-controls').addClass('hide');
+  debugBaseNote = '';
+  if (debugNoteTimer) { clearTimeout(debugNoteTimer); debugNoteTimer = null; }
   $('#debug-note').text('');
   $('#debug-launch').removeClass('hide');
   $('#debug-recording').addClass('hide');
@@ -983,11 +1117,15 @@ function runStepThrough() {
             // Secondary .py files sync to the Pyodide FS home dir; frames from
             // there are user code the tracer should step through (Phase 2).
             _user_prefix: '/home/pyodide/',
+            // Phase 3: with breakpoints set, the tracer stays dormant until
+            // one is hit (deferred recording).
+            _bp: debugBreakpointPayload(),
             _max_steps: DEBUG_MAX_STEPS,
             _max_vars: DEBUG_MAX_VARS,
             _max_repr: DEBUG_MAX_REPR,
             _max_depth: DEBUG_MAX_DEPTH,
-            _max_bytes: DEBUG_MAX_BYTES
+            _max_bytes: DEBUG_MAX_BYTES,
+            _max_dormant: DEBUG_MAX_DORMANT
           });
           return JSON.parse(pyodide.runPython(RECORD_HELPER, { globals: ns }));
         } finally {
@@ -1473,15 +1611,25 @@ window.TrinketAPI = {
           debugStepTo(parseInt(this.value, 10) || 0);
         });
 
+        // Phase 3: gutter breakpoints. Wire existing files now; files opened
+        // later get wired when their tab is first selected.
+        ensureGutterBreakpointHandlers();
+        $('#editor').on('codeeditor.tabChanged', ensureGutterBreakpointHandlers);
+        $('#debug-prev-bp').on('click keydown', debugActivate(function() { debugJumpBreakpoint(-1); }));
+        $('#debug-next-bp').on('click keydown', debugActivate(function() { debugJumpBreakpoint(1); }));
+
         // Arrow-key stepping while replaying (ignored while typing in the
         // editor or any input, so it never hijacks code editing).
+        // Shift+arrow jumps to the previous/next breakpoint (Phase 3).
         $(document).on('keydown.stepDebugger', function(e) {
           if (!debugRec) return;
           if (e.which !== 37 && e.which !== 39) return;
           var t = $(e.target);
           if (t.is('input, textarea') || t.closest('.ace_editor').length) return;
           e.preventDefault();
-          debugStepTo(debugIdx + (e.which === 39 ? 1 : -1));
+          var dir = e.which === 39 ? 1 : -1;
+          if (e.shiftKey) debugJumpBreakpoint(dir);
+          else debugStepTo(debugIdx + dir);
         });
       }
     }
