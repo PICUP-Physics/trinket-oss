@@ -98,6 +98,41 @@
     </form>
     <a class="close-reveal-modal">&#215;</a>
   </div>
+  <div id="publishModal" class="reveal-modal {{modalWidth if modalWidth else 'full'}}" data-reveal {% if not noCssTop %}data-css-top="0"{% endif %} {% if not noOffset %}data-offset="0"{% endif %} role="dialog" aria-label="Publish Trinket Dialog">
+    <div class="row">
+      <div class="small-12 columns">
+        <div class="row">
+          <span class="modal-title" role="heading">Publish Your Code!</span>
+        </div>
+        <div class="row">
+          <label for="publish-slug"><i>Choose a web address (slug) for your published trinket</i></label>
+          <div class="row collapse">
+            <div class="small-10 columns">
+              <input type="text" id="publish-slug" name="publish-slug" autocomplete="off" placeholder="my-trinket" aria-describedby="slug-status-text" />
+            </div>
+            <div class="small-2 columns">
+              <span class="postfix"><i id="slug-icon-status" class="fa fa-circle-o-notch fa-spin" aria-hidden="true"></i></span>
+            </div>
+          </div>
+          <div id="slug-status" class="hide alert-box alert" role="alert">
+            <span id="slug-status-text"></span>
+          </div>
+        </div>
+        <div class="row">
+          <p class="publish-url-label">Your trinket will be published at:</p>
+          <a id="published-url" href="" target="_blank" rel="noopener"></a>
+        </div>
+        <div class="row">
+          <button type="button" id="publishTrinket" class="button success small"><i class="fa fa-book"></i> Publish</button>
+          <button type="button" id="unpublishTrinket" class="button alert small disabled" disabled>Unpublish</button>
+        </div>
+        <div id="publish-help" class="row hide">
+          <p class="publish-help-text"><i class="fa fa-info-circle" aria-hidden="true"></i> Your trinket is published. To close this dialog, click the <strong>&#215;</strong> in the top-right corner or anywhere outside the box.</p>
+        </div>
+      </div>
+    </div>
+    <a class="close-reveal-modal">&#215;</a>
+  </div>
   {% if emailEnabled %}<div id="emailModal" class="reveal-modal {{modalWidth if modalWidth else 'full'}}" data-reveal {% if not noCssTop %}data-css-top="0"{% endif %} {% if not noOffset %}data-offset="0"{% endif %} role="dialog" aria-label="Email Trinket Dialog">
     <div class="row first-row">
      <span class="modal-title" role="heading">Email Your Code!</span>
