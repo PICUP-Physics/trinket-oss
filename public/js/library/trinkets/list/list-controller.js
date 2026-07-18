@@ -32,16 +32,81 @@ function($scope, $state, $stateParams, $window, $timeout, $filter, $http, trinke
   $scope.selectionCount  = function() { return selectionModel.count($scope.selection); };
   $scope.clearSelection  = function() { selectionModel.clear($scope.selection); };
 
+  // Copy the active filter/scope onto an outgoing list request.
+  function applyFilterParams(params) {
+    if ($scope.filters) {
+      if ($scope.filters.scope && $scope.filters.scope !== 'root') {
+        params.scope = $scope.filters.scope;
+      }
+      if ($scope.filters.name) {
+        params.name = $scope.filters.name;
+      }
+      if ($scope.filters.updatedWithin && $scope.filters.updatedWithin !== 'all') {
+        params.updatedWithin = $scope.filters.updatedWithin;
+      }
+    }
+    return params;
+  }
+
   // Re-fetch the list from scratch with the current filter/scope params.
+  // Does NOT clear selection — a post-action refresh must keep failed ids
+  // selected (see applyBulkResult).
   $scope.reloadWithFilters = function() {
     libraryState.resetList();
     $scope.items = undefined;
     allLoaded    = false;
     last         = undefined;
     lastCount    = 0;
-    $scope.clearSelection();
     $scope.moreTrinkets();
   };
+
+  // Select every id matching the current filter/scope — the whole result set,
+  // not just the loaded page (fetched with a high limit). The client holds
+  // these ids and the bulk endpoint re-authorizes each one.
+  $scope.selectAllMatching = function() {
+    var params = applyFilterParams({ limit : 100000 });
+    if ($scope.sortBy)       params.sort = $scope.sortBy;
+    if ($stateParams.user)   params.user = $stateParams.user;
+    return trinketsApi.getList(params).then(function(trinkets) {
+      var ids = [];
+      angular.forEach(trinkets, function(t) { ids.push(t.id); });
+      selectionModel.selectAll($scope.selection, ids);
+      $scope.matchCount = ids.length;
+    });
+  };
+
+  $scope.bulkMove = function(folderId) {
+    var ids = selectionModel.ids($scope.selection);
+    if (!ids.length) { return; }
+    return trinketsApi.bulk('move', ids, folderId).then(function(res) {
+      applyBulkResult(res, 'Moved');
+    });
+  };
+
+  $scope.confirmBulkDelete = function() {
+    $('#bulkDeleteDialog').foundation('reveal', 'open');
+  };
+
+  $scope.bulkDelete = function() {
+    var ids = selectionModel.ids($scope.selection);
+    if (!ids.length) { return; }
+    return trinketsApi.bulk('delete', ids).then(function(res) {
+      $('#bulkDeleteDialog').foundation('reveal', 'close');
+      applyBulkResult(res, 'Deleted');
+    });
+  };
+
+  // Report the ok/failed split; keep ONLY failed ids selected for retry.
+  function applyBulkResult(res, verb) {
+    var failed = (res.failed || []).map(function(f) { return f.id; });
+    selectionModel.ids($scope.selection).forEach(function(id) {
+      if (failed.indexOf(id) === -1) { selectionModel.toggle($scope.selection, id); }
+    });
+    $scope.matchCount  = 0;
+    $scope.bulkMessage = verb + ' ' + (res.ok || []).length +
+      (failed.length ? (', ' + failed.length + " couldn't be " + verb.toLowerCase()) : '');
+    $scope.reloadWithFilters();
+  }
 
   $scope.initSort = function(sortBy) {
     libraryState.resetList();
@@ -242,17 +307,7 @@ function($scope, $state, $stateParams, $window, $timeout, $filter, $http, trinke
     }
 
     // Bulk filters/scope (server applies them in its in-JS filter pass).
-    if ($scope.filters) {
-      if ($scope.filters.scope && $scope.filters.scope !== 'root') {
-        trinketParams.scope = $scope.filters.scope;
-      }
-      if ($scope.filters.name) {
-        trinketParams.name = $scope.filters.name;
-      }
-      if ($scope.filters.updatedWithin && $scope.filters.updatedWithin !== 'all') {
-        trinketParams.updatedWithin = $scope.filters.updatedWithin;
-      }
-    }
+    applyFilterParams(trinketParams);
 
     var prop = ($scope.sortBy.charAt(0) === '-') ? $scope.sortBy.substr(1) : $scope.sortBy;
     var propMap = {

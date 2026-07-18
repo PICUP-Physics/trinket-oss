@@ -32,6 +32,10 @@
   <button class="button small alert" ng-click="confirmBulkDelete()"><i class="fa fa-trash-o"></i>&nbsp;Delete</button>
   <button class="button small secondary" ng-click="clearSelection()">Cancel</button>
 </div>
+<div class="row bulk-select-row" ng-show="items.length">
+  <button class="button tiny secondary bulk-select-all" ng-click="selectAllMatching()">Select all in this folder</button>
+  <span class="bulk-message" ng-if="bulkMessage">{{ bulkMessage }}</span>
+</div>
 <div class="row" ng-show="!items"><h2><i class="fa fa-spinner fa-spin"></i>&nbsp;Loading...</h2></div>
 <div class="row" ng-show="items && !items.length">
   <h2>No trinkets have been added to this folder.</h2>
@@ -86,4 +90,16 @@
   <a id="delete-folder-confirmed" class="button danger small" ng-click="remove()" ng-class="{disabled: notConfirmed}">Yes, delete this folder</a>
   <a id="cancel-delete-folder" class="button caution small close-modal">Nevermind, do not delete this folder</a>
   <a class="close-reveal-modal">&#215;</a>
+</div>
+
+<div id="bulkDeleteDialog" class="reveal-modal small" data-reveal aria-labelledby="bulk-delete-title" aria-hidden="true" role="dialog">
+  <h2 id="bulk-delete-title">Delete {{ selectionCount() }} trinkets?</h2>
+  <p>This removes them from your library.</p>
+  <div class="row">
+    <div class="small-12 columns text-right">
+      <a class="button small secondary close-reveal-modal">Cancel</a>
+      <a class="button small alert" ng-click="bulkDelete()">Delete {{ selectionCount() }}</a>
+    </div>
+  </div>
+  <a class="close-reveal-modal" aria-label="Close">&#215;</a>
 </div>

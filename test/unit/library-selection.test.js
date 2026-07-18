@@ -20,14 +20,38 @@ describe('selection model', () => {
   });
 });
 
+describe('select-all over a matching set', () => {
+  it('selects every matching id, not just a page', () => {
+    const s = sel.create();
+    const matching = ['a', 'b', 'c', 'd', 'e'];   // full filtered set, all pages
+    sel.selectAll(s, matching);
+    expect(sel.count(s)).toBe(5);
+  });
+  it('after a partial failure, only failed ids remain selected', () => {
+    const s = sel.create();
+    sel.selectAll(s, ['a', 'b', 'c']);
+    const failedIds = ['c'];
+    sel.ids(s).forEach(function(id) { if (failedIds.indexOf(id) === -1) sel.toggle(s, id); });
+    expect(sel.ids(s)).toEqual(['c']);
+  });
+});
+
 const fs = require('fs');
 const path = require('path');
 describe('library list markup', () => {
+  const listHtml = () => fs.readFileSync(
+    path.join(__dirname, '../../public/js/library/trinkets/list/list.html'), 'utf8');
+
   it('has a bulk bar gated on selection and Move/Delete actions', () => {
-    const p = path.join(__dirname, '../../public/js/library/trinkets/list/list.html');
-    const html = fs.readFileSync(p, 'utf8');
+    const html = listHtml();
     expect(html).toContain('selectionCount()');
     expect(html).toMatch(/Move|move/);
     expect(html).toMatch(/Delete|delete/);
+  });
+
+  it('has a count-confirm delete dialog and a select-all-matching control', () => {
+    const html = listHtml();
+    expect(html).toContain('bulkDeleteDialog');
+    expect(html).toContain('selectAllMatching');
   });
 });

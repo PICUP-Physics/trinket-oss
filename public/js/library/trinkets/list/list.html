@@ -51,6 +51,8 @@
              ng-change="reloadWithFilters()">
       Show all my trinkets (across folders)
     </label>
+    <button class="button small secondary bulk-select-all" ng-click="selectAllMatching()">Select all matching</button>
+    <span class="bulk-message" ng-if="bulkMessage">{{ bulkMessage }}</span>
   </div>
   <div class="bulk-action-bar" ng-if="selectionCount() > 0">
     <span class="bulk-count">{{ selectionCount() }} selected</span>
@@ -151,6 +153,17 @@
       </div>
     </div>
   </form>
+  </div>
+  <a class="close-reveal-modal" aria-label="Close">&#215;</a>
+</div>
+<div id="bulkDeleteDialog" class="reveal-modal small" data-reveal aria-labelledby="bulk-delete-title" aria-hidden="true" role="dialog">
+  <h2 id="bulk-delete-title">Delete {{ selectionCount() }} trinkets?</h2>
+  <p>This removes them from your library.</p>
+  <div class="row">
+    <div class="small-12 columns text-right">
+      <a class="button small secondary close-reveal-modal">Cancel</a>
+      <a class="button small alert" ng-click="bulkDelete()">Delete {{ selectionCount() }}</a>
+    </div>
   </div>
   <a class="close-reveal-modal" aria-label="Close">&#215;</a>
 </div>
