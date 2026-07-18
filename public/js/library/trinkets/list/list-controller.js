@@ -28,6 +28,15 @@ function($scope, $state, $stateParams, $window, $timeout, $filter, $http, trinke
   $scope.filters   = { name : '', updatedWithin : 'all', updatedAfter : '', updatedBefore : '', scope : 'root' };
   $scope.showFilters = false;   // progressive disclosure — hidden until opened
 
+  // Surface the modification date (instead of last-viewed) when the user is
+  // working by mod date — a date filter is active, or sorting by last-updated.
+  $scope.showModDate = function() {
+    var f = $scope.filters || {};
+    return !!(f.updatedAfter || f.updatedBefore ||
+              (f.updatedWithin && f.updatedWithin !== 'all') ||
+              $scope.sortBy === '-lastUpdated');
+  };
+
   $scope.toggleSelect    = function(id) { selectionModel.toggle($scope.selection, id); };
   $scope.isSelected      = function(id) { return selectionModel.has($scope.selection, id); };
   $scope.selectionCount  = function() { return selectionModel.count($scope.selection); };

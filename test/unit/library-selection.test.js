@@ -67,4 +67,10 @@ describe('library list markup', () => {
     expect(html).toContain('filters.updatedBefore');
     expect(html).toMatch(/type="date"/);
   });
+
+  it('surfaces the mod date when working by mod date', () => {
+    const html = listHtml();
+    expect(html).toContain('showModDate()');
+    expect(html).toContain('Last updated');
+  });
 });

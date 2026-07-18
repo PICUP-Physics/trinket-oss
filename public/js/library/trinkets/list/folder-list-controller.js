@@ -28,6 +28,11 @@ function($scope, $document, $location, $state, $stateParams, $window, $timeout, 
   var selectionModel = TrinketIO.import('library.selection');
   $scope.selection = selectionModel.create();
 
+  // Folder view has no date filter; show mod date when sorting by last-updated.
+  $scope.showModDate = function() {
+    return $scope.sortBy === '-lastUpdated';
+  };
+
   $scope.toggleSelect   = function(id) { selectionModel.toggle($scope.selection, id); };
   $scope.isSelected     = function(id) { return selectionModel.has($scope.selection, id); };
   $scope.selectionCount = function() { return selectionModel.count($scope.selection); };

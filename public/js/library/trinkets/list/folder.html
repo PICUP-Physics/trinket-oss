@@ -53,10 +53,10 @@
         <h3 ng-class="{titled: item.name}" class="title trinket-list-with-lang {{viewType}}-view lang-{{item.lang}} trinketLabel">{{item.name || 'Untitled'}}</h3>
       </a>
       <div class="trinket-stats">
-        <div ng-if="item.lastView.viewedOn" class="trinket-last-date">
+        <div ng-if="!showModDate() && item.lastView.viewedOn" class="trinket-last-date">
           Last viewed {{ item.lastView.viewedOn | formatDate }}
         </div>
-        <div ng-if="!item.lastView.viewedOn" class="trinket-last-date">
+        <div ng-if="showModDate() || !item.lastView.viewedOn" class="trinket-last-date">
           Last updated {{ item.lastUpdated | formatDate }}
         </div>
         <ul class="small-block-grid-5" ng-init="stats=[
