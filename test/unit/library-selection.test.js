@@ -54,4 +54,9 @@ describe('library list markup', () => {
     expect(html).toContain('bulkDeleteDialog');
     expect(html).toContain('selectAllMatching');
   });
+
+  it('offers "New folder" in the Move-to dropdown', () => {
+    const html = listHtml();
+    expect(html).toContain('bulkMoveToNewFolder');
+  });
 });

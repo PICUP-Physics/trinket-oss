@@ -58,6 +58,8 @@
     <span class="bulk-count">{{ selectionCount() }} selected</span>
     <button class="button small" data-dropdown="bulk-move-menu"><i class="fa fa-folder-o"></i>&nbsp;Move to <i class="fa fa-caret-down"></i></button>
     <ul id="bulk-move-menu" class="f-dropdown" data-dropdown-content>
+      <li><a ng-click="bulkMoveToNewFolder()"><i class="fa fa-plus-circle"></i>&nbsp;New folder&hellip;</a></li>
+      <li class="divider"></li>
       <li ng-repeat="folder in folders | orderBy:'name'"><a ng-click="bulkMove(folder.id)"><i class="fa fa-folder"></i>&nbsp;{{ folder.name }}</a></li>
       <li class="divider"></li>
       <li><a ng-click="bulkMove(null)"><i class="fa fa-level-up"></i>&nbsp;Remove from folder</a></li>

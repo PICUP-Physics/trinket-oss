@@ -64,6 +64,21 @@ function($scope, $document, $location, $state, $stateParams, $window, $timeout, 
     });
   };
 
+  // Create a folder on the fly and move the selection straight into it.
+  $scope.bulkMoveToNewFolder = function() {
+    if (!selectionModel.count($scope.selection)) { return; }
+    var name = ($window.prompt('New folder name:') || '').trim();
+    if (!name) { return; }
+    return foldersApi.create(name).then(function(response) {
+      if (!response || !response.success || !response.folder) {
+        $scope.bulkMessage = (response && response.message) || "Couldn't create that folder.";
+        return;
+      }
+      if ($scope.folders) { $scope.folders.push(response.folder); }
+      return $scope.bulkMove(response.folder.id || response.folder._id);
+    });
+  };
+
   $scope.confirmBulkDelete = function() {
     $('#bulkDeleteDialog').foundation('reveal', 'open');
   };
