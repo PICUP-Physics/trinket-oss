@@ -73,4 +73,15 @@ describe('library list markup', () => {
     expect(html).toContain('showModDate()');
     expect(html).toContain('Last updated');
   });
+
+  it('keeps the filter visible and offers a clear when a filter matches nothing', () => {
+    const html = listHtml();
+    // Toolbar stays up while filtering (so a typo'd filter can be corrected).
+    expect(html).toMatch(/bulk-toolbar[^>]*isFiltering\(\)/);
+    // Empty state distinguishes "no match" from "no trinkets", with a clear.
+    expect(html).toContain('No trinkets match your filter');
+    expect(html).toContain('clearFilters()');
+    // The "no trinkets" state no longer fires while filtering.
+    expect(html).toMatch(/You have no trinkets![\s\S]*?!isFiltering\(\)|!isFiltering\(\)[\s\S]*?You have no trinkets!/);
+  });
 });

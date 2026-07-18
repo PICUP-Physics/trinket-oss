@@ -73,6 +73,21 @@ function($scope, $state, $stateParams, $window, $timeout, $filter, $http, trinke
     $scope.moreTrinkets();
   };
 
+  // True when any filter narrows the list. Used to keep the filter controls
+  // visible even when the result is empty (otherwise a typo'd name filter
+  // hides the very input needed to fix it) and to message "no matches" vs
+  // "no trinkets".
+  $scope.isFiltering = function() {
+    var f = $scope.filters || {};
+    return !!(f.name || (f.updatedWithin && f.updatedWithin !== 'all') ||
+              f.updatedAfter || f.updatedBefore || (f.scope && f.scope !== 'root'));
+  };
+
+  $scope.clearFilters = function() {
+    $scope.filters = { name : '', updatedWithin : 'all', updatedAfter : '', updatedBefore : '', scope : 'root' };
+    $scope.reloadWithFilters();
+  };
+
   // Select every id matching the current filter/scope — the whole result set,
   // not just the loaded page (fetched with a high limit). The client holds
   // these ids and the bulk endpoint re-authorizes each one.
