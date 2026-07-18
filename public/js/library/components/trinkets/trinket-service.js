@@ -69,6 +69,16 @@ function TrinketService(Restangular) {
       });
   }
 
+  // Batch delete/move. Sends explicit ids (the set the user saw & confirmed);
+  // the server re-authorizes each id and returns { ok, failed }.
+  this.bulk = function(action, ids, folderId) {
+    return _all.customPOST({ action: action, ids: ids, folderId: folderId === undefined ? null : folderId }, 'bulk')
+      .then(function(res) {
+        var data = Restangular.stripRestangular(res);
+        return (data && data.data) ? data.data : data;   // { ok, failed }
+      });
+  }
+
   this.publish = function(id) {
     return _all.one(id).customPUT({ published : true }, 'published');
   }

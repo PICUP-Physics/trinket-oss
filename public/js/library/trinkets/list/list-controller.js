@@ -22,6 +22,27 @@ function($scope, $state, $stateParams, $window, $timeout, $filter, $http, trinke
   // shared between this controller and trinket.search directive
   $scope.searchInputOpen = false;
 
+  // ---- Bulk selection + filters -------------------------------------------
+  var selectionModel = TrinketIO.import('library.selection');
+  $scope.selection = selectionModel.create();
+  $scope.filters   = { name : '', updatedWithin : 'all', scope : 'root' };
+
+  $scope.toggleSelect    = function(id) { selectionModel.toggle($scope.selection, id); };
+  $scope.isSelected      = function(id) { return selectionModel.has($scope.selection, id); };
+  $scope.selectionCount  = function() { return selectionModel.count($scope.selection); };
+  $scope.clearSelection  = function() { selectionModel.clear($scope.selection); };
+
+  // Re-fetch the list from scratch with the current filter/scope params.
+  $scope.reloadWithFilters = function() {
+    libraryState.resetList();
+    $scope.items = undefined;
+    allLoaded    = false;
+    last         = undefined;
+    lastCount    = 0;
+    $scope.clearSelection();
+    $scope.moreTrinkets();
+  };
+
   $scope.initSort = function(sortBy) {
     libraryState.resetList();
 
@@ -218,6 +239,19 @@ function($scope, $state, $stateParams, $window, $timeout, $filter, $http, trinke
 
     if ($stateParams.user) {
       trinketParams.user = $stateParams.user;
+    }
+
+    // Bulk filters/scope (server applies them in its in-JS filter pass).
+    if ($scope.filters) {
+      if ($scope.filters.scope && $scope.filters.scope !== 'root') {
+        trinketParams.scope = $scope.filters.scope;
+      }
+      if ($scope.filters.name) {
+        trinketParams.name = $scope.filters.name;
+      }
+      if ($scope.filters.updatedWithin && $scope.filters.updatedWithin !== 'all') {
+        trinketParams.updatedWithin = $scope.filters.updatedWithin;
+      }
     }
 
     var prop = ($scope.sortBy.charAt(0) === '-') ? $scope.sortBy.substr(1) : $scope.sortBy;

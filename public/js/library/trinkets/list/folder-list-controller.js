@@ -24,6 +24,15 @@ function($scope, $document, $location, $state, $stateParams, $window, $timeout, 
     $state.go('detail', { shortCode : shortCode });
   }
 
+  // ---- Bulk selection (scope is fixed to this folder) ---------------------
+  var selectionModel = TrinketIO.import('library.selection');
+  $scope.selection = selectionModel.create();
+
+  $scope.toggleSelect   = function(id) { selectionModel.toggle($scope.selection, id); };
+  $scope.isSelected     = function(id) { return selectionModel.has($scope.selection, id); };
+  $scope.selectionCount = function() { return selectionModel.count($scope.selection); };
+  $scope.clearSelection = function() { selectionModel.clear($scope.selection); };
+
   $scope.moreTrinkets = function() {
     var self = this,
         trinketParams = {
