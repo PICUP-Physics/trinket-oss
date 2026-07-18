@@ -21,6 +21,27 @@ describe('GET /api/trinkets filtering', () => {
     expect(names).not.toContain('Wave Demo');
   });
 
+  it('filters by updatedAfter / updatedBefore range (inclusive of the before-day)', async () => {
+    await flow.switchUser('user');
+    const id = await make('Ranged');
+    const day = 86400000;
+    const iso = (ms) => new Date(ms).toISOString().slice(0, 10);
+    const yesterday = iso(Date.now() - day);
+    const tomorrow  = iso(Date.now() + day);
+
+    // within [yesterday, tomorrow] → present
+    await flow.get('/api/trinkets?scope=all&updatedAfter=' + yesterday + '&updatedBefore=' + tomorrow);
+    expect(flow.lastResponse.body.data.map((t) => String(t.id))).toContain(String(id));
+
+    // starts after tomorrow → excluded
+    await flow.get('/api/trinkets?scope=all&updatedAfter=' + tomorrow);
+    expect(flow.lastResponse.body.data.map((t) => String(t.id))).not.toContain(String(id));
+
+    // ends before yesterday → excluded
+    await flow.get('/api/trinkets?scope=all&updatedBefore=' + yesterday);
+    expect(flow.lastResponse.body.data.map((t) => String(t.id))).not.toContain(String(id));
+  });
+
   it('scope=all returns foldered trinkets; scope=root (default) does not', async () => {
     await flow.switchUser('user');
     const id = await make('In A Folder');

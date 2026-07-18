@@ -36,7 +36,10 @@
   </section>
 </div>
 <div class="row bulk-toolbar" ng-show="items.length || folders.length">
-  <div class="bulk-filters">
+  <button class="button small secondary bulk-filter-toggle" ng-click="showFilters = !showFilters">
+    <i class="fa fa-filter"></i>&nbsp;Filter <i class="fa" ng-class="showFilters ? 'fa-caret-up' : 'fa-caret-down'"></i>
+  </button>
+  <div class="bulk-filters" ng-show="showFilters">
     <input type="text" class="bulk-filter-name" ng-model="filters.name"
            ng-model-options="{ debounce: 300 }" ng-change="reloadWithFilters()"
            placeholder="Filter by name">
@@ -46,14 +49,20 @@
       <option value="30d">Last 30 days</option>
       <option value="year">This year</option>
     </select>
+    <label class="bulk-filter-range">
+      Updated after
+      <input type="date" class="bulk-filter-after" ng-model="filters.updatedAfter" ng-change="reloadWithFilters()">
+      before
+      <input type="date" class="bulk-filter-before" ng-model="filters.updatedBefore" ng-change="reloadWithFilters()">
+    </label>
     <label class="bulk-scope-toggle" ng-if="!userParam">
       <input type="checkbox" ng-model="filters.scope" ng-true-value="'all'" ng-false-value="'root'"
              ng-change="reloadWithFilters()">
       Show all my trinkets (across folders)
     </label>
     <button class="button small secondary bulk-select-all" ng-click="selectAllMatching()">Select all matching</button>
-    <span class="bulk-message" ng-if="bulkMessage">{{ bulkMessage }}</span>
   </div>
+  <span class="bulk-message" ng-if="bulkMessage">{{ bulkMessage }}</span>
   <div class="bulk-action-bar" ng-if="selectionCount() > 0">
     <span class="bulk-count">{{ selectionCount() }} selected</span>
     <button class="button small" data-dropdown="bulk-move-menu"><i class="fa fa-folder-o"></i>&nbsp;Move to <i class="fa fa-caret-down"></i></button>

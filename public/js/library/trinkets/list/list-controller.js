@@ -25,7 +25,8 @@ function($scope, $state, $stateParams, $window, $timeout, $filter, $http, trinke
   // ---- Bulk selection + filters -------------------------------------------
   var selectionModel = TrinketIO.import('library.selection');
   $scope.selection = selectionModel.create();
-  $scope.filters   = { name : '', updatedWithin : 'all', scope : 'root' };
+  $scope.filters   = { name : '', updatedWithin : 'all', updatedAfter : '', updatedBefore : '', scope : 'root' };
+  $scope.showFilters = false;   // progressive disclosure — hidden until opened
 
   $scope.toggleSelect    = function(id) { selectionModel.toggle($scope.selection, id); };
   $scope.isSelected      = function(id) { return selectionModel.has($scope.selection, id); };
@@ -44,6 +45,9 @@ function($scope, $state, $stateParams, $window, $timeout, $filter, $http, trinke
       if ($scope.filters.updatedWithin && $scope.filters.updatedWithin !== 'all') {
         params.updatedWithin = $scope.filters.updatedWithin;
       }
+      // Explicit date range overrides the preset (matches the server).
+      if ($scope.filters.updatedAfter)  { params.updatedAfter  = $scope.filters.updatedAfter; }
+      if ($scope.filters.updatedBefore) { params.updatedBefore = $scope.filters.updatedBefore; }
     }
     return params;
   }

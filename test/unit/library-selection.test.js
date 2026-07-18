@@ -59,4 +59,12 @@ describe('library list markup', () => {
     const html = listHtml();
     expect(html).toContain('bulkMoveToNewFolder');
   });
+
+  it('has before/after date-range inputs behind a disclosure toggle', () => {
+    const html = listHtml();
+    expect(html).toContain('showFilters');                 // disclosure toggle
+    expect(html).toContain('filters.updatedAfter');
+    expect(html).toContain('filters.updatedBefore');
+    expect(html).toMatch(/type="date"/);
+  });
 });
