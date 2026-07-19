@@ -1063,6 +1063,19 @@ module.exports = [
     }
   },
   {
+    route : 'POST /api/trinkets/bulk trinket.bulk',
+    config : {
+      auth : 'session',
+      validate : {
+        payload : {
+          action   : Joi.string().valid('delete', 'move').required(),
+          ids      : Joi.array().items(Joi.string()).min(1).required(),
+          folderId : Joi.string().allow(null).optional()
+        }
+      }
+    }
+  },
+  {
     route : 'POST /api/trinkets/{trinketId}/folder trinket.addToFolder',
     config : {
       auth: 'session',

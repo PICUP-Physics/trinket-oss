@@ -305,6 +305,7 @@ app:
       - '/js/library/trinkets/create/create-controller.js'
       - '/js/library/trinkets/detail/detail-controller.js'
       - '/js/library/trinkets/detail/interactions/interactions-controller.js'
+      - '/js/library/trinkets/list/selection-model.js'
       - '/js/library/trinkets/list/list-controller.js'
       - '/js/library/trinkets/list/folder-list-controller.js'
       - '/js/library/trinkets/copy/copy-controller.js'

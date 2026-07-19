@@ -24,6 +24,91 @@ function($scope, $document, $location, $state, $stateParams, $window, $timeout, 
     $state.go('detail', { shortCode : shortCode });
   }
 
+  // ---- Bulk selection (scope is fixed to this folder) ---------------------
+  var selectionModel = TrinketIO.import('library.selection');
+  $scope.selection = selectionModel.create();
+
+  // Folder view has no date filter; show mod date when sorting by last-updated.
+  $scope.showModDate = function() {
+    return $scope.sortBy === '-lastUpdated';
+  };
+
+  $scope.toggleSelect   = function(id) { selectionModel.toggle($scope.selection, id); };
+  $scope.isSelected     = function(id) { return selectionModel.has($scope.selection, id); };
+  $scope.selectionCount = function() { return selectionModel.count($scope.selection); };
+  $scope.clearSelection = function() { selectionModel.clear($scope.selection); };
+
+  // Re-fetch this folder's trinkets from scratch. Does NOT clear selection —
+  // a post-action refresh keeps failed ids selected (see applyBulkResult).
+  $scope.reloadFolder = function() {
+    libraryState.resetList();
+    $scope.items    = null;
+    allLoaded       = false;
+    gotInitialItems = false;
+    last            = undefined;
+    lastCount       = 0;
+    $scope.moreTrinkets();
+  };
+
+  // Select every trinket in this folder (all pages), not just what's loaded.
+  $scope.selectAllMatching = function() {
+    if (!$scope.folder) { return; }
+    return $scope.folder.customGETLIST('trinkets', { limit : 100000 }).then(function(trinkets) {
+      var ids = [];
+      angular.forEach(trinkets, function(t) { ids.push(t.id); });
+      selectionModel.selectAll($scope.selection, ids);
+      $scope.matchCount = ids.length;
+    });
+  };
+
+  $scope.bulkMove = function(folderId) {
+    var ids = selectionModel.ids($scope.selection);
+    if (!ids.length) { return; }
+    return trinketsApi.bulk('move', ids, folderId).then(function(res) {
+      applyBulkResult(res, 'Moved');
+    });
+  };
+
+  // Create a folder on the fly and move the selection straight into it.
+  $scope.bulkMoveToNewFolder = function() {
+    if (!selectionModel.count($scope.selection)) { return; }
+    var name = ($window.prompt('New folder name:') || '').trim();
+    if (!name) { return; }
+    return foldersApi.create(name).then(function(response) {
+      if (!response || !response.success || !response.folder) {
+        $scope.bulkMessage = (response && response.message) || "Couldn't create that folder.";
+        return;
+      }
+      if ($scope.folders) { $scope.folders.push(response.folder); }
+      return $scope.bulkMove(response.folder.id || response.folder._id);
+    });
+  };
+
+  $scope.confirmBulkDelete = function() {
+    $('#bulkDeleteDialog').foundation('reveal', 'open');
+  };
+
+  $scope.bulkDelete = function() {
+    var ids = selectionModel.ids($scope.selection);
+    if (!ids.length) { return; }
+    return trinketsApi.bulk('delete', ids).then(function(res) {
+      $('#bulkDeleteDialog').foundation('reveal', 'close');
+      applyBulkResult(res, 'Deleted');
+    });
+  };
+
+  // Report the ok/failed split; keep ONLY failed ids selected for retry.
+  function applyBulkResult(res, verb) {
+    var failed = (res.failed || []).map(function(f) { return f.id; });
+    selectionModel.ids($scope.selection).forEach(function(id) {
+      if (failed.indexOf(id) === -1) { selectionModel.toggle($scope.selection, id); }
+    });
+    $scope.matchCount  = 0;
+    $scope.bulkMessage = verb + ' ' + (res.ok || []).length +
+      (failed.length ? (', ' + failed.length + " couldn't be " + verb.toLowerCase()) : '');
+    $scope.reloadFolder();
+  }
+
   $scope.moreTrinkets = function() {
     var self = this,
         trinketParams = {

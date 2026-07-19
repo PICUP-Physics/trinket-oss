@@ -22,6 +22,135 @@ function($scope, $state, $stateParams, $window, $timeout, $filter, $http, trinke
   // shared between this controller and trinket.search directive
   $scope.searchInputOpen = false;
 
+  // ---- Bulk selection + filters -------------------------------------------
+  var selectionModel = TrinketIO.import('library.selection');
+  $scope.selection = selectionModel.create();
+  $scope.filters   = { name : '', updatedWithin : 'all', updatedAfter : '', updatedBefore : '', scope : 'root' };
+  $scope.showFilters = false;   // progressive disclosure — hidden until opened
+
+  // Surface the modification date (instead of last-viewed) when the user is
+  // working by mod date — a date filter is active, or sorting by last-updated.
+  $scope.showModDate = function() {
+    var f = $scope.filters || {};
+    return !!(f.updatedAfter || f.updatedBefore ||
+              (f.updatedWithin && f.updatedWithin !== 'all') ||
+              $scope.sortBy === '-lastUpdated');
+  };
+
+  $scope.toggleSelect    = function(id) { selectionModel.toggle($scope.selection, id); };
+  $scope.isSelected      = function(id) { return selectionModel.has($scope.selection, id); };
+  $scope.selectionCount  = function() { return selectionModel.count($scope.selection); };
+  $scope.clearSelection  = function() { selectionModel.clear($scope.selection); };
+
+  // Copy the active filter/scope onto an outgoing list request.
+  function applyFilterParams(params) {
+    if ($scope.filters) {
+      if ($scope.filters.scope && $scope.filters.scope !== 'root') {
+        params.scope = $scope.filters.scope;
+      }
+      if ($scope.filters.name) {
+        params.name = $scope.filters.name;
+      }
+      if ($scope.filters.updatedWithin && $scope.filters.updatedWithin !== 'all') {
+        params.updatedWithin = $scope.filters.updatedWithin;
+      }
+      // Explicit date range overrides the preset (matches the server).
+      if ($scope.filters.updatedAfter)  { params.updatedAfter  = $scope.filters.updatedAfter; }
+      if ($scope.filters.updatedBefore) { params.updatedBefore = $scope.filters.updatedBefore; }
+    }
+    return params;
+  }
+
+  // Re-fetch the list from scratch with the current filter/scope params.
+  // Does NOT clear selection — a post-action refresh must keep failed ids
+  // selected (see applyBulkResult).
+  $scope.reloadWithFilters = function() {
+    libraryState.resetList();
+    $scope.items = undefined;
+    allLoaded    = false;
+    last         = undefined;
+    lastCount    = 0;
+    $scope.moreTrinkets();
+  };
+
+  // True when any filter narrows the list. Used to keep the filter controls
+  // visible even when the result is empty (otherwise a typo'd name filter
+  // hides the very input needed to fix it) and to message "no matches" vs
+  // "no trinkets".
+  $scope.isFiltering = function() {
+    var f = $scope.filters || {};
+    return !!(f.name || (f.updatedWithin && f.updatedWithin !== 'all') ||
+              f.updatedAfter || f.updatedBefore || (f.scope && f.scope !== 'root'));
+  };
+
+  $scope.clearFilters = function() {
+    $scope.filters = { name : '', updatedWithin : 'all', updatedAfter : '', updatedBefore : '', scope : 'root' };
+    $scope.reloadWithFilters();
+  };
+
+  // Select every id matching the current filter/scope — the whole result set,
+  // not just the loaded page (fetched with a high limit). The client holds
+  // these ids and the bulk endpoint re-authorizes each one.
+  $scope.selectAllMatching = function() {
+    var params = applyFilterParams({ limit : 100000 });
+    if ($scope.sortBy)       params.sort = $scope.sortBy;
+    if ($stateParams.user)   params.user = $stateParams.user;
+    return trinketsApi.getList(params).then(function(trinkets) {
+      var ids = [];
+      angular.forEach(trinkets, function(t) { ids.push(t.id); });
+      selectionModel.selectAll($scope.selection, ids);
+      $scope.matchCount = ids.length;
+    });
+  };
+
+  $scope.bulkMove = function(folderId) {
+    var ids = selectionModel.ids($scope.selection);
+    if (!ids.length) { return; }
+    return trinketsApi.bulk('move', ids, folderId).then(function(res) {
+      applyBulkResult(res, 'Moved');
+    });
+  };
+
+  // Create a folder on the fly and move the selection straight into it.
+  $scope.bulkMoveToNewFolder = function() {
+    if (!selectionModel.count($scope.selection)) { return; }
+    var name = ($window.prompt('New folder name:') || '').trim();
+    if (!name) { return; }
+    return foldersApi.create(name).then(function(response) {
+      if (!response || !response.success || !response.folder) {
+        $scope.bulkMessage = (response && response.message) || "Couldn't create that folder.";
+        return;
+      }
+      $scope.folders.push(response.folder);
+      return $scope.bulkMove(response.folder.id || response.folder._id);
+    });
+  };
+
+  $scope.confirmBulkDelete = function() {
+    $('#bulkDeleteDialog').foundation('reveal', 'open');
+  };
+
+  $scope.bulkDelete = function() {
+    var ids = selectionModel.ids($scope.selection);
+    if (!ids.length) { return; }
+    return trinketsApi.bulk('delete', ids).then(function(res) {
+      $('#bulkDeleteDialog').foundation('reveal', 'close');
+      applyBulkResult(res, 'Deleted');
+    });
+  };
+
+  // Report the ok/failed split; keep ONLY failed ids selected for retry.
+  function applyBulkResult(res, verb) {
+    var failed = (res.failed || []).map(function(f) { return f.id; });
+    selectionModel.ids($scope.selection).forEach(function(id) {
+      if (failed.indexOf(id) === -1) { selectionModel.toggle($scope.selection, id); }
+    });
+    $scope.matchCount  = 0;
+    $scope.bulkMessage = verb + ' ' + (res.ok || []).length +
+      (failed.length ? (', ' + failed.length + " couldn't be " + verb.toLowerCase()) : '');
+    $scope.reloadWithFilters();
+  }
+
   $scope.initSort = function(sortBy) {
     libraryState.resetList();
 
@@ -219,6 +348,9 @@ function($scope, $state, $stateParams, $window, $timeout, $filter, $http, trinke
     if ($stateParams.user) {
       trinketParams.user = $stateParams.user;
     }
+
+    // Bulk filters/scope (server applies them in its in-JS filter pass).
+    applyFilterParams(trinketParams);
 
     var prop = ($scope.sortBy.charAt(0) === '-') ? $scope.sortBy.substr(1) : $scope.sortBy;
     var propMap = {

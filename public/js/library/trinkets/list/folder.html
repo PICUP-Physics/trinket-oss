@@ -21,22 +21,42 @@
   </section>
 </div>
 <div id="folder-list-messages"></div>
+<div class="row bulk-action-bar" ng-if="selectionCount() > 0">
+  <span class="bulk-count">{{ selectionCount() }} selected</span>
+  <button class="button small" data-dropdown="bulk-move-menu"><i class="fa fa-folder-o"></i>&nbsp;Move to <i class="fa fa-caret-down"></i></button>
+  <ul id="bulk-move-menu" class="f-dropdown" data-dropdown-content>
+    <li><a ng-click="bulkMoveToNewFolder()"><i class="fa fa-plus-circle"></i>&nbsp;New folder&hellip;</a></li>
+    <li class="divider"></li>
+    <li ng-repeat="f in folders | orderBy:'name'" ng-if="f.id !== folder.id"><a ng-click="bulkMove(f.id)"><i class="fa fa-folder"></i>&nbsp;{{ f.name }}</a></li>
+    <li class="divider"></li>
+    <li><a ng-click="bulkMove(null)"><i class="fa fa-level-up"></i>&nbsp;Remove from folder</a></li>
+  </ul>
+  <button class="button small alert" ng-click="confirmBulkDelete()"><i class="fa fa-trash-o"></i>&nbsp;Delete</button>
+  <button class="button small secondary" ng-click="clearSelection()">Cancel</button>
+</div>
+<div class="row bulk-select-row" ng-show="items.length">
+  <button class="button tiny secondary bulk-select-all" ng-click="selectAllMatching()">Select all in this folder</button>
+  <span class="bulk-message" ng-if="bulkMessage">{{ bulkMessage }}</span>
+</div>
 <div class="row" ng-show="!items"><h2><i class="fa fa-spinner fa-spin"></i>&nbsp;Loading...</h2></div>
 <div class="row" ng-show="items && !items.length">
   <h2>No trinkets have been added to this folder.</h2>
 </div>
 <div ng-show="items.length">
   <ul id="trinkets-list" infinite-scroll="moreTrinkets()" infinite-scroll-distance='1' class="{{viewType}}-view">
-    <li ng-repeat="item in items" ng-click="gotoTrinket(item.shortCode)">
+    <li ng-repeat="item in items" ng-click="gotoTrinket(item.shortCode)" ng-class="{'trinket-selected': isSelected(item.id)}">
+      <input type="checkbox" class="trinket-select" ng-checked="isSelected(item.id)"
+             ng-click="$event.stopPropagation(); toggleSelect(item.id)"
+             aria-label="Select {{item.name || 'Untitled'}}">
       <a class="snapshot" ng-class="{titled: item.name}" ui-sref="detail({shortCode: item.shortCode})">
         <img ng-class="{'set-height': item.lang != 'glowscript' && item.lang != 'glowscript-blocks'}" ng-src="{{item.snapshot}}" alt="{{item.snapshot}}">
         <h3 ng-class="{titled: item.name}" class="title trinket-list-with-lang {{viewType}}-view lang-{{item.lang}} trinketLabel">{{item.name || 'Untitled'}}</h3>
       </a>
       <div class="trinket-stats">
-        <div ng-if="item.lastView.viewedOn" class="trinket-last-date">
+        <div ng-if="!showModDate() && item.lastView.viewedOn" class="trinket-last-date">
           Last viewed {{ item.lastView.viewedOn | formatDate }}
         </div>
-        <div ng-if="!item.lastView.viewedOn" class="trinket-last-date">
+        <div ng-if="showModDate() || !item.lastView.viewedOn" class="trinket-last-date">
           Last updated {{ item.lastUpdated | formatDate }}
         </div>
         <ul class="small-block-grid-5" ng-init="stats=[
@@ -72,4 +92,16 @@
   <a id="delete-folder-confirmed" class="button danger small" ng-click="remove()" ng-class="{disabled: notConfirmed}">Yes, delete this folder</a>
   <a id="cancel-delete-folder" class="button caution small close-modal">Nevermind, do not delete this folder</a>
   <a class="close-reveal-modal">&#215;</a>
+</div>
+
+<div id="bulkDeleteDialog" class="reveal-modal small" data-reveal aria-labelledby="bulk-delete-title" aria-hidden="true" role="dialog">
+  <h2 id="bulk-delete-title">Delete {{ selectionCount() }} trinkets?</h2>
+  <p>This removes them from your library.</p>
+  <div class="row">
+    <div class="small-12 columns text-right">
+      <a class="button small secondary close-reveal-modal">Cancel</a>
+      <a class="button small alert" ng-click="bulkDelete()">Delete {{ selectionCount() }}</a>
+    </div>
+  </div>
+  <a class="close-reveal-modal" aria-label="Close">&#215;</a>
 </div>
