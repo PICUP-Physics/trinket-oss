@@ -168,6 +168,27 @@ var flow = {
     return this._record(res);
   },
 
+  // Multipart course-import upload. Same shape as importTrinketsZip but the
+  // /api/imports/course route also takes a `name` (courseName) field.
+  async importCourseZip(zipBuffer, extraFields) {
+    var form = new FormData();
+    form.append('file', zipBuffer, { filename: 'course.zip' });
+    Object.keys(extraFields || {}).forEach(function (k) { form.append(k, String(extraFields[k])); });
+
+    var server = await getServer();
+    var headers = form.getHeaders();
+    if (this.cookies[this.activeUser]) {
+      headers.cookie = cookieHeader(this.cookies[this.activeUser]);
+    }
+    var res = await server.inject({
+      method  : 'POST',
+      url     : '/api/imports/course',
+      payload : form.getBuffer(),
+      headers : headers,
+    });
+    return this._record(res);
+  },
+
   // --- generic verbs ---
   get(p)        { return this._inject('GET', p); },
   post(p, body) { return this._inject('POST', p, body); },
