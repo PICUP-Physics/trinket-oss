@@ -14,12 +14,13 @@
     <div class="right">
       <a class="button small" ng-if="canViewSubmissions" ng-click="viewDashboard()"><i class="fa fa-dashboard"></i> <div class="show-for-large-up">Dashboard</div></a>
       <a class="button small dropdown-blue" data-dropdown="course-actions" id="course-actions-button"><i class="fa fa-cog"></i> <div class="show-for-large-up">Course</div></a>
-      <ul id="course-actions" ng-if="canCopyThisCourse || canUpdateCourse || canManageAccess" class="f-dropdown small" data-dropdown-content>
+      <ul id="course-actions" ng-if="canCopyThisCourse || canUpdateCourse || canManageAccess || canDeleteCourse" class="f-dropdown small" data-dropdown-content>
         <li><a ng-if="canUpdateCourse" ng-click="openSettingsModal()"><i class="fa fa-pencil fa-fw"></i> Edit Course Details</a></li>
         <li><a ng-if="canCopyThisCourse" ng-click="copyCourse()"><i class="fa fa-copy fa-fw"></i> Make a Copy of this Course</a></li>
         <li><a ng-if="canCopyThisCourse" ng-click="openDownloadCourseModal()"><i class="fa fa-download fa-fw"></i> Download Course Pages</a></li>
         <li><a ng-if="canArchiveThisCourse && !course.archived" ng-click="openArchiveCourseModal()"><i class="fa fa-archive fa-fw"></i> Archive Course</a></li>
         <li><a ng-if="canArchiveThisCourse && course.archived" ng-click="archiveCourse()"><i class="fa fa-inbox fa-fw"></i> Restore Archived Course</a></li>
+        <li><a ng-if="canDeleteCourse" ng-click="openDeleteCourseModal()"><i class="fa fa-trash-o fa-fw"></i> Delete Course</a></li>
       </ul>
       <a class="button small" ng-if="canManageAccess" ng-click="openUserModal()"><i class="fa fa-users"></i> <div class="show-for-large-up">Users</div></a>
       <a href class="prev button small" ng-click="previousMaterial()">
@@ -280,7 +281,7 @@
     <div class="row">
       <div class="large-12 columns">
         <button type="submit" class="primary small"><i class="fa" ng-class="{'fa-save':!savingCourse, 'fa-circle-o-notch fa-spin':savingCourse}"></i> Update</button>
-        <a ng-show="canDeleteCourse" class="button caution small right" title="Delete Course" data-reveal-id="deleteCourseDialog" data-reveal><i class="fa fa-trash-o"></i></a>
+        <a ng-show="canDeleteCourse" class="button caution small right" title="Delete Course" data-reveal-id="deleteCourseDialog" data-reveal><i class="fa fa-trash-o"></i> Delete Course</a>
       </div>
     </div>
   </form>
