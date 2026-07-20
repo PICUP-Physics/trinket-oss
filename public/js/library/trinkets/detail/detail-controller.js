@@ -104,6 +104,22 @@ TrinketIO.export('library.trinkets.detail.controller', [
       });
   }
 
+  // Inline field save used by the Instructions/description editor
+  // (description.html onbeforesave="update('description', $data)"). This handler
+  // was dropped in an earlier controller refactor, so the description save was a
+  // silent no-op; PUT /api/trinkets/{id}/description already backs it.
+  $scope.update = function(field, value) {
+    if (field === 'description') {
+      return trinketsApi.updateDescription($scope.trinket.id, { description: value })
+        .then(function() {
+          $scope.trinket.description = value;
+          libraryState.resetList();
+          return;
+        });
+    }
+    return;
+  }
+
   $scope.copy = function() {
     libraryState.lastTrinket      = $scope.trinket;
     libraryState.lastTrinket.code = $scope.trinketApi.serialize().code;

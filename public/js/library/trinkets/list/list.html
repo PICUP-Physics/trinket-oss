@@ -172,11 +172,11 @@
   <a class="close-reveal-modal" aria-label="Close">&#215;</a>
 </div>
 <div id="bulkDeleteDialog" class="reveal-modal small" data-reveal aria-labelledby="bulk-delete-title" aria-hidden="true" role="dialog">
-  <h2 id="bulk-delete-title">Delete {{ selectionCount() }} trinkets?</h2>
+  <h2 id="bulk-delete-title">Delete {{ selectionCount() }} trinket{{ selectionCount() === 1 ? '' : 's' }}?</h2>
   <p>This removes them from your library.</p>
   <div class="row">
     <div class="small-12 columns text-right">
-      <a class="button small secondary close-reveal-modal">Cancel</a>
+      <a class="button small secondary" ng-click="cancelBulkDelete()">Cancel</a>
       <a class="button small alert" ng-click="bulkDelete()">Delete {{ selectionCount() }}</a>
     </div>
   </div>

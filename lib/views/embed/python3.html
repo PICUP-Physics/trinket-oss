@@ -14,6 +14,6 @@
 {% block trinket_label %}
 <section class="trinket-label">
   <i class="icon-python"> <label class="show-for-small-only">3</label></i>
-  <label class="show-for-large-up">Python3</label>
+  <label class="show-for-large-up">{{ config.features.trinketLabels.python3 or 'Python3' }}</label>
 </section>
 {% endblock %}
