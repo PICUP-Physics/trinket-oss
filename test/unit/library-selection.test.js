@@ -55,6 +55,16 @@ describe('library list markup', () => {
     expect(html).toContain('selectAllMatching');
   });
 
+  it('bulk-delete Cancel closes via handler, not the close-reveal-modal button style', () => {
+    const html = listHtml();
+    // Regression: `close-reveal-modal` on a .button gets Foundation's absolute
+    // ×-icon styling → oversized/overlapping Cancel. Cancel must close via click.
+    expect(html).toContain('ng-click="cancelBulkDelete()"');
+    expect(html).not.toMatch(/button[^"]*close-reveal-modal[^"]*">\s*Cancel/);
+    // count-confirm pluralization
+    expect(html).toContain("trinket{{ selectionCount() === 1 ? '' : 's' }}");
+  });
+
   it('offers "New folder" in the Move-to dropdown', () => {
     const html = listHtml();
     expect(html).toContain('bulkMoveToNewFolder');

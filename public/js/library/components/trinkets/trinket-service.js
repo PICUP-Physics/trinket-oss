@@ -46,6 +46,10 @@ function TrinketService(Restangular) {
     return _all.one(id).customPUT(data, 'name');
   }
 
+  this.updateDescription = function(id, data) {
+    return _all.one(id).customPUT(data, 'description');
+  }
+
   this.takeSnapshot = function(id) {
     return _all.one(id).takeSnapshot();
   }

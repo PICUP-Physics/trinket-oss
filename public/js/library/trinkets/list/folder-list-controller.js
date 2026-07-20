@@ -88,6 +88,10 @@ function($scope, $document, $location, $state, $stateParams, $window, $timeout, 
     $('#bulkDeleteDialog').foundation('reveal', 'open');
   };
 
+  $scope.cancelBulkDelete = function() {
+    $('#bulkDeleteDialog').foundation('reveal', 'close');
+  };
+
   $scope.bulkDelete = function() {
     var ids = selectionModel.ids($scope.selection);
     if (!ids.length) { return; }
