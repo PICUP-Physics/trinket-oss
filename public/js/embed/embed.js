@@ -1933,10 +1933,11 @@ $('document').ready(function() {
     },
     draggable : function(resizeFn) {
       var dragbar_width = $('#dragbar').width();
+      $('#dragbar').css('touch-action', 'none'); // iPad: pointer drag, not scroll
       var $editor = $('#editor');
       var self = this;
 
-      $(document).on('mousedown.dragbar', '#dragbar', function(e) {
+      $(document).on('pointerdown.dragbar', '#dragbar', function(e) {
         e.preventDefault();
 
         var wrapper_width = $('.trinket-content-wrapper').width();
@@ -1952,7 +1953,7 @@ $('document').ready(function() {
           }
         }).appendTo('body');
 
-        $(document).on('mousemove.dragbar', function(event) {
+        $(document).on('pointermove.dragbar', function(event) {
           var leftPct = event.pageX / wrapper_width;
           var rightPct = ( wrapper_width - event.pageX ) / wrapper_width;
           if (leftPct >= .3 && rightPct >= .25) {
@@ -1965,12 +1966,12 @@ $('document').ready(function() {
           }
         });
 
-        $(document).one('mouseup.dragbar', function(e) {
+        $(document).one('pointerup.dragbar', function(e) {
           $('#content-overlay').hide();
 
           if (self.dragging) {
             $('#ghostbar').remove();
-            $(document).off('mousemove.dragbar');
+            $(document).off('pointermove.dragbar');
             self.dragging = false;
           }
         });

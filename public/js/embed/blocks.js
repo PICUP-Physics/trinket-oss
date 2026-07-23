@@ -281,14 +281,15 @@ window.TrinketAPI = {
 
     api.draggable();
 
-    $('#output-dragbar').mousedown(function(e) {
+    $('#output-dragbar').css('touch-action', 'none'); // iPad: pointer drag, not scroll
+    $('#output-dragbar').on('pointerdown', function(e) {
       e.preventDefault();
 
       var outputTabsHeight = $('#outputTabs').height();
       var containerHeight  = $('.trinket-content-wrapper').height() - outputTabsHeight;
       var containerTop     = $('.trinket-content-wrapper').offset().top + outputTabsHeight;
       var dragbarHeight    = $('#output-dragbar').height();
-      $(document).on('mousemove.output-dragbar', function(e) {
+      $(document).on('pointermove.output-dragbar', function(e) {
         var topHeight    = e.pageY - containerTop - dragbarHeight/2;
         var bottomHeight = containerHeight - topHeight - dragbarHeight/2;
         if (topHeight >= 20 && bottomHeight >= 20) {
@@ -297,8 +298,8 @@ window.TrinketAPI = {
         }
       });
 
-      $(document).on('mouseup.output-dragbar', function(e) {
-        $(document).off('mousemove.output-dragbar mouseup.output-dragbar');
+      $(document).on('pointerup.output-dragbar', function(e) {
+        $(document).off('pointermove.output-dragbar pointerup.output-dragbar');
       });
     });
 
