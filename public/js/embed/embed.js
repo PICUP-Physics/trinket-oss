@@ -1934,6 +1934,11 @@ $('document').ready(function() {
     draggable : function(resizeFn) {
       var dragbar_width = $('#dragbar').width();
       $('#dragbar').css('touch-action', 'none'); // iPad: pointer drag, not scroll
+      // The drag shield (#content-overlay) is shown over the output iframe during
+      // this vertical drag; without touch-action:none the finger sliding off the
+      // 5px dragbar onto the full-screen shield lets iOS reclaim the gesture as a
+      // scroll (pointercancel) and the drag dies. Shield must not swallow touch.
+      $('#content-overlay').css('touch-action', 'none');
       var $editor = $('#editor');
       var self = this;
 
