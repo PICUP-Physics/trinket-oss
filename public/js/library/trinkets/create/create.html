@@ -23,8 +23,17 @@
       as well as scientific libraries like <a href="http://www.numpy.org/" target="_blank">Numpy <sup><i class="fa fa-external-link"></i></sup></a>,
       <a href="http://www.scipy.org/", target="_blank">SciPy <sup><i class="fa fa-external-link"></i></sup></a>
       and <a href="http://matplotlib.org/" target="_blank">matplotlib <sup><i class="fa fa-external-link"></i></sup></a>,
-      with more on the way. You can try the examples below or try your own code and then click &nbsp;<i class="fa fa-play"></i> Run. An interactive
-      console option is available too &mdash; just select &nbsp;<i class="fa fa-terminal"></i> Console from the Run menu.
+      with more on the way.
+      <!-- #115: the examples gallery below is populated from
+           GET /api/trinkets/{lang}/list?name=examples, a curated list that
+           existed on trinket.io and ships EMPTY in the open-source release. The
+           gallery already hides itself when there is nothing to show
+           (ng-show="examples && iframeUrl"); this sentence did not, so it
+           promised examples that were not there. Gate the wording the same way. -->
+      <span ng-if="examples && iframeUrl">You can try the examples below, or write</span><span ng-if="!(examples && iframeUrl)">Write</span>
+      your own code and then click &nbsp;<i class="fa fa-play"></i> Run. For input, use
+      <code>import console</code> and <code>console.input(...)</code> to read a value
+      inline in the output pane.
     </p>
   </section>
   <section ng-if="lang == 'java'">
