@@ -170,6 +170,44 @@ test.describe('Worker runtime (#108)', () => {
     }
   });
 
+  // The bug this pins: _trinket_show used draw_idle(), which only SCHEDULES a
+  // render for the next idle turn of the worker's event loop. A program that
+  // never awaits after show() -- a tight loop with no sleep/rate -- never
+  // reaches that turn, so refresh_all() shipped an EMPTY buffer: a correctly
+  // sized canvas with nothing painted in it. Reported from the field as
+  // "the frame shows but not the plot".
+  test('a figure is painted even when the program never yields after show()', async ({ page }) => {
+    await editorRun(page, [
+      'import matplotlib.pyplot as plt',
+      'import numpy as np',
+      'x = np.linspace(0, 10, 100)',
+      'plt.figure(figsize=(4, 2))',
+      'plt.plot(x, np.sin(x))',
+      'plt.show()',
+      'while True:',        // no sleep: the worker never yields again
+      '  pass'
+    ].join('\n'));
+
+    await expect(page.locator('#graphic .worker-figure')).toBeVisible({ timeout: 240_000 });
+
+    // Presence of the canvas is not enough -- that is exactly what the bug
+    // produced. Count actually-painted pixels.
+    await expect(async () => {
+      const painted = await page.evaluate(() => {
+        const c = document.querySelector('#graphic canvas');
+        if (!c || !c.width) return 0;
+        const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+        let n = 0;
+        for (let i = 0; i < d.length; i += 4) {
+          if (d[i + 3] === 0) continue;
+          if (((d[i] << 16) | (d[i + 1] << 8) | d[i + 2]) !== 0xffffff) n++;
+        }
+        return n;
+      });
+      expect(painted).toBeGreaterThan(500);
+    }).toPass({ timeout: 240_000 });
+  });
+
   test('a figure left open without show() is still flushed', async ({ page }) => {
     // Students routinely omit plt.show(); the main thread flushes for them, so
     // the worker must too or the plot silently vanishes.
