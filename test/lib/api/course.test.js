@@ -258,7 +258,7 @@ describe('Course Creation', () => {
       // with (undefined, lessonDoc)) → 500. This breaks BOTH same-lesson reorder (no parent)
       // AND cross-lesson transfer (parent present), since `next` is never a function here.
       // Cannot fix from test/ (defect is the lib/ server-method calling convention).
-      it.skip('should allow me to reorder material', async () => {
+      it('should allow me to reorder material', async () => {
         await flow.addNewMaterial(courseId, lessonId);
         await flow.moveMaterial(courseId, lessonId, materialId, 1);
         expect(flow.lastResponse.statusCode).toBe(200);
