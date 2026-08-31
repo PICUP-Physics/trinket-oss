@@ -762,45 +762,57 @@ $('document').ready(function() {
       // Track analytics
       self.callAnalytics('Interaction', 'Click', 'Download');
 
-      // Use form POST with hidden iframe target to avoid breaking the page on errors
-      var iframeName = 'download-iframe-' + Date.now();
-      var iframe = document.createElement('iframe');
-      iframe.name = iframeName;
-      iframe.style.display = 'none';
-      document.body.appendChild(iframe);
+      // Fetch the archive and save it from a blob.
+      //
+      // This used to be a form POST targeting a hidden iframe, chosen so a
+      // failed download could not break the page. The embed CSP (app.csp)
+      // ends with `form-action 'none'; frame-src 'none'`, which blocks BOTH
+      // halves of that approach — the browser refused to send the request at
+      // all, and because every failure was routed into a hidden iframe the
+      // user saw nothing whatsoever. A dead button (#224).
+      //
+      // fetch needs no policy change: `connect-src * data: blob:` already
+      // allows it, so the CSP stays exactly as authored. It also gives errors
+      // somewhere to go, which the iframe never had.
+      var body = new URLSearchParams();
+      body.set('files', JSON.stringify(downloadable.files));
+      body.set('assets', JSON.stringify(downloadable.assets));
+      body.set('filename', filename);
 
-      var form = document.createElement('form');
-      form.method = 'POST';
-      form.action = '/api/trinkets/download';
-      form.target = iframeName;
-      form.style.display = 'none';
-
-      var filesInput = document.createElement('input');
-      filesInput.type = 'hidden';
-      filesInput.name = 'files';
-      filesInput.value = JSON.stringify(downloadable.files);
-      form.appendChild(filesInput);
-
-      var assetsInput = document.createElement('input');
-      assetsInput.type = 'hidden';
-      assetsInput.name = 'assets';
-      assetsInput.value = JSON.stringify(downloadable.assets);
-      form.appendChild(assetsInput);
-
-      var filenameInput = document.createElement('input');
-      filenameInput.type = 'hidden';
-      filenameInput.name = 'filename';
-      filenameInput.value = filename;
-      form.appendChild(filenameInput);
-
-      document.body.appendChild(form);
-      form.submit();
-
-      // Clean up form and iframe after a delay
-      setTimeout(function() {
-        document.body.removeChild(form);
-        document.body.removeChild(iframe);
-      }, 5000);
+      fetch('/api/trinkets/download', {
+        method      : 'POST',
+        headers     : { 'Content-Type' : 'application/x-www-form-urlencoded' },
+        body        : body.toString(),
+        credentials : 'same-origin'
+      })
+        .then(function(res) {
+          if (!res.ok) throw new Error('server returned ' + res.status);
+          return res.blob();
+        })
+        .then(function(blob) {
+          // Prefer the server's filename: it sanitizes, and it stays the one
+          // source of truth for what the archive is called.
+          var url  = URL.createObjectURL(blob);
+          var link = document.createElement('a');
+          link.href     = url;
+          link.download = filename + '.zip';
+          link.style.display = 'none';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          // Revoking immediately can cancel the save in some browsers; give
+          // the download a turn of the event loop to start.
+          setTimeout(function() { URL.revokeObjectURL(url); }, 30000);
+        })
+        .catch(function(err) {
+          // Say something. The old silent failure is what made #224 present as
+          // "the button does nothing" rather than as a reportable error.
+          showStatusBar('Sorry, that download could not be prepared. ' +
+                        'Please try again.', null, null, 'alert');
+          if (window.console && console.error) {
+            console.error('download failed:', err);
+          }
+        });
     },
     onUpgradeClick : function(event, data) {
       this.$upgradeModal.foundation('reveal', 'open');
