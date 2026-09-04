@@ -96,6 +96,23 @@ RUN npm run build:css
 
 RUN npm run build
 
+# Content hash of public/components/ — the STABLE asset prefix (picup #238).
+#
+# These files come from a pinned tarball plus pinned runner builds and change a
+# few times a year, but they were served under /cache-prefix-<commit>/ like
+# everything else, so every deploy re-issued ~6.6 MB of URLs whose bytes had not
+# moved. Hashing the CONTENT means the URL changes if and only if the bytes do —
+# no version string to keep in step, which matters because the ace files above
+# are curl'd outside the tarball and no single pin describes every byte here.
+#
+# Computed in the image because that is where components/ exists: the host tree
+# does not have it (the tarball is fetched during the build).
+RUN find public/components -type f -print0 \
+      | sort -z \
+      | xargs -0 sha256sum \
+      | sha256sum | cut -c1-12 > public/components-hash.txt \
+    && echo "components hash: $(cat public/components-hash.txt)"
+
 # Build identity, surfaced by GET /version. COMMIT_ID was declared here for a
 # long time but never promoted to ENV and never passed by any build, so it
 # stamped nothing and there was no way to tell which build a deploy was running.

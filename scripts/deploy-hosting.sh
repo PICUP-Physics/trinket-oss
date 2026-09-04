@@ -114,6 +114,23 @@ fi
 SITE="${WORK}/site"
 PREFIX="${SITE}/cache-prefix-${COMMIT}"
 mkdir -p "${PREFIX}"
+
+# components/ is published under its own CONTENT hash, not the deploy commit
+# (picup #238). It changes a few times a year while the commit changes several
+# times a day, so sharing the deploy prefix re-issued ~6.6 MB of URLs per deploy
+# whose bytes had not moved. The hash is written into the image by the Dockerfile
+# and travels with the extracted public/. Same cache-prefix-* URL SHAPE, so the
+# server's prefix-stripping and Hosting's /cache-prefix-*/** immutable header
+# rule both apply unchanged — no new routing, no new header rule.
+COMPONENTS_TOKEN="${COMMIT}"
+if [[ -f "${SRC}/components-hash.txt" ]]; then
+  COMPONENTS_TOKEN="$(tr -d '[:space:]' < "${SRC}/components-hash.txt")"
+  say "components hash: ${COMPONENTS_TOKEN} (stable across deploys)"
+else
+  say "no components-hash.txt in the image — components stay on the deploy prefix"
+fi
+CPREFIX="${SITE}/cache-prefix-${COMPONENTS_TOKEN}"
+mkdir -p "${CPREFIX}"
 for d in ${ASSET_DIRS}; do
   [[ -d "${SRC}/${d}" ]] && cp -R "${SRC}/${d}" "${PREFIX}/" && cp -R "${SRC}/${d}" "${SITE}/"
 done
@@ -156,8 +173,8 @@ if [[ -n "${SERVICE_URL}" ]]; then
   n=0
   while read -r f; do
     [[ -f "${SRC}/${f}" ]] || continue
-    mkdir -p "${PREFIX}/$(dirname "${f}")" "${SITE}/$(dirname "${f}")"
-    cp "${SRC}/${f}" "${PREFIX}/${f}"
+    mkdir -p "${CPREFIX}/$(dirname "${f}")" "${SITE}/$(dirname "${f}")"
+    cp "${SRC}/${f}" "${CPREFIX}/${f}"
     cp "${SRC}/${f}" "${SITE}/${f}" && n=$((n+1))
   done < <(sed 's|^/cache-prefix-[^/]*/|/|' "${refs}" \
              | grep -oE '^/components/[^"'"'"' ]+' | sed 's|^/||' | sort -u)
@@ -168,13 +185,13 @@ fi
 rn=0
 for rel in ${RUNNER_PATHS}; do
   if [[ -d "${SRC}/${rel}" ]]; then
-    mkdir -p "${PREFIX}/$(dirname "${rel}")" "${SITE}/$(dirname "${rel}")"
-    cp -R "${SRC}/${rel}" "${PREFIX}/$(dirname "${rel}")/"
+    mkdir -p "${CPREFIX}/$(dirname "${rel}")" "${SITE}/$(dirname "${rel}")"
+    cp -R "${SRC}/${rel}" "${CPREFIX}/$(dirname "${rel}")/"
     cp -R "${SRC}/${rel}" "${SITE}/$(dirname "${rel}")/"
     rn=$((rn+1))
   elif [[ -f "${SRC}/${rel}" ]]; then
-    mkdir -p "${PREFIX}/$(dirname "${rel}")" "${SITE}/$(dirname "${rel}")"
-    cp "${SRC}/${rel}" "${PREFIX}/${rel}"
+    mkdir -p "${CPREFIX}/$(dirname "${rel}")" "${SITE}/$(dirname "${rel}")"
+    cp "${SRC}/${rel}" "${CPREFIX}/${rel}"
     cp "${SRC}/${rel}" "${SITE}/${rel}"
     rn=$((rn+1))
   else
