@@ -7,7 +7,7 @@
      always available. Both reuse the shared filter box and the existing .dl-course/.dl-item
      markup so the client-side dlFilter keeps working. #}
   <h3>Add Trinket Content to Your LMS</h3>
-  <p>Choose a graded <strong>Assignment</strong>, or link a whole <strong>Course or Topic</strong>. Your LMS adds it as a link that launches directly into Trinket.</p>
+  <p>Choose a graded <strong>Assignment</strong>, or link a <strong>Course</strong>, a <strong>Topic</strong> or a specific <strong>Page</strong>. Your LMS adds it as a link that launches directly into Trinket.</p>
 
   {% if not courses or courses | length == 0 %}
     <p class="panel">You don't have any Trinket courses yet. Create a course or assignment in Trinket first, then return here.</p>
@@ -16,7 +16,7 @@
        the deploy brand color via the --brand-* custom property injected in base.html. #}
     <div class="dl-tabs" style="margin:0 0 1rem;">
       <button type="button" class="dl-tab-btn" data-tab="content" onclick="dlSelectTab('content')"
-              style="display:inline-block; padding:0.5rem 1rem; margin-right:0.4rem; border:1px solid #ccc; border-radius:3px; background:var(--brand-primary,#35429B); color:#fff; font-size:0.9rem; cursor:pointer; white-space:nowrap;">Course or Topic</button>
+              style="display:inline-block; padding:0.5rem 1rem; margin-right:0.4rem; border:1px solid #ccc; border-radius:3px; background:var(--brand-primary,#35429B); color:#fff; font-size:0.9rem; cursor:pointer; white-space:nowrap;">Course, Topic or Page</button>
       {% if assignmentAllowed %}
       <button type="button" class="dl-tab-btn" data-tab="assignment" onclick="dlSelectTab('assignment')"
               style="display:inline-block; padding:0.5rem 1rem; border:1px solid #ccc; border-radius:3px; background:#eee; color:#333; font-size:0.9rem; cursor:pointer; white-space:nowrap;">Assignment</button>
@@ -49,8 +49,26 @@
               <input type="hidden" name="courseId" value="{{ course.id }}">
               <input type="hidden" name="targetId" value="{{ topic.lessonId }}">
               <input type="hidden" name="title" value="{{ course.name }} — {{ topic.title }}">
-              <button type="submit" class="button small secondary">Topic: {{ topic.title }}</button>
+              <button type="submit" class="button small secondary"
+                      title="Opens this section's first page">Topic: {{ topic.title }}</button>
             </form>
+            {# Pages within the topic (#13). A select rather than a row of buttons:
+               a course with many pages would otherwise be an unusable wall. #}
+            {% if topic.pages and topic.pages.length %}
+            <form method="POST" action="/lti/deep-link/select"
+                  style="display:inline-block; margin-left:0.4rem;">
+              <input type="hidden" name="targetType" value="page">
+              <input type="hidden" name="courseId" value="{{ course.id }}">
+              <input type="hidden" name="titlePrefix" value="{{ course.name }} — {{ topic.title }}">
+              <select name="targetId" aria-label="Page in {{ topic.title }}"
+                      style="font-size:0.85rem; padding:0.25rem; max-width:18rem;">
+                {% for page in topic.pages %}
+                <option value="{{ page.materialId }}">{{ page.title }}</option>
+                {% endfor %}
+              </select>
+              <button type="submit" class="button small">Link page</button>
+            </form>
+            {% endif %}
           </li>
           {% endfor %}
         </ul>
@@ -93,7 +111,7 @@
   {% else %}
   {% if contentMode %}
   <h3>Add Trinket Content to Your LMS</h3>
-  <p>Open a course, then choose the whole course or a specific topic. Your LMS adds it as a link that launches directly into Trinket.</p>
+  <p>Open a course, then choose the whole course, a topic, or a specific page. Your LMS adds it as a link that launches directly into Trinket.</p>
   {% else %}
   <h3>Add a Trinket Assignment to Your LMS</h3>
   <p>Open a course, then choose an assignment. Your LMS adds it as a graded link that launches directly into Trinket.</p>
@@ -128,8 +146,26 @@
               <input type="hidden" name="courseId" value="{{ course.id }}">
               <input type="hidden" name="targetId" value="{{ topic.lessonId }}">
               <input type="hidden" name="title" value="{{ course.name }} — {{ topic.title }}">
-              <button type="submit" class="button small secondary">Topic: {{ topic.title }}</button>
+              <button type="submit" class="button small secondary"
+                      title="Opens this section's first page">Topic: {{ topic.title }}</button>
             </form>
+            {# Pages within the topic (#13). A select rather than a row of buttons:
+               a course with many pages would otherwise be an unusable wall. #}
+            {% if topic.pages and topic.pages.length %}
+            <form method="POST" action="/lti/deep-link/select"
+                  style="display:inline-block; margin-left:0.4rem;">
+              <input type="hidden" name="targetType" value="page">
+              <input type="hidden" name="courseId" value="{{ course.id }}">
+              <input type="hidden" name="titlePrefix" value="{{ course.name }} — {{ topic.title }}">
+              <select name="targetId" aria-label="Page in {{ topic.title }}"
+                      style="font-size:0.85rem; padding:0.25rem; max-width:18rem;">
+                {% for page in topic.pages %}
+                <option value="{{ page.materialId }}">{{ page.title }}</option>
+                {% endfor %}
+              </select>
+              <button type="submit" class="button small">Link page</button>
+            </form>
+            {% endif %}
           </li>
           {% endfor %}
         </ul>
