@@ -91,7 +91,7 @@
     "watch:css": "vite build --watch",
     "build": "npm run build:css",
     "make-admin": "node scripts/make-admin.js",
-    "setup-vendor": "bash scripts/setup-glowscript.sh"
+    "setup-vendor": "bash scripts/setup-glowscript.sh && bash scripts/sync-katex.sh"
   },
   "repository": {
     "type": "git",

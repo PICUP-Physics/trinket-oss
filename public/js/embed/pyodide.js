@@ -170,7 +170,10 @@ function resetOutput(consoleOnly) {
 // The queue/cap accounting is in embed/console-buffer.js, kept pure so the
 // rules are testable in node (same split as runtime-router.js). Timers and the
 // actual write stay here, where the DOM is.
-var outBuf   = consoleBuffer.createOutputBuffer({ maxLines: 5000 });
+// maxRich is far smaller than maxLines because one extra typeset card costs
+// ~14 ms against microseconds for a printed line; past it results degrade to
+// plain text rather than being dropped. Measurements are in console-buffer.js.
+var outBuf   = consoleBuffer.createOutputBuffer({ maxLines: 5000, maxRich: 30 });
 var outRaf   = null;
 var outTimer = null;
 
@@ -192,12 +195,33 @@ function outScheduleFlush() {
   outTimer = setTimeout(function() { outTimer = null; flushConsoleNow(); }, 100);
 }
 
-// One Write for everything queued — this is the whole point: N lines cost one
-// reflow, not N.
+// One Write per run of text — this is the whole point: N lines cost one
+// reflow, not N. Typeset math cards (features.mathOutput) sit in the same
+// queue, so they are rendered here too, in the order the program produced
+// them; runs of text on either side still coalesce into a single Write.
 function flushConsoleNow() {
   outCancelFlush();
-  var text = outBuf.drain();
-  if (text && jqconsole) jqconsole.Write(text);
+  var segments = outBuf.drain();
+  if (!segments.length || !jqconsole) return;
+  for (var i = 0; i < segments.length; i++) {
+    // The empty-string check keeps exact parity with the pre-rich flush, which
+    // tested the joined string for truthiness and so never wrote an empty span.
+    if (typeof segments[i].text === 'string') {
+      if (segments[i].text) jqconsole.Write(segments[i].text);
+    } else if (segments[i].rich) {
+      var item = segments[i].rich;
+      // Dispatch on kind so a second rich kind is additive. Anything
+      // unrecognised — including a payload predating the discriminator — takes
+      // the math card, which already degrades to the text form when there is no
+      // latex. The default is load-bearing, not laziness: _trinket_display.py is
+      // fetched at run time while this file is a cached, cache-prefixed asset,
+      // so a deploy can briefly pair new Python with old JS. Dropping unknown
+      // kinds would break renderMathCard's invariant that output is never lost.
+      switch (item.kind) {
+        default: renderMathCard(item);
+      }
+    }
+  }
 }
 
 // Drop anything queued: the console it was destined for is being rebuilt.
@@ -220,6 +244,21 @@ function writeStream(text) {
   initConsoleOutput();
   if (!jqconsole) return;
   outBuf.pushStream(text);
+  outScheduleFlush();
+}
+
+// One typeset result — queued AND capped, exactly like program output, which
+// is what keeps a card in program order relative to print() and stops a
+// derivation loop building an unlayoutable DOM.
+function queueMathCard(payload) {
+  if (!payload) return;
+  initConsoleOutput();
+  if (!jqconsole) return;
+  // Started here, not in renderMathCard, for two reasons: the load overlaps the
+  // rest of the run instead of starting a frame later, and the 'Loading math…'
+  // notice is queued BEFORE this card rather than appearing under it.
+  if (payload && payload.latex) { ensureKatex().catch(function() {}); }
+  outBuf.pushRich(payload);
   outScheduleFlush();
 }
 
@@ -595,7 +634,12 @@ function ensurePyodide() {
 
   pyodideLoading = loadPyodide({ indexURL: PYODIDE_INDEX_URL }).then(function(py) {
     pyodide = py;
-    pyodideReady = true;
+    // pyodideReady is set at the END of this chain, not here. It gates Clear
+    // memory (clearMainThreadMemory) and the Variables helpers, all of which
+    // need __trinket_reset_baseline__ to exist — and with features.mathOutput
+    // on there is now a real network fetch between here and that snapshot.
+    // Clicking Clear memory inside that window would report "Could not clear
+    // Python memory; reload the page".
     // Route Python stdout/stderr into the trinket console. batched gives us the
     // text without its trailing newline, so we re-add it per write.
     py.setStdout({ batched: function(s) { writeStream(s + '\n'); } });
@@ -642,24 +686,80 @@ function ensurePyodide() {
     try {
       py.FS.writeFile('console.py', CONSOLE_MODULE_CODE);
     } catch (e) {}
-    // Record the pristine namespace twice:
+    // Typeset math output: install the display module BEFORE the baseline
+    // snapshot below. display() and the expression hook live on `builtins`, not
+    // in globals(), but the `import _trinket_display` binding does not — and
+    // installing ahead of the snapshot is what makes Clear memory
+    // (clearMainThreadMemory, which restores __trinket_reset_baseline__) leave
+    // the feature working instead of half-removed.
     //
-    // - __trinket_baseline__ is the set the Variables panel hides.
-    // - __trinket_reset_baseline__ is a shallow copy used by Clear memory to
-    //   restore the runner's own globals without re-downloading Pyodide.
-    //
-    // The self-reference is intentional. A plain dict(globals()) is evaluated
-    // before its assignment, so it would otherwise omit the reset snapshot and
-    // work only once.
-    try {
-      py.runPython([
-        '__trinket_baseline__ = set(globals().keys())',
-        '__trinket_reset_baseline__ = dict(globals())',
-        '__trinket_reset_baseline__["__trinket_reset_baseline__"] = __trinket_reset_baseline__',
-        '__trinket_baseline__.add("__trinket_reset_baseline__")'
-      ].join('\n'));
-    } catch (e) {}
-    return py;
+    // Returned as a promise so the fetch completes before the snapshot is
+    // taken. With the flag off this whole step is skipped and nothing is
+    // fetched.
+    return (mathOutputEnabled()
+      ? fetch(TRINKET_DISPLAY_URL)
+          .then(function(r) {
+            // fetch does NOT reject on 4xx/5xx. Without this check a 404's HTML
+            // body gets written to the Pyodide FS as _trinket_display.py and
+            // only fails later, as a Python SyntaxError on the import — which
+            // hides the actual HTTP status from anyone debugging a deploy.
+            if (!r.ok) {
+              throw new Error('HTTP ' + r.status + ' fetching ' + TRINKET_DISPLAY_URL);
+            }
+            return r.text();
+          })
+          .then(function(src) {
+            py.FS.writeFile('_trinket_display.py', src);
+            return py.runPythonAsync([
+              'import _trinket_display as _d',
+              'import json as _json',
+              'import js as _js',
+              // json.dumps in Python so no PyProxy crosses into JS and nothing
+              // needs destroying — the same shape the Variables snapshot uses.
+              //
+              // dumps and the JS callback are bound as DEFAULT ARGUMENTS, not
+              // read from globals: the del below removes the module names, and
+              // a lambda body would have resolved them at call time and raised
+              // NameError on the first displayed expression. Defaults are
+              // evaluated here, once, and travel with the function.
+              'def _trinket_sink(p, _dumps=_json.dumps, _rich=_js.window.__trinket_rich):',
+              '    _rich(_dumps(p))',
+              '_d.install(_trinket_sink)',
+              // Same tidiness as the input() override above: the runner's own
+              // temporaries do not belong in the student's namespace. The sink
+              // survives because the module holds the reference.
+              'del _d, _json, _js, _trinket_sink'
+            ].join('\n')).then(function() {
+              displayHookReady = true;
+            });
+          })
+          .catch(function(e) {
+            // A failed install must not stop the runtime booting: the student
+            // loses typeset output, not their trinket.
+            try { console.warn('[mathOutput] display hook unavailable:', e); } catch (e2) {}
+          })
+      : Promise.resolve()
+    ).then(function() {
+      // Record the pristine namespace twice:
+      //
+      // - __trinket_baseline__ is the set the Variables panel hides.
+      // - __trinket_reset_baseline__ is a shallow copy used by Clear memory to
+      //   restore the runner's own globals without re-downloading Pyodide.
+      //
+      // The self-reference is intentional. A plain dict(globals()) is evaluated
+      // before its assignment, so it would otherwise omit the reset snapshot and
+      // work only once.
+      try {
+        py.runPython([
+          '__trinket_baseline__ = set(globals().keys())',
+          '__trinket_reset_baseline__ = dict(globals())',
+          '__trinket_reset_baseline__["__trinket_reset_baseline__"] = __trinket_reset_baseline__',
+          '__trinket_baseline__.add("__trinket_reset_baseline__")'
+        ].join('\n'));
+      } catch (e) {}
+      pyodideReady = true;
+      return py;
+    });
   });
 
   return pyodideLoading;
@@ -851,7 +951,13 @@ function isCancelError(err) {
 // `File "", line 1, in` the filter is supposed to repair. Tolerate both forms.
 var TRACEBACK_FRAME = /^\s*File "([^"]*)", line (\d+)(?:,\s*in\s*(.*?))?\s*$/;
 // Pyodide's own frames: the stdlib zip, the _pyodide package, its asm module.
-var TRACEBACK_INTERNAL = /python\d*\.zip|[\\/]_pyodide[\\/]|pyodide\.asm|importlib\._bootstrap/;
+// _trinket_display and <trinket-runner> are the typeset-output runner's own
+// frames (features.mathOutput). Without them a student's ValueError arrives
+// with two frames of runner plumbing on top, one of which — the wrapper, which
+// compiles under a filename of its own precisely so it can be matched here —
+// would otherwise be renamed to main.py and report a line the student never
+// wrote. That is exactly the "I broke the system" noise #107 removed.
+var TRACEBACK_INTERNAL = /python\d*\.zip|[\\/]_pyodide[\\/]|pyodide\.asm|importlib\._bootstrap|_trinket_display|<trinket-runner>/;
 // Names Python uses when code has no real file — all mean "the user's program".
 var TRACEBACK_SYNTHETIC = /^$|^<(exec|console|string|stdin|unknown)>$/;
 
@@ -1021,6 +1127,190 @@ function ensureVpython() {
 }
 
 var ASYNC_TRANSFORM_URL = '/js/embed/wvpython/vpython/_async_transform.py';
+
+// Typeset math output (features.mathOutput, surfaced as
+// trinket.config.mathOutput). When off, nothing here is fetched, no Python is
+// installed and every run path is byte-for-byte what it was before the
+// feature — which is the point: this ships default-off.
+var TRINKET_DISPLAY_URL = '/js/embed/_trinket_display.py';
+
+// Filename the run wrapper compiles under. Deliberately NOT <exec>, which
+// formatPythonTraceback renames to the student's main file: this name is
+// matched by TRACEBACK_INTERNAL instead, so the wrapper frame is dropped.
+var TRINKET_RUNNER_FILENAME = '<trinket-runner>';
+
+// Set only once the module is actually importable. The flag being on is not
+// enough: if the fetch or the install failed, the module is not there, and
+// running the wrapper anyway would make EVERY subsequent Run die with
+// ModuleNotFoundError attributed to the student's line 1 — turning "no typeset
+// output" into "your trinket is broken".
+var displayHookReady = false;
+
+function mathOutputEnabled() {
+  return !!(window.trinket && window.trinket.config && window.trinket.config.mathOutput);
+}
+
+// The main-thread sink. Python hands us one JSON string per displayed object
+// (see _trinket_display.install); the worker posts a `rich` message to the same
+// effect. Queued through the output buffer rather than written directly, so
+// ordering against print() and the line cap both hold.
+window.__trinket_rich = function(json) {
+  var payload;
+  try {
+    payload = JSON.parse(json);
+  } catch (e) {
+    return;
+  }
+  queueMathCard(payload);
+};
+
+var katexLoading = null;
+var katexAnnounced = false;
+
+// Load the vendored KaTeX bundle on first use. Memoized like ensureGlow().
+//
+// Lazy because most trinkets never typeset anything, and the bundle is ~300 KB
+// with its fonts. The URLs come from window.__TRINKET_KATEX__, which
+// pyodide.html emits through the cachePrefix filter only when the flag is on —
+// so a bare /components/ path (served no-store) is never used, and with the
+// flag off there is nothing to load.
+function ensureKatex() {
+  if (katexLoading) return katexLoading;
+  var cfg = window.__TRINKET_KATEX__;
+  if (!cfg || !cfg.js) {
+    katexLoading = Promise.reject(new Error('KaTeX assets are not configured.'));
+    // Swallow the rejection here so this memo never surfaces as an unhandled
+    // rejection; every consumer already has its own .catch.
+    katexLoading.catch(function() {});
+    return katexLoading;
+  }
+  if (!katexAnnounced) {
+    katexAnnounced = true;
+    // A complete line, not the openRuntimeLine()/closeRuntimeLine() pair: that
+    // flag has exactly one slot and a documented history of being broken by a
+    // second caller. The student's first typeset expression is already waiting
+    // on SymPy's ~3.3 s import, so saying so is worth a line.
+    writeOut('Loading math…\n');
+  }
+  katexLoading = new Promise(function(resolve, reject) {
+    if (window.katex) { resolve(window.katex); return; }
+    if (cfg.css && !document.getElementById('trinket-katex-css')) {
+      var link = document.createElement('link');
+      link.id   = 'trinket-katex-css';
+      link.rel  = 'stylesheet';
+      link.href = cfg.css;
+      document.head.appendChild(link);
+    }
+    var s = document.createElement('script');
+    s.src = cfg.js;
+    s.onload = function() {
+      if (window.katex) resolve(window.katex);
+      else reject(new Error('KaTeX loaded but did not define window.katex.'));
+    };
+    s.onerror = function() { reject(new Error('Failed to load KaTeX.')); };
+    document.head.appendChild(s);
+  }).catch(function(e) {
+    // Don't cache a rejected load: one transient failure would otherwise mute
+    // typesetting for the life of the page. Same reasoning as
+    // ensureConsoleTransform().
+    katexLoading = null;
+    throw e;
+  });
+  return katexLoading;
+}
+
+var mathCardSeq = 0;
+
+// Render one displayed result as a console card.
+//
+// Written immediately with the text fallback in place, then upgraded to typeset
+// math when KaTeX resolves. That ordering is deliberate: the card's POSITION in
+// the console is fixed the moment the program produced it, so a slow or failed
+// renderer can never reorder output or lose it. If KaTeX never arrives, the
+// text form — str(expr), the form that pastes back into Python — is what the
+// student keeps.
+//
+// Nothing student-controlled is ever concatenated into this HTML: the echoed
+// source and the text fallback go through escapeConsoleHtml(), and the LaTeX
+// string only ever reaches katex.renderToString().
+function renderMathCard(item) {
+  if (!jqconsole || !item) return;
+  var id = 'math-card-' + (++mathCardSeq);
+  var echo = '';
+  if (item.lineno || item.source) {
+    echo = '<span class="math-echo">'
+         + '<span class="math-ln">' + escapeConsoleHtml(item.lineno || '') + '</span>'
+         + '<span class="math-src">' + escapeConsoleHtml(item.source || '') + '</span>'
+         + '</span>';
+  }
+  var html = '<span class="math-card" id="' + id + '">'
+           + echo
+           + '<span class="math-body">' + escapeConsoleHtml(item.text || '') + '</span>'
+           + '</span>';
+  jqconsole.Write(html, 'math-card-wrap', false);
+
+  if (!item.latex) return;
+  ensureKatex().then(function(katex) {
+    var card = document.getElementById(id);
+    if (!card) return;                      // console was rebuilt under us
+    var body = card.querySelector('.math-body');
+    if (!body) return;
+    var rendered;
+    try {
+      rendered = katex.renderToString(item.latex, {
+        throwOnError: false,   // a printer quirk shows in the error colour, not as a dead run
+        trust: false,          // no \href / \includegraphics from student-defined _repr_latex_
+        maxExpand: 1000,       // a student macro cannot loop the expander
+        displayMode: false,    // SymPy already emits \displaystyle; the card is the block
+        output: 'htmlAndMathml' // the MathML is what a screen reader speaks
+      });
+    } catch (e) {
+      return;                               // keep the text fallback
+    }
+    body.innerHTML = rendered;
+    body.className = 'math-body math-typeset';
+  }).catch(function() {
+    // Degraded mode: the text fallback already on screen is the output.
+  });
+}
+
+// Run the student's program with the display hook in place.
+//
+// `src` is what executes (already async-transformed where that applies).
+// `echoSource` is what the source echo shows, which is the ORIGINAL program:
+// the async transform inserts `await `/`async ` textually, and echoing that
+// back would show the student a line they did not write. The transform never
+// adds or removes lines, so the two agree on line numbers and the echo lands
+// correctly.
+//
+// The hook returns its argument, so the value this resolves to is still the
+// last-expression value and renderRichResult() below is unaffected.
+function runProgram(src, echoSource) {
+  if (!mathOutputEnabled() || !displayHookReady) return pyodide.runPythonAsync(src || '');
+  pyodide.globals.set('__user_source__', src || '');
+  pyodide.globals.set('__trinket_echo_source__',
+    (echoSource === undefined || echoSource === null ? src : echoSource) || '');
+  return pyodide.runPythonAsync([
+    // __import__ rather than `import … as _d`: an import statement BINDS its
+    // name in the program's globals, and _d would then be visible to dir(),
+    // globals() and the REPL on every flag-on run — a difference from flag-off
+    // behaviour for no reason. Looked up per run rather than cached, because
+    // Clear memory restores the bootstrap globals and a name bound at first
+    // load would not survive it. sys.modules does, so this is a dict hit.
+    // Both sources: the echo shows what the student wrote, while any column
+    // offset from the AST refers to the text actually parsed. On the console
+    // path those differ, because the async transform inserts `await ` mid-line.
+    "__import__('_trinket_display').set_source(__trinket_echo_source__, __user_source__)",
+    // Deleted the moment set_source has consumed it, so the student's globals()
+    // and dir() look the same with the flag on as off. __user_source__ stays:
+    // run_program needs it, and it is pre-existing on the paths that set it
+    // (runVpython, the console branch) rather than anything this feature added.
+    // The _SKIP entry in VARS_HELPER/RECORD_HELPER is kept as the fallback for
+    // the case where set_source raises and this del never runs.
+    "del __trinket_echo_source__",
+    "await __import__('_trinket_display').run_program(__user_source__, globals())"
+  ].join('\n'), { filename: TRINKET_RUNNER_FILENAME });
+}
 var consoleTransformLoading = null;
 // Fetch the pure-ast transform source and expose transform_source in a private
 // module, WITHOUT importing the vpython package (heavy: glow/scene/etc.).
@@ -1047,6 +1337,10 @@ function ensureConsoleTransform() {
 // Run a VPython program: load glow + scene + bridge, comment out the version
 // header line (keeping line numbers stable), rewrite blocking rate()/sleep()
 // loops to async via the bridge's AST transformer, then execute.
+//
+// Deliberately NOT routed through runProgram(): typeset math output covers the
+// plain run and worker paths in slice 1 only. See slice 2 in
+// docs/superpowers/plans/2026-09-04-sympy-math-output.md.
 function runVpython(prog) {
   // No trailing newline: completed with "ready" once the library and bridge are
   // loaded, so the ellipsis never lingers as if it were still working (#27).
@@ -1187,7 +1481,7 @@ var VARS_HELPER = [
   // KEEP IN SYNC with RECORD_HELPER's _SKIP + _snap_ns filters (the step
   // debugger's per-step snapshots): a runner-injected name added here but not
   // there makes the debugger show internals the explorer hides, or vice versa.
-  "_SKIP = {'__user_source__', '_plt', '_vpy', '_js_scene', '_wrapped_rate', 'transform_source'}",
+  "_SKIP = {'__user_source__', '__trinket_echo_source__', '_plt', '_vpy', '_js_scene', '_wrapped_rate', 'transform_source'}",
   "_baseline = user_ns.get('__trinket_baseline__') or set()",
   '_out = []',
   'for _name, _val in list(user_ns.items()):',
@@ -1433,7 +1727,7 @@ var RECORD_HELPER = [
   // must hide the same runner-injected names. They live in separate helper
   // strings/namespaces, so a shared definition would add more machinery than
   // it removes — this cross-reference is the guard.
-  "_SKIP = {'__user_source__', '_plt', '_vpy', '_js_scene', '_wrapped_rate', 'transform_source'}",
+  "_SKIP = {'__user_source__', '__trinket_echo_source__', '_plt', '_vpy', '_js_scene', '_wrapped_rate', 'transform_source'}",
   'class _TrinketStopRecording(Exception): pass',
   '_steps = []',
   '_snaps = []',
@@ -1884,6 +2178,9 @@ function runStepThrough() {
 
   ensurePyodide().then(function() {
     if (debugCancelled || running) return null; // cancelled, or a normal run got in first
+    // Deliberately NOT routed through runProgram(): typeset math output covers
+    // the plain run and worker paths in slice 1 only. See slice 2 in
+    // docs/superpowers/plans/2026-09-04-sympy-math-output.md.
     var prog = syncFilesToFS(editor.getAllFiles(), mainFile);
     if (usesVPython(prog)) {
       $('#debug-note').text('Step through is not available for VPython programs');
@@ -2963,7 +3260,7 @@ function startRun() {
         window.document.pyodideMplTarget = document.getElementById('graphic');
         showGraphic();
         return pyodide.runPythonAsync(MATPLOTLIB_SETUP_CODE).then(function() {
-          return pyodide.runPythonAsync(prog || '');
+          return runProgram(prog);
         }).then(function(result) {
           // Notebook-style auto-display: if the program created figures but
           // never called plt.show(), show them. If a canvas already rendered
@@ -2988,10 +3285,10 @@ function startRun() {
             // transform_source name created when the helper was first loaded.
             'from _trinket_async_transform import transform_source\n' +
             'transform_source(__user_source__)');
-          return pyodide.runPythonAsync(asyncProg);
+          return runProgram(asyncProg, prog);
         });
       }
-      return pyodide.runPythonAsync(prog || '');
+      return runProgram(prog);
     });
   }).then(function(result) {
     renderRichResult(result);

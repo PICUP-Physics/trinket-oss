@@ -56,6 +56,8 @@ ASSET_DIRS="${ASSET_DIRS:-css js img fonts partials}"
 # works — uncached, not broken.
 CRAWL_PATHS="${CRAWL_PATHS:-/ /embed/python3 /embed/glowscript /embed/pyodide}"
 
+# Files the page crawl cannot see, published explicitly.
+#
 # The glowscript RUNNER's files are referenced from a client-side srcdoc
 # template ({{prefix}}components/...), so the page crawl cannot see them —
 # and they are precisely the files a cold-start herd sheds (glow.min.js,
@@ -63,8 +65,13 @@ CRAWL_PATHS="${CRAWL_PATHS:-/ /embed/python3 /embed/glowscript /embed/pyodide}"
 # for ace's lazily-loaded modes/themes (src-min-noconflict). Published
 # explicitly. RUNNER_VERSION tracks the versionMap's current
 # trinket build (the same pin the Dockerfile provisions).
+#
+# components/katex is here for the same reason: it is injected at run time by
+# ensureKatex() on the first typeset expression (features.mathOutput), so no
+# page markup references it and the crawl finds nothing. The directory branch
+# below copies it whole, which is what picks up fonts/.
 RUNNER_VERSION="${RUNNER_VERSION:-3.2.3}"
-RUNNER_PATHS="${RUNNER_PATHS:-components/vpython-glowscript/package/glow.RUNNER_VERSION.min.js components/vpython-glowscript/package/RSrun.RUNNER_VERSION.min.js components/vpython-glowscript/package/RScompiler.RUNNER_VERSION.min.js components/vpython-glowscript/package/reportScriptError-0.1.js components/vpython-glowscript/lib/jquery components/vpython-glowscript/css components/src-min-noconflict}"
+RUNNER_PATHS="${RUNNER_PATHS:-components/vpython-glowscript/package/glow.RUNNER_VERSION.min.js components/vpython-glowscript/package/RSrun.RUNNER_VERSION.min.js components/vpython-glowscript/package/RScompiler.RUNNER_VERSION.min.js components/vpython-glowscript/package/reportScriptError-0.1.js components/vpython-glowscript/lib/jquery components/vpython-glowscript/css components/src-min-noconflict components/katex}"
 RUNNER_PATHS="${RUNNER_PATHS//RUNNER_VERSION/${RUNNER_VERSION}}"
 
 say() { printf '  %s\n' "$*"; }

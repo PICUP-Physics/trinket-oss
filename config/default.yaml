@@ -15,6 +15,7 @@ features:
   stepDebugger: false  # "Step through" record & replay debugger in the Variables tab (requires variableExplorer)
   workerRuntime: false  # Run python3 programs in a Web Worker (#108) so the page cannot freeze and Stop always works. VPython stays on the main thread unless workerVPython (below) is also on. Per-trinket override: ?runtime=main / ?runtime=worker
   workerVPython: false  # Run Web VPython through vpython-jupyter in the Web Worker (#108 follow-on). Opt-in; ?runtime=main escapes. See docs/superpowers/specs/2026-08-10-vpython-jupyter-adoption-design.md
+  mathOutput: false  # Typeset SymPy output (Jupyter-style) in the Pyodide console: bare top-level expressions and display() render via vendored KaTeX. See docs/superpowers/specs/2026-09-03-sympy-math-output-design.md
   requireAuthToFork: false  # Require login to fork/share a trinket; false = allow anonymous forks (trinket.io default)
   courseImport: true   # Show an "Import a Course" button on the home page. Instructor-only via canCreateCourse; deploys without an instructor concept render it hidden regardless of the flag.
   accessCodeEnrollment: false  # Self-service course join via access code (instructor mints a code, students enter it). Off by default; enable per-deploy for public/self-serve servers without LMS/SMTP. Gates the instructor UI, the student UI, AND the server endpoints together.

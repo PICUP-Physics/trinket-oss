@@ -505,6 +505,17 @@
 
   {{ component('jquery-ui', 'jquery-ui.min.js') | safe }}
 
+  {# Vendored KaTeX asset URLs for the typeset math output feature (features.mathOutput).
+     Referenced under the cache prefix so they are served immutable; KaTeX's CSS resolves
+     its fonts by relative path, so they pick up the same prefix automatically.
+     Lazily loaded by pyodide.js on the first typeset expression. #}
+  {% if config.features.mathOutput %}
+  <script>window.__TRINKET_KATEX__ = {
+    js : '{{ "/components/katex/katex.min.js" | cachePrefix }}',
+    css: '{{ "/components/katex/katex.min.css" | cachePrefix }}'
+  };</script>
+  {% endif %}
+
   {% if outputOnly %}
 
   {% set js = extra_js.concat([

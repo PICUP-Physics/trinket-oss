@@ -8,6 +8,34 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Pure-Python unit tests, on their own job so the interpreter matrix does not
+  # cross-multiply with the database backends below (2 x 2 legs of the full JS
+  # suite for no gain).
+  #
+  # 3.13 is what Pyodide 0.28.1 ships to students today; 3.14 is where Pyodide
+  # is heading once #215 lifts the classic-worker cap. The AST work in
+  # _trinket_display.py is the version-sensitive part of the typeset math
+  # feature, so both are checked from the start rather than retrofitted after a
+  # bump breaks something.
+  python-unit:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.13', '3.14']
+    name: python (${{ matrix.python-version }})
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+      - run: python --version
+
+      - name: trinket display hook tests (python, no deps)
+        run: python test/lib/embed/test_trinket_display.py
+
   test:
     runs-on: ubuntu-latest
     # Run the SAME suite on both database backends. Mongo is lenient about
