@@ -87,7 +87,12 @@
   }
 
   // ---- worker runtime (skipped entirely when required from node) -----------
-  if (typeof self !== 'undefined' && typeof self.importScripts === 'function') {
+  // Worker context detection. This used to test for importScripts, which a
+  // MODULE worker does not have — so after the #215 conversion that guard would
+  // skip the entire runtime and the worker would answer nothing, silently.
+  // postMessage + no window is true in both worker flavours and false under node.
+  if (typeof self !== 'undefined' && typeof self.postMessage === 'function' &&
+      typeof window === 'undefined') {
     var pyodide = null;
     var currentRunId = null;
     var varsHelper = '';
@@ -95,8 +100,12 @@
     var post = function(msg) { self.postMessage(msg); };
 
     var boot = function(msg) {
-      self.importScripts(msg.pyodideUrl);
-      return self.loadPyodide({ indexURL: msg.indexURL }).then(function(py) {
+      // Dynamic import of pyodide.mjs, the module build. importScripts is a
+      // classic-worker API and 314.x refuses to load that way at all (#215).
+      return import(msg.pyodideUrl).then(function(mod) {
+        var load = (mod && mod.loadPyodide) || self.loadPyodide;
+        return load({ indexURL: msg.indexURL });
+      }).then(function(py) {
         pyodide = py;
         // Batched, exactly as the in-window runner does, so partial lines are
         // not emitted one character at a time.
