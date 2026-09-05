@@ -62,7 +62,14 @@
 
     self.$scope.insertSelectedTrinket = function(item) {
       self.$scope.trinketSearchValue = "";
-      var src = self.trinketConfig.getUrl("/embed/" + item.lang + "/" + item.shortCode);
+      // Root-relative ON PURPOSE. This string is STORED in the material, and
+      // getUrl() would stamp in the authoring deploy's hostname — pinning the
+      // page to whichever deploy it was written on. Two trials sharing a
+      // Firestore made that visible: a course authored on one rendered on the
+      // other with every embed still pointing back. The renderers are already
+      // host-agnostic, and it cannot be corrected on serve (see M&I #7 and
+      // test/lib/api/editor-embed-conflict.test.js), so it has to be right here.
+      var src = "/embed/" + item.lang + "/" + item.shortCode;
       self.editor.insert("\n<iframe src='" + src + "?start=result' width='100%' height='400' frameborder='0' marginwidth='0' marginheight='0' allowfullscreen></iframe>\n");
       self.$scope.searchInputOpen   = false;
       self.$scope.searchInputActive = false;
