@@ -429,7 +429,7 @@ expression only, wrong pane, ordering lost).
 
 ## Answers from the PICUP team (running log)
 
-Q1, Q2, Q5, Q7 and Q8 are answered from the three production deploys and the runtime. Q3, Q4 and Q6 are
+Q1, Q2, Q5, Q7 and Q8 are answered from the three production deploys and the runtime. Q3, Q4, Q6 and Q9 were decided by Andrew (2026-09-03/05); nothing is
 Andrew's calls and still open. Andrew is merging PRs on 2026-09-03, so the base-branch notes at the end are
 dated.
 
@@ -458,24 +458,53 @@ calculator layout is separate scope on Steve's backlog. But a real `Content-Secu
 on `/embed/python3` by all three deploys, so anything CDN-loaded would need a policy change regardless.
 Vendoring sidesteps that.
 
-### Q3 — vendor KaTeX (Andrew's call; **implemented as vendored** in slice 1, pending his answer)
+### Q3 — vendor KaTeX: **decided, vendored** (Andrew, 2026-09-05, on PR #239)
 
-Slice 1 vendors KaTeX **0.18.5** (the current release; this document's plan text guessed 0.16.x),
-woff2 fonts only, pinned by version + sha256 in the Dockerfile and referenced under the cache prefix.
-The standing argument for vendoring rather than CDN-loading lives in `COMPONENTS.md`, beside the
-vendoring itself, so it stays with the code rather than in a merged PR description. If the answer
-turns out to be no, the rework is confined to Task 2 — the Dockerfile block, `scripts/sync-katex.sh`
-and the hosting publish list — plus a CSP change; the Python module, the output buffer, the rendering
-and the tests are unaffected. The numbers this was decided on:
+Kept as implemented. Andrew's ranking of the arguments, recorded because they are not equally strong:
+the **snapshot rasterizer** is the deciding one and is sufficient alone (html-to-image inlines
+`@font-face` only from same-origin stylesheets, so a CDN KaTeX would produce library/example thumbnails
+with the equations stripped of glyphs, and no configuration can fix that); the CSP argument is the
+softest (the live policy already permits cdnjs and jsDelivr in `script-src`, `style-src` and `font-src`;
+emptying `cdnOrigins` is a direction, not a constraint); classroom network blocking is real but soft;
+the ~6% size figure is accepted. Caveat to carry: on the picup VPS static assets are served `no-store`
+(**#171**, "Static assets are served with no-store — every page load re-downloads 4.4 MB of immutable
+JS"), so the lazy ~300 KB is re-fetched on every load of a typesetting trinket until that is fixed. The
+same is true of the 6.6 MB already re-sent, so it does not change vendor-vs-CDN. Earlier revisions of
+this document cited #234 for the no-store issue; #234 is the cache-prefix follow-up ("client-built URLs
+still bypass the cache prefix"), and the correct reference is #171.
 
-A cold session already pulls 6.89 MB, 96% of it from `/components/`. The ~400 KB lazy KaTeX load is ~6% on
-top, and only for trinkets that typeset. Vendored also means same-origin, which the snapshot rasterizer needs
-for font embedding. Two caveats: on the picup VPS `app.cache.enabled` is `false`, so every asset is re-fetched
-on every load (tracked as #234); and assets must be referenced under `/cache-prefix-<commit>/` to get
-`immutable, max-age=31536000` rather than `no-store` / `max-age=300` at bare paths (the bug PR #233 fixes for
-the glowscript runner). Slice 1 adopts the cache-prefix reference.
+Sizing context: a cold session already pulls 6.89 MB, 96% from `/components/`. Vendored also means
+same-origin, which the snapshot rasterizer needs for font embedding. Assets must be referenced under
+`/cache-prefix-<commit>/` (PR #233's pattern), which slice 1 does.
 
-### Q4 — typeset Instructions: Andrew's call, open.
+### Q4 — typeset Instructions: **decided, not in slice 1; open as its own issue** (Andrew, 2026-09-05)
+
+Andrew confirmed the wart (course pages carry MathJax; `embed/base.html` and `embed/pyodide.html` carry
+none) and wants it fixed, as a separate issue, for three reasons: it changes the loading profile (KaTeX
+would move from lazy-on-first-typeset to the critical path of every embed containing a `$`, a fresh
+fetch per load while #171 stands); it is a different trust surface (instructor-authored markdown, not
+escaped student output; deserves its own escaping and allowed-sequence decisions); and it would overload
+one flag (enabling typeset console output must not silently change how years-old instructor content
+renders). Two independent decisions, so two flags or at least two rollouts.
+
+Findings from a second review (2026-09-05) that the issue must carry:
+
+- The embed loads the **legacy** markdown parser (`lib/views/embed/pyodide.html:540` →
+  `public/js/trinket-markdown.js`), which protects only `$$`, `$(` and `)$` from marked
+  (`trinket-markdown.js:434`). Single-dollar `$x_1$` is mangled to italics before any renderer sees it.
+- Course pages do **not** enable single-dollar inline math either: MathJax `inlineMath` is
+  `[['$(',')$'], ['\\(','\\)']]` (`lib/views/base.html:208`). The house inline delimiter is `$( … )$`.
+- Course pages load a **siunitx** extension for MathJax (`base.html:213-216`). KaTeX has no siunitx, so
+  `\SI{9.8}{\metre\per\second\squared}` would render on the course page and fail in the embed. For a
+  physics deployment this is the main consistency hazard, and it is instructor-authored TeX.
+- Instructions exist on all nine embed types (`includes/embed-instructions.html`), not only Python; the
+  fix must not ride on `features.mathOutput` or the Python-only asset injection.
+- No double-typesetting risk: `#instructionsOutput` is rendered only inside the embed iframe.
+
+Recommendation for the issue: own flag; all embed types; delimiter set matched to the house set
+(`$$`, `$( )$`, `\( \)`, `\[ \]`); and a deliberate engine choice that weighs siunitx. The honest option
+is MathJax for Instructions (the same build and config the course pages use, already CSP-allowed) and
+KaTeX for SymPy output; that contradicts "one renderer" but buys parity with course material.
 
 ### Q5 — Pyodide 0.28.1 on all three deploys; ceiling is 0.29.4
 
@@ -493,9 +522,32 @@ conversion is backward compatible and can land before any version bump. Conseque
 wrap is the version-sensitive part of slice 1, so run its pure-Python tests under **3.13 and 3.14** from the
 start (cheap now, annoying to retrofit). Do not lean on 3.13-only `ast` behaviour.
 
-### Q6 — deploy config vs per-trinket: Andrew's call, open
+### Q6 — deploy config vs per-trinket: **decided, deploy config; per-trinket closed** (Andrew, 2026-09-05)
 
-`runtimeOption` (`default.yaml:472`) already models the per-trinket pattern if that route is chosen.
+Deploy config is right, and Andrew closes the door on per-trinket rather than deferring it: per-trinket
+settings earn their place when trinkets within one course legitimately need to differ, and this is not
+that. Inconsistent rendering between assignments in one course is worse than either setting applied
+uniformly, and a flag saved into the trinket travels on copy and export, producing "why does maths render
+in the original and not in my copy?" support questions. The escape hatch that matters exists at program
+level and is the one students learn anyway: `display()` to force a card, trailing `;` to suppress. If
+instructors ask for control, expect the request to be **course-level**, not per-trinket (precedent:
+`course.globalSettings.markdownEngine`, `lib/models/course.js:30-35`; the embed does not currently know
+its course, so this needs plumbing and is noted, not built).
+
+Second-review notes that agree: no URL override for this feature (the runtime router's own rule is that
+the flag is the only gate and a query string must not opt a class in; math output has no false-positive
+case that would justify one, and students edit URLs); the source-line echo and the copy format are viewer
+preferences (per-user settings modal or `localStorage`), not trinket settings; and since a production
+flag change costs an image rebuild while the dev stack already forces the flag on
+(`docker-compose.gcr.yml:76`), defaulting `mathOutput` to true upstream once trials pass, keeping it as a
+kill switch, is the lower-friction path. Not before worker parity lands, or uindy advertises a feature
+that does nothing.
+
+**Andrew's gate before enabling on trinket.gopicup.org:** the deploy-wide flag is safe only because the
+feature is a byte-for-byte no-op for existing trinkets (bare ints, strings, plain lists and matplotlib
+return values all silent). That property is testable rather than arguable: he will run a set of real
+PICUP python3 trinkets on staging with the flag on and confirm the console output is unchanged. Not a
+blocker for merging slice 1 behind the default-off flag.
 
 ### Q7 — embed snippet emits no `allow=` attribute (confirmed)
 
@@ -595,7 +647,7 @@ under "Unverified claims" above.
 
 What remains open is not a question about the design:
 
-- **Q3, Q4 and Q6** are Andrew's calls. Slice 1 was implemented on assumed defaults (vendor KaTeX: yes,
+- **Q3, Q4 and Q6** are decided (2026-09-05) and match the defaults slice 1 assumed (vendor KaTeX: yes,
   pinned at 0.18.5; Instructions not typeset; deploy-level config rather than per-trinket), so a different
   answer means a change, not a rewrite.
 - **#215** (module worker) has not been started — it is an open issue, not a PR. Task 8, worker parity, is

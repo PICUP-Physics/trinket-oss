@@ -51,13 +51,13 @@ parity) must wait for #215** and must re-anchor its line references when it star
 Base branch: `picup/main` (upstream `origin`). Work on a feature branch in your own fork,
 e.g. `feature/sympy-math-output`, and open the PR against `PICUP-Physics/trinket-oss`.
 
-## Still open from the spec (do not block on these; note the assumption in the PR)
+## Formerly open items (all decided by Andrew on 2026-09-05; the assumptions below were confirmed)
 
 | Item | Owner | Default assumed by this plan |
 |---|---|---|
-| Q3 vendor KaTeX | Andrew | **Yes** (vendored; the spec's reasoning stands) |
-| Q4 typeset Instructions too | Andrew | **Not in slice 1** |
-| Q6 deploy config vs per-trinket | Andrew | **Deploy config** (`features.mathOutput`); per-trinket can layer on later via the `runtimeOption` pattern at `default.yaml:472` |
+| Q3 vendor KaTeX | Andrew | **Yes, decided.** Deciding argument: snapshot font embedding needs same-origin CSS. Cite #171 (no-store), not #234. |
+| Q4 typeset Instructions too | Andrew | **Not in slice 1, decided.** Own issue, own flag, all embed types; see the spec's Q4 entry for the parser/delimiter/siunitx findings. |
+| Q6 deploy config vs per-trinket | Andrew | **Deploy config, decided; per-trinket closed.** Program-level `display()` / trailing `;` are the escape hatches. Gate before prod: no-op regression on real PICUP trinkets on staging. |
 | KaTeX coverage of SymPy output | Steve offered | Task 6 includes a coverage probe; report gaps rather than work around them |
 
 ---
