@@ -12,7 +12,7 @@
   // cache-prefix. Emitting nothing (the old behaviour) sent the runner to bare
   // paths, which the app serves `no-store` and Firebase Hosting serves with a
   // 5-minute TTL — so a 4.2 MB glow.min.js was re-fetched all through a class.
-  var prefix = '{% if config.app.prefixes.components %}{{config.app.prefixes.components}}/{% else %}cache-prefix-{{ assetToken() }}/{% endif %}';
+  var prefix = '{% if config.app.prefixes.components %}{{config.app.prefixes.components}}/{% else %}cache-prefix-{{ componentsToken() }}/{% endif %}';
   window.trinketAppConfig = {
     url     : '{{config.url}}',
     domain  : '{{config.app.url.hostname}}',
