@@ -15,6 +15,8 @@
 const { defineConfig, devices } = require('@playwright/test');
 
 module.exports = defineConfig({
+  globalSetup: require.resolve('./ephemeral-setup.js'),
+  globalTeardown: require.resolve('./ephemeral-teardown.js'),
   testDir: './specs-deploy',
   // A deployed server is shared and may be cold; be patient but not silly.
   timeout: 90_000,
