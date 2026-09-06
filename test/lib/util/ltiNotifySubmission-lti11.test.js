@@ -49,7 +49,12 @@ describe('ltiNotifySubmission: LTI 1.1 Basic Outcomes path', () => {
     expect(posted11[0].serviceUrl).toBe('https://lms.example/outcomes');
     expect(posted11[0].sourcedId).toBe('sid-9');
     expect(posted11[0].secret).toBe('sec');
-    expect(posted11[0].launchUrl).toBe(config.url + '/lti/review/s1');
+    // Under the INSTALLED launch path, not a path of its own: Canvas matches a
+    // stored basic_lti_launch URL back to an installed tool before launching it
+    // (#14). Pinned against the tool path rather than a literal so the two move
+    // together; test/lib/api/lti11-review-url-reachable.test.js reads the real
+    // path out of the served cartridge.
+    expect(posted11[0].launchUrl).toBe(config.url + '/lti11/launch?submission=s1');
   });
 
   it('sends no score — trinket has no concept of a grade', async () => {

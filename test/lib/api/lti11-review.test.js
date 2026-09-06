@@ -13,6 +13,7 @@ const LtiConsumer = require('../../../lib/models/ltiConsumer');
 const Trinket  = require('../../../lib/models/trinket');
 const v        = require('../../../lib/util/lti11Verify');
 const publicHostname = require('../../../lib/util/publicHostname');
+const ltiReview = require('../../../lib/util/ltiReview');
 
 const AUTHORITY = 'localhost';
 const serverUrl = (path) => v.launchUrlFromRequest(
@@ -72,6 +73,45 @@ describe('LTI 1.1 review launch (SpeedGrader)', () => {
     expect(flow.lastResponse.statusCode,
       JSON.stringify(flow.lastResponse.body).slice(0, 200)).toBe(302);
     expect(flow.lastResponse.headers.location).toBe('/lti/review-panel/sub-1');
+  });
+
+  // #14: the URL we ADVERTISE is now the query form on the installed launch path,
+  // because Canvas will not launch a stored URL it cannot match to an installed
+  // tool. This is the end-to-end proof of that half — a real signed launch at the
+  // real URL, including the OAuth base covering the query string.
+  it('lands a grader launched at the advertised ?submission= URL', async () => {
+    const course = await ownedCourse();
+    const consumer = await seedConsumer();
+    stubSubmission({ id: 'sub-q1', lang: 'python3', courseId: course.id });
+
+    // Exactly what notify() posts to the platform, minus the origin.
+    const advertised = ltiReview.advertisedUrl('', 'sub-q1', { version: '1.1' });
+    expect(advertised, 'must ride on the installed launch path').toBe('/lti11/launch?submission=sub-q1');
+
+    // Canvas signs body + query together; lti11Verify folds the query into the base.
+    const params = signedReviewLaunch('/lti11/launch', consumer, {});
+    params.oauth_signature = v.sign('POST', serverUrl('/lti11/launch'),
+      Object.assign({ submission: 'sub-q1' }, params), consumer.secret);
+
+    await flow._inject('POST', 'http://' + AUTHORITY + advertised, params);
+
+    expect(flow.lastResponse.statusCode,
+      JSON.stringify(flow.lastResponse.body).slice(0, 200)).toBe(302);
+    expect(flow.lastResponse.headers.location).toBe('/lti/review-panel/sub-q1');
+  });
+
+  it('rejects a review launch whose signature omitted the ?submission= param', async () => {
+    // Without this, anyone could append ?submission=<id> to a launch they hold a
+    // valid signature for and read another student's work.
+    const course = await ownedCourse();
+    const consumer = await seedConsumer();
+    stubSubmission({ id: 'sub-q2', lang: 'python3', courseId: course.id });
+
+    const params = signedReviewLaunch('/lti11/launch', consumer, {});   // body ALONE
+    await flow._inject('POST', 'http://' + AUTHORITY + '/lti11/launch?submission=sub-q2', params);
+
+    expect(flow.lastResponse.headers.location || '').toContain('/login');
+    expect(flow.lastResponse.headers.location || '').not.toContain('/lti/review-panel');
   });
 
   it('refuses a grader with no feedback permission on the submission course', async () => {

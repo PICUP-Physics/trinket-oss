@@ -29,10 +29,60 @@ describe('ltiReview.parseTarget', () => {
     expect(r.parseTarget('https://tool.example/lti11/launch')).toBeNull();
   });
 
+  // #14: the 1.1 review URL now rides on the installed launch path as a query
+  // param, because Canvas will not launch a stored URL it cannot match to an
+  // installed tool.
+  it('reads it from the query form on the installed launch path', () => {
+    expect(r.parseTarget('https://tool.example/lti11/launch?submission=sub123')).toBe('sub123');
+    expect(r.parseTarget('/lti11/launch?submission=sub123')).toBe('sub123');
+    expect(r.parseTarget('/lti11/launch?assignment=m1&submission=sub123')).toBe('sub123');
+  });
+
+  it('does not mistake another launch param for a review target', () => {
+    // The regex anchors on ?/& so a param merely ENDING in "submission" cannot
+    // hijack a normal launch into a review.
+    expect(r.parseTarget('/lti11/launch?assignment=material-123')).toBeNull();
+    expect(r.parseTarget('/lti11/launch?resubmission=sub123')).toBeNull();
+  });
+
   it('tolerates missing input rather than throwing', () => {
     expect(r.parseTarget('')).toBeNull();
     expect(r.parseTarget(undefined)).toBeNull();
     expect(r.parseTarget(null)).toBeNull();
+  });
+});
+
+describe('ltiReview.advertisedUrl', () => {
+  it('puts the 1.1 URL on the installed launch path', () => {
+    expect(r.advertisedUrl('https://t.example', 'sub123', { version: '1.1' }))
+      .toBe('https://t.example/lti11/launch?submission=sub123');
+  });
+
+  it('leaves 1.3 on its own path — nothing matches it against installed tools', () => {
+    expect(r.advertisedUrl('https://t.example', 'sub123'))
+      .toBe('https://t.example/lti/review/sub123');
+  });
+
+  it('round-trips: whatever it builds, parseTarget reads back', () => {
+    ['1.1', '1.3'].forEach((version) => {
+      expect(r.parseTarget(r.advertisedUrl('https://t.example', 'sub123', { version: version })))
+        .toBe('sub123');
+    });
+  });
+});
+
+describe('ltiReview.targetFromRequest', () => {
+  it('reads the path form, for submissions Canvas stored before the fix', () => {
+    expect(r.targetFromRequest({ path: '/lti/review/old-1', query: {} })).toBe('old-1');
+  });
+
+  it('reads the query form, which request.path alone cannot carry', () => {
+    expect(r.targetFromRequest({ path: '/lti11/launch', query: { submission: 'new-1' } })).toBe('new-1');
+  });
+
+  it('leaves an ordinary launch alone', () => {
+    expect(r.targetFromRequest({ path: '/lti11/launch', query: { assignment: 'm1' } })).toBeNull();
+    expect(r.targetFromRequest(null)).toBeNull();
   });
 });
 
