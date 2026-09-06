@@ -123,7 +123,11 @@
       if (worker) return worker;
       ready = false;
       readyWaiters = [];
-      worker = new WorkerCtor(opts.workerUrl);
+      // A MODULE worker. Pyodide 314.x (Python 3.14) dropped classic workers
+      // outright ("Classic web workers are not supported"), and a module worker
+      // boots fine at 0.28.1, 0.29.4 and 314.0.6 alike — so this is backward
+      // compatible and can land before any version bump (picup #215).
+      worker = new WorkerCtor(opts.workerUrl, { type: 'module' });
       worker.onmessage = onMessage;
       worker.postMessage({
         type: 'init',
