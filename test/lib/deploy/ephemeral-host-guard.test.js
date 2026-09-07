@@ -55,3 +55,30 @@ describe('which hosts may have test identities minted on them', () => {
     expect(guard.NEVER_MINTABLE.has('trinket.gopicup.org')).toBe(true);
   });
 });
+
+// The guard is correct; WHERE it runs is the other half, and only one order
+// works. globalSetup must probe /login for form auth BEFORE asserting the host,
+// because a form-auth deploy has no Firebase to mint against on any host — so
+// the allowlist would be gating a path that cannot be taken, and a throw in
+// globalSetup takes the WHOLE run with it, anonymous specs included.
+//
+// Asserting first turns "the journeys skip" into "nothing runs at all" on every
+// form-auth deploy that is not on the list. trinket-staging.drewsday.com is
+// precisely that, and it is the example the refusal test above uses.
+//
+// A static assertion because the alternative is standing up a fake deploy to
+// observe the order; the property is positional, so position is what to pin.
+describe('globalSetup asks whether minting is possible before whether it is allowed', () => {
+  const fs = require('fs');
+  const src = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'browser', 'ephemeral-setup.js'), 'utf8');
+
+  it('probes /login before calling assertMintable', () => {
+    const probe  = src.indexOf('type="password"');
+    const assert = src.indexOf('assertMintable(baseURL)');
+    expect(probe, 'the form-auth probe should exist').toBeGreaterThan(-1);
+    expect(assert, 'assertMintable should still be called').toBeGreaterThan(-1);
+    expect(probe, 'a form-auth deploy must bow out before the host allowlist can throw')
+      .toBeLessThan(assert);
+  });
+});
