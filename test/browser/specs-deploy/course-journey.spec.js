@@ -67,8 +67,11 @@ test.describe('instructor course journey', () => {
     // an LMS link built before the rename still lands somewhere — a 301 to the
     // new slug. This is the deployed-server check on the routeParser shim.
     if (originalSlug) {
-      const me = await api('GET', '/api/user');
-      const username = ((me.body && (me.body.data || me.body.user)) || {}).username;
+      // From the course's own _owner. This used to read GET /api/user, which
+      // 404s on these deploys — so `username` was always undefined and the
+      // guard below silently skipped this entire check. It had never run.
+      const username = ((course._owner) || {}).username;
+      expect(username, 'the course should carry its owner').toBeTruthy();
       if (username) {
         const viaOldSlug = await page.request.fetch(
           new URL(`/${username}/courses/${originalSlug}`, baseURL).toString(),
