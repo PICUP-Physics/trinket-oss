@@ -1,67 +1,79 @@
 const { test, expect } = require('@playwright/test');
 
-// Typeset SymPy output (features.mathOutput), against a REAL deployment.
+// Typeset SymPy output (#240), against a real deploy.
 //
-// The local suite (test/browser/specs/math-output.spec.js) covers the feature
-// in full against a `make gcp` stack, which has the flag forced on via
-// docker-compose.gcr.yml's NODE_CONFIG. A real deploy is not guaranteed to have
-// it on — this is why every other feature-gated case in this repo (see
-// worker-runtime.spec.js, share-runtime-option.spec.js) reads the flag off
-// window.trinket.config and skips rather than asserts when it is off. This
-// spec follows that precedent so a deploy without mathOutput reports a clean
-// skip, not a failure, while a deploy WITH it on turns the manual "does it
-// actually render" look into a recorded check.
+// The unit tests cover the AST wrap and the classifier as pure functions. What
+// they cannot show is the thing the feature IS: that a bare SymPy expression
+// becomes rendered mathematics in a browser, in order with print output. That
+// needs Pyodide, SymPy and KaTeX all actually loading.
 //
-// Point this at a MAIN-THREAD deploy (rba-merge-trial.spvi.net or
-// trial-merge.spvi.net). Slice 1 does not cover the Web Worker runtime — that
-// is Task 8, waiting on #215 — so on a worker deploy such as
-// trinket-merge-test.web.app the flag reads as on and nothing renders, which
-// looks like a failure and is not one. trinket-merge-test becomes the right
-// target once Task 8 lands.
-//
-// Anonymous and read-only, like the rest of deploy-smoke.spec.js, so it is safe
-// to run against a live server.
-
-// Set the editor contents and Run, on the page that is already loaded. The
-// flag has to be read off the loaded page before deciding whether to run at
-// all, so navigation is separate from this rather than folded into it — a
-// second goto would throw the first page (and its Pyodide boot) away.
-async function editorRun(page, code) {
+// Skips unless features.mathOutput is on, so it is inert on deploys that have
+// not enabled it — and skips on worker deploys, where slice 1 does nothing by
+// design (Task 8 follows #215).
+async function editorRun(page, path, code) {
+  await page.goto(path);
+  await expect(page.locator('.ace_editor').first()).toBeVisible();
   await page.evaluate((src) => {
     document.querySelector('.ace_editor').env.editor.setValue(src, 1);
   }, code);
   await page.locator('.run-it').first().click();
 }
+const consoleText = (page) =>
+  page.evaluate(() => document.querySelector('#console-output')?.innerText || '');
 
-test.describe('typeset SymPy math output', () => {
-  test('a bare top-level expression renders a typeset .math-card', async ({ page }) => {
-    // Same runtime pin the local suite uses: the worker half of the feature
-    // waits on #215 (module-worker conversion), so mathOutput is only wired up
-    // on ?runtime=main today.
-    await page.goto('/embed/python3?runtime=main');
-    await expect(page.locator('.ace_editor').first()).toBeVisible();
+test.describe('typeset SymPy output', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/embed/python3');
+    // Read the SERVED page, not a guessed JS object path: the embed config is a
+    // flat object, and probing window.trinket.config.features.mathOutput made
+    // this spec skip silently on a deploy where the feature was in fact ON.
+    // A test that skips when it should run is worse than no test.
+    const html = await page.content();
+    const cfg = {
+      math:   /mathOutput\s*:\s*true/.test(html),
+      worker: /workerRuntime\s*:\s*true/.test(html)
+    };
+    // Say WHY out loud. A silent skip is indistinguishable from a pass in the
+    // summary line, and this spec did exactly that: it skipped on a deploy where
+    // mathOutput was demonstrably ON, because the detection probed the wrong
+    // object. "5 skipped" read as fine. Printing the reason makes a broken
+    // detector look different from a feature that is simply off.
+    if (!cfg.math)   console.log('  [math-output] SKIP: mathOutput is off on this deploy');
+    if (cfg.worker)  console.log('  [math-output] SKIP: worker deploy — slice 1 is main-thread (Task 8 follows #215)');
+    if (cfg.math && !cfg.worker) console.log('  [math-output] RUNNING: mathOutput on, main-thread deploy');
+    test.skip(!cfg.math, 'features.mathOutput is off on this deploy');
+    test.skip(cfg.worker, 'slice 1 is main-thread only; worker parity follows #215');
+  });
 
-    const enabled = await page.evaluate(() =>
-      !!(window.trinket && window.trinket.config && window.trinket.config.mathOutput));
-    test.skip(!enabled, 'mathOutput is disabled on this deploy');
+  test('a bare SymPy expression renders as mathematics', async ({ page }) => {
+    await editorRun(page, '/embed/python3',
+      'from sympy import symbols, Integral, sqrt\n' +
+      'x = symbols("x")\n' +
+      'print("BEFORE")\n' +
+      'Integral(sqrt(1/x), x)\n' +
+      'print("AFTER")\n');
 
-    await editorRun(page, [
-      'import sympy as sp',
-      "x = sp.symbols('x')",
-      'x**2 + 1',
-    ].join('\n'));
+    // KaTeX renders into .katex; that element existing is the proof the whole
+    // chain worked — Pyodide, SymPy, the AST hook, the sink and the renderer.
+    await expect(page.locator('#console-output .katex').first(),
+      'a bare SymPy expression should typeset, not print a repr')
+      .toBeVisible({ timeout: 180_000 });
 
-    // Pyodide boots ~10 MB from a CDN and `import sympy` adds ~3.3 s on top of
-    // that on first run, so the first assertion of any run gets the generous
-    // timeout the rest of this suite uses for a first Pyodide run.
+    // Interleaving is the point: math must appear in PROGRAM order.
+    const text = await consoleText(page);
+    expect(text).toContain('BEFORE');
+    expect(text).toContain('AFTER');
+    expect(text.indexOf('BEFORE'), 'math must not be hoisted out of program order')
+      .toBeLessThan(text.indexOf('AFTER'));
+  });
+
+  test('a non-typesettable value stays silent, as a script does', async ({ page }) => {
+    // The compatibility guarantee: existing trinkets behave identically.
+    await editorRun(page, '/embed/python3', '42\n"a string"\nprint("ONLY THIS")\n');
     await expect(async () => {
-      expect(await page.locator('#console-output .math-card').count()).toBe(1);
-    }).toPass({ timeout: 90_000 });
-
-    // Typeset, not the degraded text fallback: KaTeX actually rendered inside
-    // the card's math-body.
-    await expect(
-      page.locator('#console-output .math-card .math-body .katex')
-    ).toHaveCount(1, { timeout: 30_000 });
+      expect(await consoleText(page)).toContain('ONLY THIS');
+    }).toPass({ timeout: 180_000 });
+    expect(await page.locator('#console-output .katex').count(),
+      'ints and strings must not typeset').toBe(0);
   });
 });
