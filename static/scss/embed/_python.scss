@@ -317,6 +317,92 @@
       color: white;
   }
 
+  /* Typeset math output (features.mathOutput).
+   *
+   * One card per displayed expression: the student's source line, numbered as
+   * in the code window, with the typeset result beneath it. The card carries
+   * its OWN light palette rather than inheriting, because it has to be legible
+   * both on the dark Run console (.jqconsole-output is white, just above) and
+   * on the light .console-mode REPL palette further down. KaTeX also ships its
+   * own colours assuming a light ground.
+   *
+   * Everything is a span: jqconsole wraps each Write in a span, so span
+   * children nest validly. Blocks are made by display, not by tag. */
+  .math-card-wrap {
+    display: block;
+  }
+
+  .math-card {
+    display: block;
+    /* The console ancestor is white-space: pre-wrap (see .jqconsole above),
+     * which would preserve the newlines KaTeX's markup contains and leave the
+     * math full of phantom gaps. */
+    white-space: normal;
+    background: #fff;
+    color: #222;
+    border: 1px solid #d8d8d8;
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin: 6px 0;
+    overflow-x: auto;
+  }
+
+  .math-card .math-echo {
+    display: block;
+    white-space: pre-wrap;   /* the echo is code: keep the student's spacing */
+    font-family: monospace;
+    font-size: 0.9em;
+    line-height: 1.3em;
+    color: #6b6b6b;
+  }
+
+  /* Width of the line-number column and its gap. The maths indent below is
+   * derived from the same two values rather than being a separate magic
+   * number, so they cannot drift apart when either changes.
+   *
+   * Measured: with a 1-2 digit line number the maths starts at 41px and the
+   * echoed source at 38px — aligned to within a few px. With 3+ digits the
+   * column widens (min-width, below) so the echo moves right to ~46px while
+   * the maths stays at 41px. That is deliberate: holding the maths at a
+   * constant indent keeps a run of cards in one straight column, where
+   * tracking the echo would make it jitter between cards whose line numbers
+   * differ in width. */
+  $math-ln-width: 2ch;
+  $math-ln-gap: 0.75em;
+
+  .math-card .math-ln {
+    display: inline-block;
+    /* min-width, not width: two digits covers most trinkets and keeps the
+     * numbers in a column, but a 100+ line program must widen the column
+     * rather than overflow it into the source text beside it. */
+    min-width: $math-ln-width;
+    margin-right: $math-ln-gap;
+    text-align: right;
+    /* Digits share a width, so a run of cards has its line numbers in a column
+     * instead of drifting. */
+    font-variant-numeric: tabular-nums;
+    color: #9a9a9a;
+    user-select: none;
+  }
+
+  .math-card .math-body {
+    display: block;
+    margin-top: 4px;
+    /* Derived from the line-number column above, so the maths sits under the
+     * source text rather than under the line number. */
+    padding-left: calc(#{$math-ln-width} + #{$math-ln-gap});
+    /* Until KaTeX resolves this holds str(expr) as plain text; once it does,
+     * .math-typeset replaces the content with rendered math. */
+    font-family: monospace;
+    color: #444;
+  }
+
+  .math-card .math-body.math-typeset {
+    font-family: inherit;
+    color: inherit;
+  }
+
+
   .jqconsole-popout-link {
     text-align: center;
     font-size: 1.4em;

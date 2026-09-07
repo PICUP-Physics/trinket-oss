@@ -66,6 +66,62 @@ upstream, cut a release, update the Dockerfile's tag + sha256 ARGs, re-run the
 sync script locally.
 
 
+### Typeset math output (`features.mathOutput`, opt-in)
+
+`public/components/katex/` is **fetched, not committed**, like the rest of this
+directory. The source is the `katex.tar.gz` asset of the
+[KaTeX](https://github.com/KaTeX/KaTeX) GitHub release, pinned by version and
+sha256 in the Dockerfile's `ARG KATEX_VERSION` block.
+
+| Component | Source | Version | Notes |
+|-----------|--------|---------|-------|
+| katex.min.js | KaTeX release asset (`katex.tar.gz`) | 0.18.5 | ~272 KB. **Lazy-loaded only when a program actually typesets** — `ensureKatex()` in `public/js/embed/pyodide.js` injects it on the first SymPy expression, so trinkets that never display math pay nothing. |
+| katex.min.css | KaTeX release asset | 0.18.5 | ~25 KB. References its fonts by relative path and contains no absolute URLs, so the whole set resolves under whatever `/cache-prefix-<commit>/` the page emits. |
+| fonts/*.woff2 | KaTeX release asset | 0.18.5 | 20 files, ~296 KB total. |
+
+* **woff2 only.** The release ships `.woff2`, `.woff` and `.ttf` (20 each).
+  `katex.min.css` lists woff2 **first** in every `@font-face` src, so a modern
+  browser never requests the fallbacks; keeping only woff2 saves ~1 MB on disk
+  and the dangling refs are inert. Revisit only if a supported browser without
+  woff2 turns up.
+* **Why vendored, not CDN.** Three independent reasons: a real
+  `Content-Security-Policy` is served on the Python embed by every deploy, so a
+  CDN load would need a policy change (`app.csp.cdnOrigins` is meant to empty
+  out, not grow); the snapshot rasterizer
+  (`public/js/util/html-to-image.js`) can only inline `@font-face` fonts from
+  stylesheets whose `cssRules` are readable, i.e. same-origin, so math glyphs
+  would vanish from saved snapshots; and it keeps the classroom working when a
+  CDN does not.
+* **Cache prefix.** The URLs are emitted into `window.__TRINKET_KATEX__` by
+  `lib/views/embed/pyodide.html` through the `cachePrefix` filter. A bare
+  `/components/...` path is served `no-store`, so referencing it directly
+  would re-fetch 300 KB on every single load.
+* **Images**: the Dockerfile fetches the tarball, verifies its sha256, then
+  extracts only the three things above.
+* **Local dev**: `scripts/sync-katex.sh` performs the identical fetch, parsing
+  the Dockerfile's ARGs so the two paths cannot drift. Wired into
+  `npm run setup-vendor`.
+* **Local dev on a compose stack**: both stacks mask `public/components` with a
+  volume, and `docker compose up` **preserves** anonymous volumes when it
+  recreates a container. So a rebuild that vendors a *new* component leaves the
+  old volume in place and the asset 404s — the feature then silently falls back
+  to its plain-text form, with nothing in the app log to say why. Observed
+  exactly this on the first run of this feature. Fix: recreate with
+  `docker compose -f docker-compose.gcr.yml up -d -V` (`--renew-anon-volumes`),
+  or `down -v` first. This is the same trap `scripts/setup-glowscript.sh` was
+  written for; note that `sync-katex.sh` writes to the HOST tree, which the
+  volume shadows, so on a compose stack `-V` is the mechanism, not the script.
+* **Hosting**: lazily loaded assets are invisible to `deploy-hosting.sh`'s page
+  crawl, so `components/katex` is listed explicitly in that script's
+  `RUNNER_PATHS` (the directory branch copies it whole, fonts included).
+
+**To bump the version**: update `ARG KATEX_VERSION` and `ARG KATEX_SHA256` in
+the Dockerfile (`curl -fsSL <release>/katex.tar.gz | sha256sum`), bump the
+version column above, re-run `scripts/sync-katex.sh`, and re-check SymPy's
+LaTeX output against the new renderer — the printer and the renderer move
+independently.
+
+
 ### Other Components
 | Component | Repository | Version | Used By |
 |-----------|------------|---------|---------|
