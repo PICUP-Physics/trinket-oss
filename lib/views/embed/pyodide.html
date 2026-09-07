@@ -553,6 +553,13 @@
        '/js/embed/pyodide.js'
      ])
   %}
+  {# Appending after pyodide.js is safe: its hooks only look for
+     window.trinketPlotpolish inside initialize(), which runs on document
+     ready, by which point every script here has loaded. The bundle must
+     precede the adapter, which checks for window.plotpolish at load. #}
+  {% if config.features.plotStyle %}
+    {% set js = js.concat(['/js/vendor/plotpolish.iife.js', '/js/plugins/plotpolish-adapter.js']) %}
+  {% endif %}
   {{ cachify_js('embed-pyodide', js) | safe }}
 
   {% endif %}
