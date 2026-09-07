@@ -2152,7 +2152,7 @@ function ensureWorkerClient() {
 
   workerClient = workerClientApi.createWorkerClient({
     workerUrl  : '/js/embed/pyodide-worker.js',
-    pyodideUrl : PYODIDE_INDEX_URL + 'pyodide.js',
+    pyodideUrl : PYODIDE_INDEX_URL + 'pyodide.mjs',   // module build (#215)
     indexURL   : PYODIDE_INDEX_URL,
     transformUrl : ASYNC_TRANSFORM_URL,
     varsHelper   : VARS_HELPER,
