@@ -217,6 +217,31 @@
     // hostRcKeys is deliberately NOT set here: the list depends on which
     // runtime ran, and mount() is one-way. afterRun() sets it per run.
 
+    // The panel cannot run anything itself -- it is host-agnostic, and "run"
+    // means something different in every embed -- so on the worker runtime,
+    // where nothing previews, its notice becomes a button and asks us instead.
+    // This listener is what makes features.canRerun honest: the panel only
+    // renders that button when the host has declared it will answer, and this
+    // is the answer.
+    //
+    // Fired through jQuery on #editor rather than by clicking `a.run-it`:
+    // that is exactly what this embed's own Ctrl-Enter/Cmd-Enter run command
+    // does (pyodide.js:4830), and the document-level handler beside it
+    // (pyodide.js:4835) is what turns the event into a run, via showResult ->
+    // runCode. So a re-run from here inherits runCode's guards -- it is
+    // ignored while a step-through recording is in flight and while an
+    // ordinary run is still going (pyodide.js:4329) -- rather than simulating
+    // a click on a control that may be hidden, mid-run or replaced by Stop.
+    panel.addEventListener('plotpolish-rerun-requested', function() {
+      try {
+        $('#editor').trigger('trinket.code.run', { action: 'code.run' });
+      } catch (e) {
+        // A failed re-run is not worth breaking the panel over: the student
+        // still has the toolbar's own Run button, and the notice stays up
+        // because only a completed run clears it.
+      }
+    });
+
     wrap.appendChild(panel);
     mounted = true;
     return true;
@@ -311,7 +336,11 @@
         ? ['figure.autolayout', 'figure.figsize']
         : ['figure.autolayout'];
 
-      panel.features = { livePreview: wantLive };
+      // canRerun follows wantLive: the button only exists in the state where
+      // nothing previews, which is the only state the notice appears in at
+      // all. Stated explicitly rather than left to default so that the pairing
+      // is visible here, next to the listener that services it.
+      panel.features = { livePreview: wantLive, canRerun: !wantLive };
       if (changed) panel.backend = want;
 
       // The backend setter ALREADY calls refresh() when the new backend is

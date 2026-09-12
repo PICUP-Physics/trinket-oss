@@ -44,6 +44,20 @@ function boot(opts) {
   win.trinket = { config: { plotStyle: options.plotStyle !== false } };
   win.ace = { require: () => ({ Range: { fromPoints: (a, b) => [a, b] } }) };
 
+  // The embed's jQuery, reduced to the one call the re-run listener makes.
+  // Recorded rather than stubbed away, because "did it ask the embed to run,
+  // and through which event" is the whole assertion. `win.$throws` makes the
+  // trigger fail the way a broken or absent editor would.
+  win.$runs = [];
+  win.$ = function(selector) {
+    return {
+      trigger: function(name, data) {
+        if (win.$throws) throw new Error('no editor');
+        win.$runs.push({ selector: selector, name: name, data: data });
+      },
+    };
+  };
+
   win.eval(fs.readFileSync(BUNDLE, 'utf8'));
   win.eval(fs.readFileSync(ADAPTER, 'utf8'));
 
@@ -177,6 +191,126 @@ d('plot-style adapter — runtime and teardown', () => {
   it('onFigureGone is a no-op when nothing was mounted', () => {
     const win = boot();
     expect(() => win.trinketPlotpolish.onFigureGone()).not.toThrow();
+  });
+});
+
+// plotpolish v0.3.4's notice turns into a BUTTON when the host says it will
+// answer, and clicking it emits `plotpolish-rerun-requested`. Nothing else in
+// this repo services that event, so if these break, the button silently does
+// nothing and the student is told to re-run by a control that will not.
+d('plot-style adapter — the re-run notice', () => {
+  it('declares canRerun on a worker run, where nothing previews', () => {
+    const win = boot();
+    addCanvas(win, null);
+    win.trinketPlotpolish.afterRun('worker');
+    expect(pill(win).features.livePreview).toBe(false);
+    expect(pill(win).features.canRerun).toBe(true);
+  });
+
+  // The pairing is the point: the notice only exists where live preview does
+  // not, so offering a re-run button beside a working live preview would be a
+  // second control for something already happening on its own.
+  it('does NOT declare canRerun on a main-thread run, which previews live', () => {
+    const win = boot();
+    addCanvas(win, null);
+    win.trinketPlotpolish.afterRun('main');
+    expect(pill(win).features.canRerun).toBe(false);
+  });
+
+  it('follows the runtime across successive runs, like hostRcKeys does', () => {
+    const win = boot();
+    addCanvas(win, null);
+    win.trinketPlotpolish.afterRun('worker');
+    expect(pill(win).features.canRerun).toBe(true);
+    win.trinketPlotpolish.afterRun('main');
+    expect(pill(win).features.canRerun).toBe(false);
+  });
+
+  // Through the embed's own run event rather than a click on `a.run-it`, so it
+  // inherits runCode()'s guards instead of poking a control that may be
+  // hidden, mid-run or showing Stop.
+  it('asks the embed to run, through trinket.code.run on #editor', () => {
+    const win = boot();
+    addCanvas(win, null);
+    win.trinketPlotpolish.afterRun('worker');
+
+    pill(win).dispatchEvent(new win.CustomEvent('plotpolish-rerun-requested'));
+
+    expect(win.$runs).toHaveLength(1);
+    expect(win.$runs[0].selector).toBe('#editor');
+    expect(win.$runs[0].name).toBe('trinket.code.run');
+    expect(win.$runs[0].data).toEqual({ action: 'code.run' });
+  });
+
+  // Copilot on #281, and it was right: every assertion above dispatches the
+  // event by hand, so all of them pass even if the RENDERED button is not
+  // wired to it, or if plotpolish renames the event in a later release. That
+  // is the failure this whole PR exists to prevent -- the student is told to
+  // press a button that does nothing -- so it needs a test that presses the
+  // real button.
+  //
+  // The panel renders its full shadow DOM under jsdom (81 buttons, the two
+  // re-run surfaces, 13 range inputs), so no browser is needed for this.
+  it('runs when the STUDENT clicks the rendered button, not just on a hand-fired event', () => {
+    const win = boot();
+    addCanvas(win, null);
+    win.trinketPlotpolish.afterRun('worker');
+    const sr = pill(win).shadowRoot;
+
+    const stale = () => [...sr.querySelectorAll('button.stall.stale')];
+    expect(stale().length).toBeGreaterThan(0);
+    // Starts inert: there is nothing for a re-run to pick up yet.
+    expect(stale().every((b) => b.disabled)).toBe(true);
+
+    // Move a real control, the way a student would, so a change is pending.
+    const range = sr.querySelector('input[type=range]');
+    range.value = String(Number(range.value) + 4);
+    range.dispatchEvent(new win.Event('input', { bubbles: true }));
+    range.dispatchEvent(new win.Event('change', { bubbles: true }));
+
+    const live = stale().filter((b) => !b.disabled);
+    expect(live.length).toBeGreaterThan(0);
+
+    live[0].click();
+
+    expect(win.$runs).toHaveLength(1);
+    expect(win.$runs[0].selector).toBe('#editor');
+    expect(win.$runs[0].name).toBe('trinket.code.run');
+  });
+
+  it('does not run anything until the panel actually asks', () => {
+    const win = boot();
+    addCanvas(win, null);
+    win.trinketPlotpolish.afterRun('worker');
+    expect(win.$runs).toHaveLength(0);
+  });
+
+  // A throw here escapes into the panel's own dispatch, where plotpolish is
+  // what reports it. The student still has the toolbar's Run button and the
+  // notice stays up (only a completed run clears it), so swallowing is right
+  // -- but it has to actually swallow.
+  //
+  // Asserted on the window's error event, NOT on dispatchEvent throwing:
+  // dispatchEvent never rethrows a listener's exception, it reports it to the
+  // window instead. A `.not.toThrow()` here passes with the try/catch deleted,
+  // which is a test that cannot fail.
+  it('survives a re-run that cannot be started', () => {
+    const win = boot();
+    addCanvas(win, null);
+    win.trinketPlotpolish.afterRun('worker');
+
+    const escaped = [];
+    win.addEventListener('error', (e) => escaped.push(e.message));
+    win.$throws = true;
+
+    pill(win).dispatchEvent(new win.CustomEvent('plotpolish-rerun-requested'));
+    expect(escaped).toEqual([]);
+
+    // And the panel is still live afterwards: a second request, with the
+    // editor working again, still reaches the embed.
+    win.$throws = false;
+    pill(win).dispatchEvent(new win.CustomEvent('plotpolish-rerun-requested'));
+    expect(win.$runs).toHaveLength(1);
   });
 });
 
