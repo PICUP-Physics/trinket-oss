@@ -80,6 +80,21 @@ describe('LTI 1.1 topic link landing (#13)', () => {
       .toContain('#/chapter-3/momentum-intro');
   });
 
+  it('lands a page link on the chosen page (#13)', async () => {
+    vi.spyOn(ltiTarget, 'resolveTarget').mockImplementation(() => Promise.resolve({
+      course: stubCourse(), targetType: 'page',
+      page: { lessonSlug: 'chapter-3', materialSlug: 'momentum-lab' }
+    }));
+    const c = await seedConsumer();
+    const body = baseParams(c);
+    body.oauth_signature = v.sign('POST', serverUrl(), body, c.secret);
+    await flow._inject('POST', 'http://' + AUTHORITY + PATH, body);
+
+    expect(flow.lastResponse.statusCode).toBe(302);
+    expect(flow.lastResponse.headers.location || '', 'a 1.1 page launch must reach the chosen page')
+      .toContain('#/chapter-3/momentum-lab');
+  });
+
   it('still lands an assignment on its own page', async () => {
     vi.spyOn(ltiTarget, 'resolveTarget').mockImplementation(() => Promise.resolve({
       course: stubCourse(),
