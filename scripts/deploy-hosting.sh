@@ -70,8 +70,24 @@ CRAWL_PATHS="${CRAWL_PATHS:-/ /embed/python3 /embed/glowscript /embed/pyodide}"
 # ensureKatex() on the first typeset expression (features.mathOutput), so no
 # page markup references it and the crawl finds nothing. The directory branch
 # below copies it whole, which is what picks up fonts/.
+#
+# The glowscript RUNTIME is not one version. A trinket's saved code carries its
+# own version header ("GlowScript 2.7 VPython"), and the embed template loads
+# the matching package (glow.<v>.min.js + RScompiler/RSrun, or the older
+# compiler.<v>/symbols.<v>) from {{prefix}}components/{{glowscript|vpython-glowscript}}/package.
+# The page crawl only ever renders the CURRENT runtime, so every older version
+# an existing trinket pins fell through to the origin uncached — measured as the
+# largest remaining origin-asset draw on mandi (glow.2.7.5 57 MB in a day,
+# glow.3.0.0 14 MB; #234). Publishing the two package directories WHOLE fixes
+# every version at once: 155 MB, uploaded once per components hash (which changes
+# only when the tarball changes), edge-cached forever, no per-version list to
+# chase. The per-version glob is why the whole dir is right — compiler.<v> and
+# symbols.<v> (pre-2.6 runtimes) sit beside glow.<v> and are needed too.
+# The 3.2.3 css/lib entries below stay explicit because the current embed's
+# stylesheet/jQuery references them by that path; older versions read css/lib
+# from their own package dir, carried by the whole-dir copy where present.
 RUNNER_VERSION="${RUNNER_VERSION:-3.2.3}"
-RUNNER_PATHS="${RUNNER_PATHS:-components/vpython-glowscript/package/glow.RUNNER_VERSION.min.js components/vpython-glowscript/package/RSrun.RUNNER_VERSION.min.js components/vpython-glowscript/package/RScompiler.RUNNER_VERSION.min.js components/vpython-glowscript/package/reportScriptError-0.1.js components/vpython-glowscript/lib/jquery components/vpython-glowscript/css components/src-min-noconflict components/katex}"
+RUNNER_PATHS="${RUNNER_PATHS:-components/glowscript/package components/vpython-glowscript/package components/glowscript/css components/glowscript/lib/jquery components/vpython-glowscript/lib/jquery components/vpython-glowscript/css components/src-min-noconflict components/katex}"
 RUNNER_PATHS="${RUNNER_PATHS//RUNNER_VERSION/${RUNNER_VERSION}}"
 
 say() { printf '  %s\n' "$*"; }
