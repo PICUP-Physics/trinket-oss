@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{# The selection was made in a top-level tab opened from the LMS frame's "Continue in
+   a new tab" page (#217). The LMS's return must be POSTed from INSIDE that frame —
+   Canvas's success page completes its dialog via window.parent — so instead of the
+   auto-submitting return form (lti/deep-link-response.html) this page hands the
+   server-built fields back to the frame and lets it submit them. postMessage to
+   window.opener first, the BroadcastChannel keyed on the relay id as well; the frame
+   acknowledges. If no acknowledgement arrives (a bookmarked picker URL, a closed
+   frame, a browser that dropped both paths) the form is submitted from this tab
+   instead — today's behaviour, no worse than before.
+
+   The payload is the exact field set the return form would have carried: the LMS
+   verifies the 1.1 OAuth signature over it, so nothing is recomputed client-side. #}
+{% block content %}
+<div class="row" style="padding:2.5rem 1rem; max-width:34rem; margin:0 auto; text-align:center;">
+  <h4 id="dl-relay-title" style="margin-bottom:0.75rem;">Sending your selection to your LMS…</h4>
+  <p id="dl-relay-status">Adding the link in your LMS window.</p>
+</div>
+<script type="application/json" id="lti-dl-return">{{ payloadJson | safe }}</script>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  var msg = JSON.parse(document.getElementById('lti-dl-return').textContent);
+  var done = false, acked = false;
+  var title = document.getElementById('dl-relay-title');
+  var status = document.getElementById('dl-relay-status');
+
+  // Fallback: post the return from this tab, exactly as the auto-submit form did.
+  function submitHere() {
+    if (done) return;
+    done = true;
+    var form = document.createElement('form');
+    form.method = 'POST';
+    form.action = msg.url;
+    Object.keys(msg.fields).forEach(function (name) {
+      var input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = name;
+      input.value = String(msg.fields[name]);
+      form.appendChild(input);
+    });
+    document.body.appendChild(form);
+    form.submit();
+  }
+
+  function finish() {
+    if (done) return;
+    done = true;
+    if (title) title.textContent = 'Done — you can close this tab.';
+    if (status) status.textContent = 'The link has been handed to your LMS window.';
+    setTimeout(function () { try { window.close(); } catch (e) {} }, 1500);
+  }
+
+  function onAck(data) {
+    if (data && data.type === 'lti-dl-return-ack' && data.id === msg.id) { acked = true; finish(); }
+  }
+
+  var chan = null;
+  try { chan = new BroadcastChannel('lti-dl-return-' + msg.id); } catch (e) { chan = null; }
+  window.addEventListener('message', function (event) {
+    if (event.origin !== location.origin) return;
+    onAck(event.data);
+  });
+  if (chan) chan.onmessage = function (event) { onAck(event.data); };
+
+  var sent = false;
+  try {
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage(msg, location.origin);
+      sent = true;
+    }
+  } catch (e) {}
+  if (chan) {
+    try { chan.postMessage(msg); sent = true; } catch (e) {}
+  }
+  if (!sent) { submitHere(); return; }
+  // Nobody listening (no ack): degrade to posting from here.
+  setTimeout(function () { if (!acked) submitHere(); }, 2000);
+})();
+</script>
+{% endblock %}

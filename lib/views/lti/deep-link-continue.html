@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{# Shown when a deep-linking launch lands in an LMS iframe without a usable session.
+   Signing in here would fail the same way the launch did — the browser refuses
+   third-party cookies — so the only reliable route is a top-level tab, where the
+   instructor's existing first-party session applies. See issue #217.
+
+   target="_blank" is deliberate and must stay: the whole point is to leave the frame.
+   The link carries the signed context token (no identity) so the picker in the new
+   tab still knows which deep-link request it is answering.
+
+   THIS FRAME ALSO FINISHES THE JOB. Canvas's deep-link success page completes the
+   dialog via `window.parent || window.opener`; in a top-level tab window.parent is
+   the tab itself, so a return POSTed from the tab shows "Success! This popup should
+   close on its own" and nothing else happens. The return has to be POSTed from
+   inside this frame. So this page listens for the tab's selection — a message that
+   must come from OUR origin and carry THIS page's relay id — and submits the
+   server-built form fields to the LMS from here. postMessage via window.opener
+   (rel="opener") is the primary path; a BroadcastChannel keyed on the same id is the
+   fallback for a browser that severed the opener. Nothing is recomputed here: the
+   fields (the 1.1 OAuth signature included) arrive exactly as the server built them. #}
+{% block content %}
+<div class="row" style="padding:2.5rem 1rem; max-width:34rem; margin:0 auto; text-align:center;">
+  <h4 style="margin-bottom:0.75rem;">Continue in a new tab</h4>
+  <p style="margin-bottom:1.25rem;">
+    Your browser blocks sign-in inside an LMS window. Open {{ siteName }} in a new tab
+    to choose the content for this assignment.
+    This window will finish adding the link once you have chosen.
+  </p>
+  <p>
+    <a class="button" href="{{ continueUrl }}" target="_blank" rel="opener">
+      Continue in a new tab
+    </a>
+  </p>
+  <p id="dl-relay-status" class="small" style="margin-top:1rem; color:#666;">
+    If nothing happens, make sure pop-ups are allowed for your LMS, or sign in to
+    {{ siteName }} in another tab first and relaunch this from your LMS. Allowing
+    cookies for {{ siteName }} in your browser also lets this window work directly.
+  </p>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  // relayId is validated server-side to [A-Za-z0-9_-]{8,64}, so it is safe inline.
+  var id = '{{ relayId }}';
+  var handled = false;
+  var chan = null;
+  try { chan = new BroadcastChannel('lti-dl-return-{{ relayId }}'); } catch (e) { chan = null; }
+
+  function accept(data) {
+    return !!data && data.type === 'lti-dl-return' && data.id === id
+      && typeof data.url === 'string' && data.fields && typeof data.fields === 'object';
+  }
+
+  // Build the LMS return form from the fields the server built and submit it from
+  // this frame, so the LMS's success page finds its dialog in window.parent.
+  function relay(data, ack) {
+    if (handled || !accept(data)) return;
+    handled = true;
+    try { ack({ type: 'lti-dl-return-ack', id: id }); } catch (e) {}
+    var status = document.getElementById('dl-relay-status');
+    if (status) status.textContent = 'Adding the link to your LMS…';
+    var form = document.createElement('form');
+    form.method = 'POST';
+    form.action = data.url;
+    Object.keys(data.fields).forEach(function (name) {
+      var input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = name;
+      input.value = String(data.fields[name]);
+      form.appendChild(input);
+    });
+    document.body.appendChild(form);
+    form.submit();
+  }
+
+  window.addEventListener('message', function (event) {
+    if (event.origin !== location.origin) return;
+    relay(event.data, function (ack) {
+      if (event.source) event.source.postMessage(ack, location.origin);
+      if (chan) chan.postMessage(ack);
+    });
+  });
+  if (chan) {
+    chan.onmessage = function (event) {
+      relay(event.data, function (ack) { chan.postMessage(ack); });
+    };
+  }
+})();
+</script>
+{% endblock %}

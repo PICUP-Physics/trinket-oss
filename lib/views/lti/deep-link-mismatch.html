@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{# Shown when a deep-link context token is presented by a signed-in user other than
+   the one who launched it from the LMS. The token is bound to the launcher (a keyed
+   digest, no identity) precisely so a copied URL cannot let someone else answer
+   that LMS request. Usually this is just the instructor signed in to a second
+   account in this browser. See issue #217, review finding 2. #}
+{% block content %}
+<div class="row" style="padding:2.5rem 1rem; max-width:34rem; margin:0 auto; text-align:center;">
+  <h4 style="margin-bottom:0.75rem;">Signed in as a different account</h4>
+  <p style="margin-bottom:1.25rem;">
+    You are signed in to {{ siteName }} as a different account than the one that
+    started this from your LMS, so this request cannot be completed here.
+  </p>
+  <p>
+    Sign out of {{ siteName }} and sign back in with the account your LMS uses, then
+    launch the content picker again from your LMS.
+  </p>
+</div>
+{% endblock %}

@@ -499,7 +499,9 @@ routes = [
     // browser blocks third-party cookies nothing of the session reaches us, and a hard
     // 401 sends the instructor to a login page that CANNOT work there — signing in
     // sets a cookie the browser will refuse too. Letting the handler run means it can
-    // explain that instead of looping. See #217.
+    // decide: continue on the signed ?ctx= token when the launch carried one, explain
+    // the cookie block when it did not, and render the picker when there is a session.
+    // See #217.
     config: { auth: { strategy: 'session', mode: 'try' } }
   },
   {
