@@ -59,7 +59,25 @@
   <div ng-switch-when="student" class="row dashboard-container">
     <div class="small-12 columns">
       <!-- todo: better loading visual -->
-      <div ng-show="students.length" ng-repeat="student in students | orderBy:'displayName'" class="row student-row course-dashboard">
+  <!-- Roster ordering. Surname by default: an instructor grading by hand is
+       matching this list against a surname-ordered gradebook or roll. -->
+  <div ng-if="!loading && !loadingError && students.length" class="row roster-sort">
+    <div class="small-12 columns text-right">
+      <label class="inline roster-sort-label">Sort by
+        <select ng-model="sort.field" ng-change="setSort(sort.field)"
+                ng-options="f.value as f.label for f in sortFields"
+                aria-label="Sort students by"></select>
+      </label>
+      <button type="button" class="tiny secondary button roster-sort-direction"
+              ng-click="toggleSortDirection()"
+              title="{{ sort.reverse ? 'Z to A' : 'A to Z' }}"
+              aria-label="{{ sort.reverse ? 'Sorting Z to A' : 'Sorting A to Z' }}">
+        <i class="fa" ng-class="sort.reverse ? 'fa-sort-alpha-desc' : 'fa-sort-alpha-asc'"></i>
+      </button>
+    </div>
+  </div>
+
+      <div ng-show="students.length" ng-repeat="student in students | orderBy:rosterOrder:sort.reverse" class="row student-row course-dashboard">
         <div class="small-4 columns student-name">
           <img class="avatar" ng-src="{{ student.avatar }}" /> <a ng-click="viewStudent(student)">{{ student.displayName }}</a>
           <span ng-if="student.deleted" class="secondary-label label round" title="This user deleted their account.">deleted</span>
@@ -85,7 +103,7 @@
 
         <div class="row hidden-users collapsed" ng-class="{'show-hidden-users':showHidden}">
           <div class="small-12 columns">
-            <div ng-repeat="student in hiddenStudents | orderBy:'displayName'" class="row student-row course-dashboard">
+            <div ng-repeat="student in hiddenStudents | orderBy:rosterOrder:sort.reverse" class="row student-row course-dashboard">
               <div class="small-4 columns student-name">
                 <img class="avatar" ng-src="{{ student.avatar }}" /> {{ student.displayName }}
                 <span ng-if="student.deleted" class="secondary-label label round" title="This user deleted their account.">deleted</span>

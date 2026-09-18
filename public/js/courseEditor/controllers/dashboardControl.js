@@ -19,6 +19,37 @@
       $scope.hiddenUsers = [];
       $scope.showHidden  = false;
 
+      // Roster ordering. The lists sorted on displayName, i.e. by GIVEN name,
+      // which does not match the surname-ordered gradebook or roll an
+      // instructor grades against. Offer both, and a direction, and remember
+      // the choice — an instructor sets it once and works that way all term.
+      var SORT_STORE = 'trinket.rosterSort';
+      $scope.sortFields = (window.trinketRosterSort || { fields: [] }).fields;
+      $scope.sort = { field: 'last', reverse: false };
+      try {
+        var stored = JSON.parse(window.localStorage.getItem(SORT_STORE) || 'null');
+        if (stored && typeof stored.field === 'string') {
+          $scope.sort = { field: stored.field, reverse: !!stored.reverse };
+        }
+      } catch (e) { /* private window, or cleared storage — keep the default */ }
+
+      // A predicate rather than a field name, because the surname key is
+      // derived from displayName rather than stored.
+      $scope.rosterOrder = function(user) {
+        return window.trinketRosterSort
+          ? window.trinketRosterSort.keyFor(user, $scope.sort.field)
+          : (user && user.displayName);
+      };
+
+      $scope.setSort = function(field, reverse) {
+        if (typeof field !== 'undefined') { $scope.sort.field = field; }
+        if (typeof reverse !== 'undefined') { $scope.sort.reverse = !!reverse; }
+        try { window.localStorage.setItem(SORT_STORE, JSON.stringify($scope.sort)); }
+        catch (e) { /* not being able to remember it must not break sorting */ }
+      };
+
+      $scope.toggleSortDirection = function() { $scope.setSort(undefined, !$scope.sort.reverse); };
+
       $scope.loading = false;
       $scope.loadingError = false;
 
@@ -207,7 +238,7 @@
                 $scope.student     = undefined;
                 $scope.submissions = {};
 
-                angular.forEach($filter('orderBy')(users, 'displayName'), function(user) {
+                angular.forEach($filter('orderBy')(users, $scope.rosterOrder, $scope.sort.reverse), function(user) {
                   if (!user.onDashboard) {
                     return;
                   }

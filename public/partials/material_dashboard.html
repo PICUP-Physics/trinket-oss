@@ -65,7 +65,25 @@
     </div>
   </div>
 
-  <div ng-if="!loading && !loadingError" ng-repeat="user in users | orderBy:'displayName'" class="row user-row" ng-class="{'clickable':user.state === 'submitted' || user.state === 'completed', 'row-open':viewingSubmission.user === user.userId}">
+  <!-- Roster ordering. Surname by default: an instructor grading by hand is
+       matching this list against a surname-ordered gradebook or roll. -->
+  <div ng-if="!loading && !loadingError && users.length" class="row roster-sort">
+    <div class="small-12 columns text-right">
+      <label class="inline roster-sort-label">Sort by
+        <select ng-model="sort.field" ng-change="setSort(sort.field)"
+                ng-options="f.value as f.label for f in sortFields"
+                aria-label="Sort students by"></select>
+      </label>
+      <button type="button" class="tiny secondary button roster-sort-direction"
+              ng-click="toggleSortDirection()"
+              title="{{ sort.reverse ? 'Z to A' : 'A to Z' }}"
+              aria-label="{{ sort.reverse ? 'Sorting Z to A' : 'Sorting A to Z' }}">
+        <i class="fa" ng-class="sort.reverse ? 'fa-sort-alpha-desc' : 'fa-sort-alpha-asc'"></i>
+      </button>
+    </div>
+  </div>
+
+  <div ng-if="!loading && !loadingError" ng-repeat="user in users | orderBy:rosterOrder:sort.reverse" class="row user-row" ng-class="{'clickable':user.state === 'submitted' || user.state === 'completed', 'row-open':viewingSubmission.user === user.userId}">
     <div class="small-12 columns" id="student-row-{{ user.userId }}">
       <div class="row user-info">
         <div class="small-6 columns" ng-click="toggleStudent(user)">
@@ -106,7 +124,7 @@
         <legend class="clickable-legend" ng-click="showHidden = !showHidden"><i ng-class="{'hide':showHidden}" class="fa fa-chevron-right"></i> Hidden from Dashboard ({{ hiddenUsers.length }})</legend>
         <div class="hidden-users collapsed" ng-class="{'show-hidden-users':showHidden}">
 
-          <div ng-repeat="user in hiddenUsers | orderBy:'displayName'" class="row user-row" ng-class="{'clickable':user.state === 'submitted' || user.state === 'completed', 'row-open':viewingSubmission.user === user.userId}">
+          <div ng-repeat="user in hiddenUsers | orderBy:rosterOrder:sort.reverse" class="row user-row" ng-class="{'clickable':user.state === 'submitted' || user.state === 'completed', 'row-open':viewingSubmission.user === user.userId}">
             <div class="small-12 columns" id="student-row-{{ user.userId }}">
               <div class="row user-info">
                 <div class="small-6 columns" ng-click="toggleStudent(user)">

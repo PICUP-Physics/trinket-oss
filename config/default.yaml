@@ -355,6 +355,7 @@ app:
       - '/js/courseEditor/controllers/materialControl.js'
       - '/js/courseEditor/controllers/toolbarControl.js'
       - '/js/courseEditor/studentListParser.js'
+      - '/js/courseEditor/rosterSort.js'
       - '/js/courseEditor/controllers/usersControl.js'
       - '/js/courseEditor/controllers/dashboardControl.js'
       - '/js/courseEditor/controllers/assignmentEditorControl.js'
