@@ -121,7 +121,7 @@ One channel, typed messages, versioned with a `v` field so a stale cached worker
 
 | Type | Payload | Notes |
 |---|---|---|
-| `init` | `{ v, pyodideUrl, packages }` | once per worker |
+| `init` | `{ v, pyodideUrl, indexURL, varsHelper, displayUrl }` | once per worker. `packages` was in this row and has never been sent — the implementation posts `indexURL` (`worker-client.js`), and packages are loaded per run from the program's imports. `displayUrl` is `_trinket_display.py` for `features.mathOutput` (#288) — empty string when the flag is off, and the worker then fetches nothing |
 | `run` | `{ id, source, files }` | `id` correlates every reply |
 | `stdin-reply` | `{ id, value }` | answers `input-request` |
 | `mpl-event` | `{ figureId, event }` | mouse/zoom into webagg |
@@ -135,6 +135,7 @@ One channel, typed messages, versioned with a `v` field so a stale cached worker
 | `stdout` / `stderr` | `{ id, text }` | line-batched, as today |
 | `input-request` | `{ id, prompt }` | worker suspends until answered |
 | `figure` | `{ id, figureId, kind: 'diff'\|'png', data }` | webagg diff or PNG fallback |
+| `rich` | `{ id, json }` | one typeset result (#288). Streaming and UNSCOPED, like `stdout`: the page queues cards and program text in one buffer, so program order survives only if both are delivered in post order |
 | `done` | `{ id }` | run finished normally |
 | `error` | `{ id, traceback }` | raw traceback string; page formats it |
 | `scene-ops` | `{ ops: [...] }` | **reserved, not implemented in v1** (D5) |

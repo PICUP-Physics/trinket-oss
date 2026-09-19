@@ -53,9 +53,10 @@ test.describe('step-through debugger', () => {
   // timeout before its own assertion ever gave up, and report as a failure
   // rather than as the slow download it is. Raise it for this block only.
   //
-  // Worth knowing: math-output.spec.js in this directory has the same shape
-  // (180 s expects under the 90 s cap) and has not hit it, because nothing
-  // has been slow enough yet. That is luck, not design.
+  // math-output.spec.js in this directory had the same shape and no raise
+  // until #294, which gave it one. Several other specs still have none --
+  // worker-runtime.spec.js in ../specs is the worst, with 240 s assertions
+  // across 15 tests and no raise at all, in the directory CI actually runs.
   test.describe.configure({ timeout: 240_000 });
 
   test.beforeEach(async ({ page }) => {

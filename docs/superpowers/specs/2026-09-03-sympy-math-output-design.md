@@ -1,9 +1,10 @@
 # Typeset SymPy output in Pyodide trinkets — design handoff
 
-Status: slice 1 — main thread only, behind `features.mathOutput`, default off — is implemented in
-**#240**. This document lands ahead of that PR by design, so check whether #240 has merged before
-assuming the code is present on `main`. Worker parity waits on #215. Q3, Q4 and Q6 are still
-Andrew's calls; Q8 was revised after measurement (see the log at the bottom).
+Status: implemented on **both runtimes**, behind `features.mathOutput`, default off. Slice 1 (main
+thread) is **#240**; worker parity, Task 8, is **#288**, unblocked when #215 — the module-worker
+conversion it waited on — closed as completed on 2026-09-07. This document originally landed ahead
+of #240, so anything below that reads as forward-looking should be taken as historical. Q3, Q4 and
+Q6 are still Andrew's calls; Q8 was revised after measurement (see the log at the bottom).
 
 ![Typeset SymPy output in a Pyodide trinket](../images/2026-09-04-sympy-math-output.png)
 
@@ -288,13 +289,20 @@ IPython's own approach (`run_ast_nodes` with `ast_node_interactivity='all'`).
 
 **Worker parity.**
 
-- Add a `rich` worker→page message `{ id, latex, text, lineno, source }` to the protocol
-  table in the 2026-08-08 spec, and dispatch it in `worker-client.js` scoped to the current
-  run exactly as `figure` is (:70-73). Adding a type does not break an old page (unknown
-  types are ignored).
-- Replace the bare `runPythonAsync(src)` at `pyodide-worker.js:573` with the module's
+- Add a `rich` worker→page message `{ id, json }` to the protocol table in the 2026-08-08
+  spec, and dispatch it in `worker-client.js`. Adding a type does not break an old page
+  (unknown types are ignored).
+- Replace the bare `runPythonAsync(src)` in the worker's `run` handler with the module's
   runner when the flag is on. The Python module is identical in both runtimes; only the
   sink differs.
+
+**Corrected while building #288: `rich` is UNSCOPED, beside `stdout`, NOT scoped like
+`figure`.** This paragraph originally said to copy the `figure` scoping. That would have
+been wrong for the reason the figure path itself was fixed: `settle()` nulls `current`
+when the program ends, so a run-scoped check drops late messages. Cards and program text
+share one page-side queue, so program order survives only if both are delivered in the
+order the worker posted them — which is exactly what `stdout` already does. The cost is
+the same as stdout's: a replaced worker can emit a late card.
 
 **Known edge cases to handle or document.**
 
@@ -650,8 +658,9 @@ What remains open is not a question about the design:
 - **Q3, Q4 and Q6** are decided (2026-09-05) and match the defaults slice 1 assumed (vendor KaTeX: yes,
   pinned at 0.18.5; Instructions not typeset; deploy-level config rather than per-trinket), so a different
   answer means a change, not a rewrite.
-- **#215** (module worker) has not been started — it is an open issue, not a PR. Task 8, worker parity, is
-  blocked on it, so on a deploy with `workerRuntime: true` (uindy) the feature currently does nothing.
+- **#215** (module worker) closed as completed on 2026-09-07, and Task 8 — worker parity — is implemented
+  in **#288**. The sentence this replaces said the feature "currently does nothing" on a deploy with
+  `workerRuntime: true`; that was true until #288 and is the thing #288 fixed.
 - **The rich cap number.** 30 is implemented and measured (see Q8), but it is a product judgement about how
   many typeset results a student would ever read, not a fact. Easy to move: one argument in
   `pyodide.js`'s `createOutputBuffer` call.

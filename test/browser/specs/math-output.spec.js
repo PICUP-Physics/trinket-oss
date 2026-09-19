@@ -7,9 +7,15 @@ const { test, expect } = require('@playwright/test');
 // interleaved with print() output in program order. See
 // docs/superpowers/specs/2026-09-03-sympy-math-output-design.md.
 //
-// These run on ?runtime=main. The worker half of the feature waits on #215
-// (module-worker conversion), and this file is parametrised over both runtimes
-// when that lands.
+// These pin ?runtime=main. That is now a deliberate narrowing rather than a
+// deferral: the worker half is implemented (#288, after #215 closed), and its
+// coverage lives in specs-deploy/math-output.spec.js, which runs on whichever
+// runtime the deploy defaults to and no longer skips on a worker one.
+//
+// Kept pinned because the assertions below are about the RENDERING — line
+// numbers, which lines stay silent, cards in program order — and those are
+// page-side and identical on both runtimes. Parametrising this file would
+// double its Pyodide boots to re-test one code path.
 //
 // The generous timeouts are not padding: Pyodide boots from jsDelivr (~10 MB)
 // and `import sympy` auto-loads a package that takes ~3.3 s on 0.28.1, so the

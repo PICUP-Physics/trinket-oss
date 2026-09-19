@@ -45,6 +45,23 @@
       if (msg.type === 'stdout') { if (opts.onStdout) opts.onStdout(msg.text); return; }
       if (msg.type === 'stderr') { if (opts.onStderr) opts.onStderr(msg.text); return; }
 
+      // One typeset result (features.mathOutput). Scoped to the LIVE WORKER,
+      // like `figure` below and unlike `current`-scoped messages.
+      //
+      // Run scoping would be wrong here for the reason the figure comment
+      // spells out: settle() nulls `current` when the program ends, so a card
+      // still in flight would be dropped. Worker scoping costs nothing that
+      // run scoping costs. Ordering against the text stream is untouched,
+      // because a single worker's messages arrive in the order it posted them
+      // and the page queues cards and program text in one buffer. What it buys
+      // is that a card posted in the instant before a Stop cannot land in the
+      // NEXT run's console, which is exactly what `figure` guards against.
+      if (msg.type === 'rich') {
+        if (e.target !== worker) return;
+        if (opts.onRich) opts.onRich(msg.json);
+        return;
+      }
+
       // input() cannot block in a worker — there is no SharedArrayBuffer in an
       // embed, so Atomics.wait is unavailable. The worker suspends on a promise
       // and we answer it here. Scoped to the current run so a prompt from a
@@ -152,7 +169,11 @@
         indexURL: opts.indexURL,
         // The page owns the variable-explorer helper source; the worker runs it
         // verbatim so the two runtimes cannot show different variables.
-        varsHelper: opts.varsHelper || ''
+        varsHelper: opts.varsHelper || '',
+        // The typeset-math helper's URL, empty when features.mathOutput is off.
+        // The page owns the flag and the cache-prefixed asset path; the worker
+        // fetches what it is given and never decides either.
+        displayUrl: opts.displayUrl || ''
       });
       return worker;
     }

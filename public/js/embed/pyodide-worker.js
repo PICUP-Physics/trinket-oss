@@ -96,6 +96,7 @@
     var pyodide = null;
     var currentRunId = null;
     var varsHelper = '';
+    var displayUrl = '';
 
     var post = function(msg) { self.postMessage(msg); };
 
@@ -114,6 +115,12 @@
         // The page owns VARS_HELPER; it is sent here so the two runtimes cannot
         // drift into showing different variables for the same program.
         varsHelper = msg.varsHelper || '';
+        // Likewise for the typeset-math helper: the page owns the asset URL and
+        // the feature flag, so an empty string here IS features.mathOutput being
+        // off, and nothing below ever fetches. The module itself is loaded
+        // lazily on the first run (ensureDisplay), not here — unlike the main
+        // thread, which must install before its Clear-memory snapshot is taken.
+        displayUrl = msg.displayUrl || '';
 
         // Both versions: the REPL banner names the PYTHON version ("Python
         // 3.13.2"), which is not pyodide.version ("0.28.1").
@@ -156,6 +163,156 @@
       '    return await js.__trinket_worker_input(prompt)',
       'builtins.input = _trinket_input'
     ].join('\n');
+
+    // ---- typeset math output (features.mathOutput) -------------------------
+    //
+    // The page owns _trinket_display.py, the KaTeX bundle and the renderer; the
+    // worker owns only an interpreter. So the module is fetched here and
+    // installed with a sink that posts `rich` — the worker's answer to the main
+    // thread's window.__trinket_rich (pyodide.js). Both carry the same JSON
+    // payload and both end up in the same queueMathCard(), so a card cannot
+    // come out differently on the two runtimes.
+    //
+    // `self`, not `window`: a worker has no window, which is the one line of the
+    // main thread's bootstrap that cannot be copied verbatim.
+    self.__trinket_rich = function(json) {
+      post({ type: 'rich', id: currentRunId, json: String(json) });
+    };
+
+    // The filename the runner's own frames carry. The page's TRACEBACK_INTERNAL
+    // matches it (and `_trinket_display`) so the wrapper is dropped from a
+    // student's traceback — the same string the main thread uses, deliberately:
+    // two spellings would mean a frame filtered on one runtime and shown on the
+    // other.
+    var TRINKET_RUNNER_FILENAME = '<trinket-runner>';
+
+    var displayLoading = null;
+    var displayReady = false;
+    function ensureDisplay(url) {
+      if (displayLoading) return displayLoading;
+      displayLoading = fetch(url)
+        .then(function(r) {
+          // fetch does NOT reject on 4xx/5xx. Without this check a 404's HTML
+          // body is written to the FS as _trinket_display.py and only fails
+          // later, as a Python SyntaxError on the import, hiding the actual
+          // HTTP status from anyone debugging a deploy.
+          if (!r.ok) throw new Error('HTTP ' + r.status + ' fetching ' + url);
+          return r.text();
+        })
+        .then(function(src) {
+          pyodide.FS.writeFile('_trinket_display.py', src);
+          // Runs in a THROWAWAY namespace, not the student's globals.
+          //
+          // The main thread installs the same way but deletes its temporaries
+          // afterwards, which is safe THERE because it installs at boot, before
+          // any student code has run. Here the install is lazy, so it can land
+          // after the namespace already holds student state: a first attempt
+          // that failed on a transient fetch is retried on the next run, and the
+          // worker's interpreter persists across runs. A `del _d, _json, _js,
+          // _trinket_sink` would then remove a student's own `_json` rather than
+          // ours. An isolated namespace makes the whole class impossible instead
+          // of narrowing it -- nothing to overwrite and nothing to delete.
+          //
+          // install() mutates the module and builtins, so it does not need to
+          // see or touch the student's globals at all.
+          // A note for whoever adds an import to _trinket_display.py: every
+          // module it pulls in (ast, builtins, linecache, sys) and the json
+          // below is ALREADY in sys.modules from Pyodide's own boot, so these
+          // imports are dict hits and never touch the filesystem. That matters
+          // because msg.files has written the student's .py files by now and
+          // sys.path[0] is '' — a trinket shipping its own linecache.py could
+          // otherwise be imported here. Measured, not assumed: with a student
+          // `linecache.py` whose body is `BOOM = 1/0`, and separately with a
+          // student `json.py`, the install still succeeds and the card still
+          // renders. If an import is ever added that Pyodide does NOT preload,
+          // move ensureDisplay ahead of the msg.files writes in run().
+          var ns = pyodide.toPy({});
+          return pyodide.runPythonAsync([
+            'import _trinket_display as _d',
+            'import json as _json',
+            'import js as _js',
+            // json.dumps in Python so no PyProxy crosses into JS and nothing
+            // needs destroying.
+            //
+            // dumps and the JS callback are bound as DEFAULT ARGUMENTS, not read
+            // from globals: this namespace is discarded the moment the install
+            // returns, and a body that resolved them at call time would raise
+            // NameError on the first displayed expression. The sink itself
+            // survives because the module holds the reference.
+            'def _trinket_sink(p, _dumps=_json.dumps, _rich=_js.__trinket_rich):',
+            '    _rich(_dumps(p))',
+            '_d.install(_trinket_sink)'
+          ].join('\n'), { globals: ns })
+            .finally(function() { try { ns.destroy(); } catch (e) {} });
+        })
+        .then(function() { displayReady = true; })
+        .catch(function(e) {
+          // Never cache a failed load (one transient fetch error would poison
+          // every later run of this worker), and never let it stop the run.
+          //
+          // THE FAILURE CONTRACT, stated exactly, because "it degrades
+          // gracefully" is not true of both halves: with no helper, a bare
+          // expression is silent and the program runs on, but `display()` is
+          // never installed as a builtin and so raises NameError at that line.
+          // Verified by pointing the URL at a 404 and running it.
+          //
+          // That is PARITY, not a worker defect: the main thread's install
+          // does the same thing in the same situation, and its console output
+          // is identical (also verified by running, on ?runtime=main). A no-op
+          // `display` here would fix the symptom on one runtime and create the
+          // very divergence this feature exists to remove -- and it would hide
+          // a broken deploy behind silently-missing output, which is worse than
+          // a NameError naming the line. If that trade is ever reconsidered it
+          // belongs in both runtimes at once, not here.
+          displayLoading = null;
+          displayReady = false;
+          try { console.warn('[mathOutput] display hook unavailable:', e); } catch (e2) {}
+        });
+      return displayLoading;
+    }
+
+    // Memoized, so only the first caller in a flag-on worker pays the fetch; an
+    // empty displayUrl is the flag being off and skips it entirely.
+    //
+    // Module scope, not local to run(), because the REPL needs it too: the main
+    // thread installs the helper during its boot, ahead of the Clear-memory
+    // snapshot, so `display` is a builtin before the student has pressed
+    // anything. A worker that installed only inside run() left the console
+    // raising NameError until the first Run, and `Clear memory` put a student
+    // who had been using the feature straight back into that state.
+    function prepareDisplay() {
+      return displayUrl ? ensureDisplay(displayUrl) : Promise.resolve();
+    }
+
+    // The worker's half of the page's runProgram().
+    //
+    // `src` is what executes — already async-transformed where that applies.
+    // `echoSource` is what the source echo above each card shows, which is the
+    // ORIGINAL program: the transform inserts `await `/`async ` textually, and
+    // echoing that back would show the student a line they did not write. It
+    // never adds or removes lines, so the two agree on line numbers.
+    //
+    // With the flag off, or if the helper failed to load, this is exactly the
+    // bare runPythonAsync it replaced — a flag-off run is byte-for-byte what it
+    // was before this feature existed, including the frame filenames.
+    function runProgram(src, echoSource) {
+      if (!displayReady) return pyodide.runPythonAsync(src || '');
+      pyodide.globals.set('__user_source__', src || '');
+      pyodide.globals.set('__trinket_echo_source__',
+        (echoSource === undefined || echoSource === null ? src : echoSource) || '');
+      return pyodide.runPythonAsync([
+        // __import__ rather than an import statement: the latter would BIND its
+        // name in the program's globals, visible to dir() and globals() on every
+        // flag-on run for no reason.
+        "__import__('_trinket_display').set_source(__trinket_echo_source__, __user_source__)",
+        // Deleted the moment set_source has consumed it, so the student's
+        // globals() looks the same with the flag on as off. __user_source__
+        // stays: run_program needs it, and it is pre-existing on the transform
+        // path rather than anything this feature added.
+        "del __trinket_echo_source__",
+        "await __import__('_trinket_display').run_program(__user_source__, globals())"
+      ].join('\n'), { filename: TRINKET_RUNNER_FILENAME });
+    }
 
     // The async transform rewrites blocking-looking calls to `await`. Its await
     // set is a module constant that deliberately EXCLUDES bare `input`, because
@@ -535,6 +692,29 @@
 
     function pushRepl(msg) {
       currentRunId = msg.id;
+      // The display helper must be installed before the statement is evaluated,
+      // not only before a Run: on the main thread `display` is a builtin from
+      // boot, so typing display(Integral(x)) at a fresh prompt works there and
+      // raised NameError here. prepareDisplay is memoized, so only the first
+      // statement of a flag-on worker waits on the fetch, and a failed load
+      // resolves rather than rejects -- the console still evaluates, with the
+      // same NameError the main thread gives when its own install failed.
+      //
+      // Bare expressions are NOT affected either way: measured on 2026-09-18,
+      // `Integral(x, x)` at the prompt prints plain repr on BOTH runtimes,
+      // because the hook wraps module-level statements in run_program and the
+      // REPL does not go through it. Only display() differs, and only here.
+      // Both arms evaluate. A failed install must not stop the statement
+      // running -- the student loses typeset output, not their console. Stated
+      // HERE rather than relied on from ensureDisplay's catch 400 lines away:
+      // without the second arm a rejected promise posts neither `done` nor
+      // `error`, and the console is dead with no message and no prompt. run()'s
+      // chain already ends in a catch for the same reason.
+      prepareDisplay().then(function() { evaluateRepl(msg); },
+                            function() { evaluateRepl(msg); });
+    }
+
+    function evaluateRepl(msg) {
       var console_;
       try {
         console_ = ensureReplConsole();
@@ -605,12 +785,30 @@
           })
         : Promise.resolve(source); };
 
+      // A VPython run is not routed through the AST WRAP, matching runVpython()
+      // on the page (pyodide.js), which says so in as many words: typeset
+      // output covers the plain run and worker paths in slice 1 only. Without
+      // this the worker wrapped module-level expressions on top of the vpython
+      // async transform while the main thread did not.
+      //
+      // The WRAP only. prepareDisplay() below stays unconditional, because it
+      // does two separable things: it installs builtins.display, and it flips
+      // displayReady so runProgram() applies the wrap. Gating both removed
+      // `display` from VPython programs entirely -- and the main thread installs
+      // at boot for every run, VPython included, so that was a NameError on one
+      // runtime and a rendered card on the other. It is not rescued by an
+      // earlier plain run in the same worker: the page calls discardWorker()
+      // for every worker VPython run (worker-client.js), so msg.vpython is true
+      // on the first run of that worker, always.
+      var wantsWrap = !msg.vpython;
+
       var mpl = usesMatplotlib(source);
 
       // The wheel install comes FIRST and the source preparation is built after
       // it resolves, so micropip's runPythonAsync never interleaves with the
       // transform's.
       return (msg.vpython ? ensureVPython(msg.wheelUrl) : Promise.resolve())
+        .then(prepareDisplay)
         .then(prepare)
         .then(function(src) {
           // Pyodide-bundled packages the program imports (numpy, matplotlib,
@@ -633,7 +831,10 @@
                        : src;
           });
         })
-        .then(function(src) { return pyodide.runPythonAsync(src); })
+        .then(function(src) {
+          return wantsWrap ? runProgram(src, source)
+                           : pyodide.runPythonAsync(src);
+        })
         .then(function() {
           return mpl ? pyodide.runPythonAsync(MPL_FLUSH) : null;
         })
