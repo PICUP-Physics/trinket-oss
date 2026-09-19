@@ -68,6 +68,19 @@ var MATPLOTLIB_SETUP_CODE = [
   "import matplotlib",
   "matplotlib.use('webagg')",
   "matplotlib.rcParams['figure.autolayout'] = True",
+  // The same fixed default the worker sets, so identical code produces an
+  // identical figure on either runtime -- which it did not before: the main
+  // thread used matplotlib's 6.4 x 4.8 and overflowed the pane (measured
+  // scrollWidth 642 against clientWidth 482), while the worker derived a
+  // figsize from the pane and so made every download depend on the window.
+  // The pane is fitted by scaling figure.dpi instead; see the pane-fit block
+  // further down.
+  "matplotlib.rcParams['figure.figsize'] = [4.8, 3.6]",
+  // Print-usable Download, and never a fallback to figure.dpi -- which one SVG
+  // or PDF export poisons, because print_figure builds a fresh canvas whose
+  // __init__ rewrites figure._original_dpi. Measured: after one SVG export a
+  // bare savefig() gave 964x723 instead of 480x360.
+  "matplotlib.rcParams['savefig.dpi'] = 300",
   "import matplotlib.pyplot as _plt",
   "_plt.close('all')",
   "",
@@ -76,6 +89,7 @@ var MATPLOTLIB_SETUP_CODE = [
   "    from matplotlib._pylab_helpers import Gcf",
   "    from matplotlib.backend_bases import NonGuiException",
   "    from matplotlib.backends.backend_webagg import WebAggApplication",
+  "    import js as _js",
   // Loads mpl.css and the mpl JS the figure constructor needs. Skipping it
   // fails with "ReferenceError: mpl is not defined" on the very first show;
   // it guards on cls.initialized and returns early, so calling it every time
@@ -89,6 +103,11 @@ var MATPLOTLIB_SETUP_CODE = [
   "        try:",
   "            if getattr(_m, 'js_fig', None) is None:",
   "                _m.show()",
+  // Pyodide's patched mpl.js builds the toolbar with icon <img>s and no
+  // title attributes, so the buttons have no tooltips and nothing a test can
+  // select by. Hand the JS figure to the page so it can add the titles. The
+  // icons are left alone here -- see __trinketMplFigureShown.
+  "                _js.window.__trinketMplFigureShown(_m.js_fig)",
   "            else:",
   "                _m.canvas.draw_idle()",
   "                _m.refresh_all()",
@@ -102,6 +121,139 @@ var MATPLOTLIB_SETUP_CODE = [
   // Patch after use(), which selects the backend show() dispatches to. The
   // name is deleted so nothing is left behind in pyodide.globals for the
   // Variables tab to list; the function itself survives as pyplot.show.
+  "# #283: tight_layout's first pass after Home/Back/Forward reproduces the",
+  "# PREVIOUS layout, because ax.get_tightbbox is stale until a draw has run at",
+  "# the restored limits; the restored axes position is then overwritten and the",
+  "# x mapping lands a few percent off (measured +3.3% worker, +2.2% main). A",
+  "# second pass in the same draw is exact. Scoped to the draw that follows a",
+  "# nav-stack restore: _update_view flags the figure, execute() consumes the",
+  "# flag. Ordinary draws pay one pass as before; with figure.autolayout off the",
+  "# engine is never instantiated and none of this runs.",
+  "#",
+  "# Every wrapper below BINDS what it needs as a default argument instead of",
+  "# resolving it from globals at call time. The names may still be in globals,",
+  "# but nothing depends on that -- and it used to: `Clear memory` resets the",
+  "# Pyodide globals to the pre-setup baseline while leaving the patched methods",
+  "# installed on the classes, and the class-attribute guards above then skip",
+  "# re-patching, so the wrappers called into names that no longer existed.",
+  "# Measured on the shipped build: clear memory, re-run, press Home ->",
+  "# NameError: name '_nav_update_view' is not defined, and the figure's Home",
+  "# button silently does nothing. Found by Copilot on fork PR #8.",
+  "import matplotlib.layout_engine as _le",
+  "from matplotlib import backend_bases as _bb",
+  "if not getattr(_le.TightLayoutEngine, '_trinket_relayout_patched', False):",
+  "    _le_exec = _le.TightLayoutEngine.execute",
+  "    def _trinket_layout_execute(self, fig, _exec=_le_exec):",
+  "        _exec(self, fig)",
+  "        if getattr(fig, '_trinket_relayout', False):",
+  "            fig._trinket_relayout = False",
+  "            _exec(self, fig)",
+  "    _le.TightLayoutEngine.execute = _trinket_layout_execute",
+  "    _le.TightLayoutEngine._trinket_relayout_patched = True",
+  "    _nav_update_view = _bb.NavigationToolbar2._update_view",
+  "    def _trinket_update_view(self, _prev=_nav_update_view, _le=_le):",
+  "        # Only when the tight engine is actually in charge. plotpolish's",
+  "        # 'Fit labels in figure' toggle calls fig.set_layout_engine() on a",
+  "        # LIVE figure, so a restore while it is off would leave the flag set",
+  "        # with nothing to consume it, and the next ordinary draw after the",
+  "        # student turned it back on would pay a pass it does not need.",
+  "        _f = self.canvas.figure",
+  "        if isinstance(_f.get_layout_engine(), _le.TightLayoutEngine):",
+  "            _f._trinket_relayout = True",
+  "        return _prev(self)",
+  "    _bb.NavigationToolbar2._update_view = _trinket_update_view",
+  "",
+  "from matplotlib.backends import backend_webagg_core as _wac",
+  "# ---- the dpi pane fit -------------------------------------------------------",
+  "#",
+  "# The pane sets SCALE, the student's corner drag sets SHAPE. Fitting the pane",
+  "# by figsize -- which is what matplotlib's own handle_resize does -- silently",
+  "# RE-COMPOSES the figure, because text is in absolute points: the same label on",
+  "# a smaller canvas takes a larger share of the picture, so the download ends up",
+  "# depending on the browser window. Scaling dpi changes scale only; the picture",
+  "# is identical, just bigger or smaller. This is matplotlib's own idiom --",
+  "# backend_bases._set_device_pixel_ratio is exactly dpi = ratio * _original_dpi.",
+  "if not getattr(_wac.FigureCanvasWebAggCore, '_trinket_panefit_patched', False):",
+  "    def _trinket_pane_fit(self, event):",
+  "        _f = self.figure",
+  "        _fw, _fh = _f.get_size_inches()",
+  "        _dpr = float(event.get('dpr') or 1) or 1.0",
+  "        _w = float(event.get('w') or 0)",
+  "        _h = float(event.get('h') or 0)",
+  "        if _fw <= 0 or _fh <= 0 or _w <= 0 or _h <= 0:",
+  "            return",
+  "        # The page sends the PANE, not a dpi, and the division happens here",
+  "        # against the figure's CURRENT size -- so a student writing",
+  "        # plt.figure(figsize=(10, 3)) is fitted rather than rendered at twice",
+  "        # the pane. Both dimensions bound it; the page has already subtracted",
+  "        # the figure's own title bar and toolbar from the height.",
+  "        _logical = min(_w / _fw, _h / _fh)",
+  "        # Floor the LOGICAL dpi and only then multiply. Legibility is a",
+  "        # function of dpi/dpr, because a device pixel is not a unit anyone",
+  "        # reads. Flooring the DEVICE dpi instead leaves the floor inactive",
+  "        # exactly where it is needed: at a 200-px pane on a retina screen it",
+  "        # lets 10 pt fall to 5.8 CSS px while reporting the floor satisfied.",
+  "        if _logical < 72:",
+  "            _logical = 72",
+  "        _f._set_dpi(_logical * _dpr, forward=False)",
+  "        # forward=False above means the browser has not been told; this is what",
+  "        # tells it, and it is what provokes the echo the page marks below.",
+  "        self.manager.resize(int(_fw * _f.dpi), int(_fh * _f.dpi))",
+  "        self._force_full = True",
+  "        self.draw_idle()",
+  "    _wac.FigureCanvasWebAggCore.handle_trinket_pane_fit = _trinket_pane_fit",
+  "",
+  "    _trinket_prev_resize = _wac.FigureCanvasWebAggCore.handle_resize",
+  "    def _trinket_handle_resize(self, event, _prev=_trinket_prev_resize):",
+  "        # mpl.js's ResizeObserver cannot tell our fit from the student dragging",
+  "        # the figure's corner -- both arrive as {type:'resize'} -- so the PAGE",
+  "        # classifies them, by pointer order, and marks its own fit's echo.",
+  "        #",
+  "        # Without this the echo reaches handle_resize, which recomputes figsize",
+  "        # from twice-truncated pixels, and figsize RATCHETS DOWN on every fit:",
+  "        # measured 4.66 in -> 4.5682 in over five fits at dpr 2, with the",
+  "        # explicit-dpi export moving 466x336 -> 463x333. That is \"figsize",
+  "        # FIXED\" quietly broken, and quieter than the bug it replaced.",
+  "        if event.get('trinket_fit_echo'):",
+  "            return",
+  "        return _prev(self, event)",
+  "    _wac.FigureCanvasWebAggCore.handle_resize = _trinket_handle_resize",
+  "    _wac.FigureCanvasWebAggCore._trinket_panefit_patched = True",
+  "# savefig.dpi can be the STRING 'figure', which matplotlib resolves to",
+  "# figure._original_dpi -- and the pane fit makes that unreliable. Every canvas",
+  "# construction rewrites _original_dpi, and print_figure builds a FRESH canvas",
+  "# for svg and pdf, so one vector export leaves it holding the fitted DEVICE",
+  "# dpi. Measured: a post-SVG 'figure' export gave 960x720 on the worker and",
+  "# 949x712 on the main thread -- twice the CSS size, and dependent on both the",
+  "# pane at export time and the display density. Before any vector export the",
+  "# same choice gives 480x360, so the student's file silently changes meaning.",
+  "#",
+  "# Resolved here to the figure's COMPOSED density, rcParams['figure.dpi'],",
+  "# which the fit never touches -- so 'figure' means what a student picking it",
+  "# would expect, and keeps meaning it.",
+  "def _trinket_savefig_dpi(_mpl=matplotlib):",
+  "    _d = _mpl.rcParams['savefig.dpi']",
+  "    if isinstance(_d, bool) or not isinstance(_d, (int, float)):",
+  "        return _mpl.rcParams['figure.dpi']",
+  "    return _d",
+  "",
+  "# The main thread's save is the wheel's own patched handle_save, which passes",
+  "# no dpi and so reads the rc directly. Normalise it for the duration of that",
+  "# call and put it back, so both runtimes export the same file for the same",
+  "# choice. A pure pass-through whenever the rc is already numeric.",
+  "if not getattr(_wac.FigureCanvasWebAggCore, '_trinket_savedpi_patched', False):",
+  "    _trinket_prev_save = _wac.FigureCanvasWebAggCore.handle_save",
+  "    def _trinket_handle_save(self, event, _mpl=matplotlib, _prev=_trinket_prev_save, _dpi=_trinket_savefig_dpi):",
+  "        _d = _mpl.rcParams['savefig.dpi']",
+  "        if isinstance(_d, bool) or not isinstance(_d, (int, float)):",
+  "            _mpl.rcParams['savefig.dpi'] = _dpi()",
+  "            try:",
+  "                return _prev(self, event)",
+  "            finally:",
+  "                _mpl.rcParams['savefig.dpi'] = _d",
+  "        return _prev(self, event)",
+  "    _wac.FigureCanvasWebAggCore.handle_save = _trinket_handle_save",
+  "    _wac.FigureCanvasWebAggCore._trinket_savedpi_patched = True",
   "_plt.show = _trinket_show",
   "del _plt, _trinket_show",
 ].join('\n');
@@ -3592,6 +3744,548 @@ var mplGeneration = 0;
 function resetMplFigures() {
   mplFigures = {};
   mplGeneration++;
+  // Drop the document-level pointerup listeners with the state they close over.
+  // One is added per FIGURE, and figures are rebuilt on every run, so leaving
+  // them attached accumulates a listener per run for the life of the page --
+  // each holding its figure and its state alive. They are harmless when they
+  // fire (they return early once pointerDown is false) and still wrong.
+  Object.keys(paneFitState).forEach(function(id) {
+    var st = paneFitState[id];
+    try { document.removeEventListener('pointerup', st.onPointerUp); } catch (e) {}
+    try { document.removeEventListener('pointercancel', st.onPointerUp); } catch (e) {}
+    clearTimeout(st.startupTimer);
+  });
+  paneFitState = Object.create(null);
+}
+
+// ---- the dpi pane fit, page half ------------------------------------------
+//
+// The PANE sets scale, by scaling figure.dpi with figsize fixed; the student's
+// corner drag sets shape, by changing figsize. Python owns the arithmetic (see
+// handle_trinket_pane_fit in MATPLOTLIB_SETUP_CODE) -- this side owns the two
+// things only the page can know: how big the pane is, and which of the two
+// drags just happened.
+//
+// null prototype: figure ids come from Python ('fig1', or a number on the main
+// thread) and a plain object would answer to '__proto__'.
+var paneFitState    = Object.create(null);   // fig.id -> per-figure state
+var paneFitObserver = null;
+var PANE_FIT_DEBOUNCE_MS = 150;
+// Last few classifier decisions, for the probe below. Bounded: this must not
+// grow without limit in a long session.
+var paneFitLog = [];
+function paneFitNote(kind, w, h) {
+  paneFitLog.push({ kind: kind, w: w, h: h, t: Date.now() });
+  if (paneFitLog.length > 40) paneFitLog.shift();
+}
+
+// Foundation styles bare `select { width: 100% }`, which stretches mpl.js's
+// format dropdown to the full toolbar width -- measured 482 px in a 482 px
+// toolbar. It therefore cannot share a line with the toolbar buttons at ANY
+// pane size, and pushes the coordinate readout onto a third line: 109 px of
+// toolbar where matplotlib intends about 55. Since the pane fit subtracts the
+// figure's chrome from the height it fits into, Foundation was quietly costing
+// every figure 54 px of height -- and height binds in most common window sizes.
+//
+// Scoped to #graphic so no other select on the page is affected. Injected from
+// here rather than added to static/scss/embed/_python.scss for two reasons:
+// public/css is served from a Docker volume seeded at image build time, so a
+// stylesheet change is invisible locally until that image is rebuilt; and more
+// importantly the fit's height budget DEPENDS on this rule, so keeping them
+// apart would let someone delete a stylesheet line and silently shrink every
+// figure.
+// Once the dropdown sits BESIDE the toolbar buttons it has to look like one of
+// them, and Foundation's padding leaves it taller with square corners. The
+// values are read off a real button rather than written down, so this follows
+// whatever the shipped wheel and the runtime's icon choice produce. Purely
+// cosmetic: if it cannot measure a button it leaves the dropdown alone.
+function matchMplDropdownToButtons(fig) {
+  try {
+    var root = fig && fig.root;
+    if (!root) return;
+    var btn = root.querySelector('button.mpl-widget');
+    var sel = root.querySelector('select.mpl-widget');
+    if (!btn || !sel || !btn.offsetHeight) return;
+    var cs = getComputedStyle(btn);
+    sel.style.height = btn.offsetHeight + 'px';
+    // Buttons are in groups, so each rounds only its OUTER corners and its
+    // computed radius reads like "6px 0px 0px 6px". A lone select wants all
+    // four, so take the largest.
+    var radii = String(cs.borderRadius).split(/\s+/).map(parseFloat).filter(function(n) { return !isNaN(n); });
+    var r = radii.length ? Math.max.apply(null, radii) : 0;
+    if (r > 0) sel.style.borderRadius = r + 'px';
+    // The baselines, not merely the boxes.
+    sel.style.marginBottom = cs.marginBottom;
+  } catch (e) { /* cosmetic only */ }
+}
+
+function ensureMplToolbarCss() {
+  if (document.getElementById('trinket-mpl-toolbar-css')) return;
+  var style = document.createElement('style');
+  style.id = 'trinket-mpl-toolbar-css';
+  // Only the width is a fixed rule -- Foundation's `select { width: 100% }`,
+  // undone. Height and corners are COPIED FROM A REAL BUTTON at runtime by
+  // matchMplDropdownToButtons below, because the two runtimes do not agree:
+  // the worker's buttons carry Font Awesome glyphs and measure 34 px, the main
+  // thread's carry matplotlib's own PNG icons and measure 38. A hardcoded
+  // height matched one and left the other misaligned -- which is exactly the
+  // kind of divergence between the two integrations this work exists to close.
+  style.textContent = '#graphic select.mpl-widget { width: auto; }';
+  document.head.appendChild(style);
+}
+
+// The figure's own furniture, measured LIVE rather than assumed: mpl.js wraps
+// the canvas in a root div carrying a title bar and a toolbar. Fitting to the
+// pane box WITHOUT subtracting this overflows vertically by the whole amount,
+// which is what a first attempt did in every height-bound window size.
+//
+// It used to say the toolbar WRAPS at narrow widths -- 137 px wrapped against
+// about 70 px unwrapped -- and that was true before Foundation's
+// `select { width: 100% }` was undone (see ensureMplToolbarCss). It is not true
+// now: swept against the figure's own width from 900 px down to 160 px, chrome
+// is a CONSTANT 82 on the worker and 86 on main. Read as measured, not as
+// monotone in width -- the echo's chrome re-measure is bounded by a counter
+// precisely because nothing here guarantees a well-behaved chrome function.
+function mplFigureChrome(fig) {
+  try {
+    if (!fig || !fig.root || !fig.canvas) return 0;
+    var chrome = fig.root.offsetHeight - fig.canvas.offsetHeight;
+    return chrome > 0 ? chrome : 0;
+  } catch (e) { return 0; }
+}
+
+// What gets sent to Python: the pane's CSS box and the device pixel ratio, NOT
+// a dpi. The division happens in Python against the figure's current size, so
+// a student's own figsize= is fitted rather than assumed away.
+function paneFitBox(fig) {
+  var wrap = document.getElementById('graphic-wrap');
+  var pane = document.getElementById('graphic');
+  var el = (wrap && wrap.clientHeight) ? wrap : pane;
+  if (!el || !el.clientWidth) return null;
+  var w = el.clientWidth - 2;                  // canvas_div's border
+  var h = el.clientHeight - mplFigureChrome(fig);
+  if (w <= 0 || h <= 0) return null;
+  return { w: w, h: h, dpr: window.devicePixelRatio || 1 };
+}
+
+// `fromChromeRefit` is set only by the echo branch's chrome re-measure. Every
+// other caller is a NEW reason to fit -- a window resize, a drag's flush, a
+// probe -- and refills the refit budget; a chrome refit must not refill the
+// budget it is spending, or the 2-cycle comes straight back. Verified: resetting
+// the counter wherever lastBoxSig is updated (the obvious reading of "two per
+// box") made the review's oscillator run away again, 40 entries and still going.
+function paneFit(figureId, fromChromeRefit) {
+  var st = paneFitState[figureId];
+  if (!st || st.generation !== mplGeneration) return;
+  // Never fit a figure that has not had its startup resize yet. That resize is
+  // the first event guaranteed to come after socket.onopen has carried the
+  // device pixel ratio to Python, and fitting before it is the dpr-2 blocker
+  // that struck build-list item 6: manager.resize divided by a ratio still at 1
+  // sized the div in DEVICE pixels and recomputed figsize as 9.82x7.37in.
+  //
+  // The route in is the wrap observer's debounced callback: resetMplFigures()
+  // does not cancel a queued setTimeout(paneFitAll, 150), so a pane resize
+  // landing in the last 150 ms before a new figure registers can fit it early.
+  // Guarding HERE rather than cancelling that timer covers every caller,
+  // including ones nobody has enumerated. I could not construct the race -- the
+  // window is the gap between registration and the first ResizeObserver
+  // delivery -- so this is an invariant made explicit, not a measured repair.
+  if (st.awaitStartup) return;
+  // Deferred rather than applied mid-gesture: applying a fit while the corner
+  // is held yanks the div to the fitted size under the student's finger and
+  // then lets the drag carry on from there. Issued on pointerup instead.
+  if (st.pointerDown) { st.deferred = true; return; }
+  var box = paneFitBox(st.fig);
+  if (!box) return;
+  // A fit that asks for the size the figure already has produces no size
+  // change, therefore no ResizeObserver delivery, therefore no echo -- and
+  // nothing to decrement the count below, which then leaks upward for the rest
+  // of the session. Skip it instead: no message, no count, one fewer round trip.
+  //
+  // Safe because the only things that change what the answer WOULD be are a new
+  // figure (new state, fresh box) and a corner drag (which bumps seq and resets
+  // the count on its way through the classifier).
+  // Recorded BEFORE the signature check, not after it: every early return
+  // leaves chromeAtFit holding an older fit's number while the figure's real
+  // chrome has moved on, and the startup spec asserts the two agree. Set here,
+  // it always describes the last box that was COMPUTED, which is what both the
+  // echo's re-measure and that assertion actually mean.
+  st.chromeAtFit = mplFigureChrome(st.fig);
+  var sig = box.w + 'x' + box.h + '@' + box.dpr;
+  if (sig === st.lastBoxSig) return;
+  st.lastBoxSig = sig;
+  if (!fromChromeRefit) st.chromeRefits = 0;
+  // A COUNT, not a flag. The worker's round trip is asynchronous, so two fits
+  // issued before either echo (the wrap observer and a probe, or two window
+  // resizes 150 ms apart) produce two deliveries; a boolean is cleared by the
+  // first and the second becomes a "drag" that recomputes figsize.
+  //
+  // CAPPED, because an echo is not guaranteed: Python always sends the resize,
+  // but if the size it asks for is the size the div already has, the browser
+  // delivers no ResizeObserver callback and there is nothing to decrement. The
+  // box-signature skip above catches the common form of that; it cannot catch
+  // the case where the box changed but the fitted size rounds to the same
+  // pixels, which is reachable on the main thread. Two is the largest number
+  // of genuinely outstanding fits; beyond that the count is stale, and a stale
+  // count only ever over-permits an echo, which a drag resets on its way
+  // through the classifier.
+  if (st.pendingFits < 2) st.pendingFits += 1;
+  st.seqAtFit = st.seq;
+  try {
+    st.fig.send_message('trinket_pane_fit', box);
+  } catch (e) {
+    st.pendingFits -= 1;
+  }
+}
+
+function paneFitAll() {
+  // NOT `forEach(paneFit)`. forEach calls back with (value, index, array), so
+  // the index arrived as `fromChromeRefit`: index 0 is falsy and every later one
+  // is truthy, which meant figures 2..n were treated as chrome refits by the two
+  // callers that must refill their budget -- the wrap observer and the probe.
+  // Measured on a two-figure program: after a window resize, figure 1's counter
+  // went back to 0 and figure 2's stayed at 2, permanently spent. Which figure
+  // was protected depended on Object.keys insertion order.
+  Object.keys(paneFitState).forEach(function(id) { paneFit(id); });
+}
+
+// Read by the browser specs and by anyone driving this from a console, in the
+// same spirit as window.__trinketRuntime and window.__vpythonScene: the
+// classifier's decisions are otherwise unobservable, and a test that can only
+// see the resulting pixels cannot tell a correct fit from a lucky one.
+// `fit()` issues one on demand, which is how a spec avoids depending on
+// ResizeObserver timing.
+function exposePaneFitProbe() {
+  window.__trinketPaneFit = {
+    state: function() {
+      var out = {};
+      Object.keys(paneFitState).forEach(function(id) {
+        var st = paneFitState[id];
+        out[id] = { seq: st.seq, seqAtFit: st.seqAtFit, pending: st.pendingFits > 0,
+                    pendingFits: st.pendingFits, awaitStartup: st.awaitStartup,
+                    lastBoxSig: st.lastBoxSig, chromeAtFit: st.chromeAtFit,
+                    chromeRefits: st.chromeRefits,
+                    pointerDown: st.pointerDown, deferred: st.deferred,
+                    generation: st.generation, chrome: mplFigureChrome(st.fig),
+                    box: paneFitBox(st.fig) };
+      });
+      return out;
+    },
+    fit: paneFitAll,
+    classified: paneFitLog
+  };
+}
+
+// One observer for the pane, not one per figure: the thing that changed is the
+// pane, and every figure in it wants refitting.
+function ensurePaneFitObserver() {
+  if (paneFitObserver || typeof ResizeObserver === 'undefined') return;
+  var target = document.getElementById('graphic-wrap') || document.getElementById('graphic');
+  if (!target) return;
+  var timer = null;
+  paneFitObserver = new ResizeObserver(function() {
+    clearTimeout(timer);
+    timer = setTimeout(paneFitAll, PANE_FIT_DEBOUNCE_MS);
+  });
+  paneFitObserver.observe(target);
+}
+
+// THE DISCRIMINATOR. canvas_div changes size for exactly two reasons: our fit
+// (mpl.js applying Python's manager.resize) or the student dragging the CSS
+// resize handle. mpl.js's ResizeObserver reports both as the same
+// {type:'resize'}, and the observation itself carries nothing we control -- so
+// a sequence number on the outgoing message cannot help. What separates them is
+// ORDER: a drag always begins with a pointerdown on the div, and a fit's echo
+// never does.
+//
+// The rejected alternative was matching the expected device-pixel size within
+// +/-1, whose failure is reachable and was demonstrated: a drag to within a
+// pixel of the fitted size is silently swallowed.
+//
+// NOTE: no timeout on `pending`, ever. Measured echo latency is 9-12 ms and 3
+// animation frames on the worker, 104-117 ms and 2 frames on the main thread,
+// so a one-frame timeout -- the obvious defensive move -- would misclassify
+// every echo as a drag and reinstate the figsize ratchet this exists to stop.
+function armPaneFitClassifier() {
+  if (!window.mpl || !window.mpl.figure ||
+      window.mpl.figure.prototype.__trinketPaneFitClassified) return;
+  // Wrapped AFTER debounceMplResize, so this is the outer layer: an echo is
+  // sent immediately (it is already the size we asked for) while a real drag
+  // still goes through the debounce.
+  var orig = window.mpl.figure.prototype.request_resize;
+  window.mpl.figure.prototype.request_resize = function(w, h) {
+    var fig = this;
+    var st  = fig && paneFitState[fig.id];
+    // The FIRST delivery is mpl.js's own startup resize (add_web_socket sizes
+    // the div from 300x150 to the figure's size). It is not ours and it is not
+    // a drag; Python already knows that size, so it is marked and dropped, and
+    // THIS is where the first fit is issued -- after the startup resize, and
+    // therefore after set_device_pixel_ratio, which travels in socket.onopen.
+    // Issuing the first fit at registration instead (before onopen on the
+    // worker) made Python divide manager.resize by a device_pixel_ratio still
+    // at 1, so the div went to DEVICE pixels (1479x1110 CSS at dpr 2), and
+    // the startup resize consumed `pending` so that echo was classified a
+    // drag: figsize 4.8x3.6 -> 9.82x7.37 in, floored, overflowing every pane.
+    if (st && st.awaitStartup) {
+      paneFitNote('startup', w, h);
+      try { fig.send_message('resize', { width: w, height: h, trinket_fit_echo: true }); } catch (e) {}
+      // The boot burst is not always ONE delivery. Most loads deliver a single
+      // startup resize (the div going from the canvas's 300x150 default to the
+      // figure's size), and this used to consume the marker on it. Measured 1
+      // load in 8 on the worker, the ResizeObserver's guaranteed INITIAL
+      // observation arrives first instead:
+      //
+      //   startup:300x155  drag:300x160  drag:480x360
+      //
+      // -- the phantom consumed the marker and the two real deliveries were
+      // classified as drags, so handle_resize recomputed figsize from raw
+      // pixels. It ended at 4.8x3.6 by luck, because 480 CSS px at dpi 100 is
+      // 4.8 in at ratio 1; at dpr 2 the same arithmetic gives 9.6 in, which is
+      // the startup doubling that struck build-list item 6.
+      //
+      // So coalesce instead of consuming: every delivery in the burst is marked
+      // and dropped, and the marker is consumed only once deliveries stop.
+      // paneFit already refuses to fit while awaitStartup is true, so nothing
+      // can fit mid-burst. The size in the last delivery is not used -- the fit
+      // measures the pane itself -- so this only decides WHEN boot noise ends.
+      // RE-ENTRY IS POSSIBLE HERE, BY DESIGN, and the COUNT IS NOT BOUNDED.
+      // Since ec7e7dc the flag outlives the timer -- it is cleared two frames
+      // later, beside the fit -- so a delivery arriving after the timer fired
+      // still lands in this branch. This `clearTimeout` is then a no-op (the
+      // timer nulled startupTimer on its way out), so that delivery's timer is
+      // ADDITIVE rather than a replacement: each fired timer gets its own rAF
+      // chain and its own paneFit call.
+      //
+      // Re-entries therefore track late deliveries one for one, and the only
+      // thing that stops them is boot noise stopping. Measured (round 9) by
+      // delaying rAF 2000 ms and delivering 12 real ResizeObserver callbacks
+      // 100 ms apart: 12 re-entries on both runtimes, and the shipped timing
+      // with the same 12 gives 0. A slow rAF relative to setTimeout is exactly
+      // a backgrounded tab, so this is a real condition, not an invented one.
+      //
+      // WHAT MAKES IT HARMLESS IS NOT THIS BLOCK. It is paneFit's box-signature
+      // skip (`if (sig === st.lastBoxSig) return;`, pyodide.js:3915): of those
+      // 13 paneFit calls, 1 sent and 12 were
+      // dropped because the box had not moved. Final state was correct on both
+      // runtimes -- canvas 513 inside box 513, pendingFits 0, zero drags. An
+      // earlier version of this comment said "two calls from one boot" and
+      // "bounded", and credited the 50 ms gap. All three were wrong: it is ~13,
+      // nothing bounds the count, and the gap PERMITS the re-entries rather
+      // than limiting them. The thing doing the work was in another function
+      // and went unmentioned for a commit.
+      //
+      // RESIDUAL, read not measured: those 12 were dropped because the box was
+      // constant. A pane genuinely moving while backgrounded gives each late
+      // delivery a different box, so each one sends -- N late deliveries, N Agg
+      // renders. pendingFits caps the counter, not the sends. That is cost, not
+      // correctness, and nothing here addresses it.
+      //
+      // So still no guard, but for a narrower reason than the one given before:
+      // a guard would have to tell a burst delivery from a late one, which is
+      // the judgement the 50 ms gap is already making and getting right -- and
+      // clearing the flag any earlier reopens the two-frame drag
+      // misclassification that ec7e7dc closed and round 8 reproduced.
+      clearTimeout(st.startupTimer);
+      st.startupTimer = setTimeout(function() {
+        if (paneFitState[fig.id] !== st || st.generation !== mplGeneration) return;
+        st.startupTimer = null;
+      // Deferred two frames rather than issued here. showGraphic() has just set
+      // #graphic-wrap's height as a PERCENTAGE, and at this point the browser
+      // has not resolved it -- so fitting now measures a pane that is about to
+      // change and the figure lands at one size and then another. Measured as a
+      // visible flicker on first draw (746 px then 722 px on the worker). Two
+      // frames of settling make it one fit. If the pane still moves afterwards
+      // the wrap observer catches it, so this is only ever as good as before.
+        requestAnimationFrame(function() { requestAnimationFrame(function() {
+        // The same guard the echo branch carries. Teardown was already covered
+        // by luck -- paneFit looks the state up by id and returns once
+        // resetMplFigures() has emptied the map -- but a NEW figure registering
+        // under the same reused id inside these two frames would be fitted
+        // before its own startup resize, i.e. before socket.onopen carries the
+        // device pixel ratio to Python. That is the dpr-2 blocker struck from
+        // build-list item 6, and same-id re-registration stopped being
+        // impossible when registerPaneFit learned to replace a stale state.
+        if (paneFitState[fig.id] !== st || st.generation !== mplGeneration) return;
+        // CLEARED HERE, not in the 50 ms timer, and the two frames between them
+        // are why. A delivery arriving after the timer fired but before this
+        // callback runs would find awaitStartup already false and pendingFits
+        // still 0, fall through to the drag branch below, and recompute figsize
+        // from startup pixels -- which is the doubling bug this whole block
+        // exists to prevent, reachable for ~2 frames on every load. The 50 ms
+        // gap decides when boot noise has stopped; it cannot also stand in for
+        // "the first fit is in flight", because nothing has been sent yet.
+        //
+        // Clearing it immediately before paneFit, in the same synchronous tick,
+        // leaves no window: paneFit refuses to fit while awaitStartup is true
+        // (see its guard), so it has to be false by the time that call is made
+        // and there is nowhere earlier that is safe.
+        //
+        // If the identity guard above returned, awaitStartup stays true on a
+        // state that is already detached or superseded -- deliberate, and
+        // harmless: that state is no longer in paneFitState or its generation
+        // has moved, so nothing will ever fit it again either way.
+        //
+        // Found by Copilot on fork PR #10; it is the same shape as c0f671c
+        // itself, a boot-order race that leaves a real delivery classified as a
+        // drag.
+        st.awaitStartup = false;
+        // By now the toolbar has laid out and its icons have loaded, which is
+        // what makes a button's height worth reading.
+        matchMplDropdownToButtons(fig);
+        paneFit(fig.id);
+        }); });
+      }, 50);
+      return;
+    }
+    if (st && st.pendingFits > 0 && st.seq === st.seqAtFit) {
+      st.pendingFits -= 1;
+      paneFitNote('echo', w, h);
+      // Marked so Python drops it instead of recomputing figsize from twice-
+      // truncated pixels -- which is the ratchet: measured 4.66 in -> 4.5682 in
+      // over five fits at dpr 2, with the export moving 466x336 -> 463x333.
+      try { fig.send_message('resize', { width: w, height: h, trinket_fit_echo: true }); } catch (e) {}
+      // The chrome we fitted into may not have been the chrome the figure ends
+      // up with. On the worker, at the moment of the FIRST fit, mpl.js's title
+      // bar measures 8 px rather than 26 -- chrome 64 instead of 82 -- and
+      // settles ~100 ms later, so the figure is fitted 18 px too tall and the
+      // pane is left scrollable until something else provokes a refit. Measured
+      // at dpr 2 in 10 of 10 fresh worker loads; it usually self-corrected, and
+      // once it did not. The main thread reads 26 immediately and never showed
+      // it.
+      //
+      // Re-measuring HERE rather than waiting longer before the first fit is
+      // what makes it deterministic: no settle time has to be guessed. (An
+      // earlier version of this comment also claimed it covers a fit that wraps
+      // the toolbar onto another line. It would -- but that case is unreachable
+      // since the Foundation fix, so it is not a justification.)
+      //
+      // Two frames, because the echo can arrive before the furniture has
+      // finished laying out.
+      //
+      // COUNTED, not argued. The first version of this said it was bounded by
+      // paneFit's box-signature check -- and that was wrong: lastBoxSig
+      // remembers exactly ONE previous box, so it rules out a fixed point and
+      // not a 2-cycle. A local review built the cycle (a chrome term that
+      // depends on the canvas width, which is the very mechanism this comment
+      // used to invoke) and the log alternated
+      // `chrome:86x110 echo:481x361 chrome:110x86 echo:513x385` forever, with
+      // the figure visibly flipping between 513 and 481 px. Today's chrome is
+      // CONSTANT in width -- swept 900 px down to 160 px, 82 on the worker and
+      // 86 on main -- so nothing in the shipped page oscillates, but that is a
+      // CSS-fragile invariant and not a bound.
+      //
+      // The budget is TWO PER BOX, and "per box" has a trap in it: the counter
+      // is refilled by any fit that is NOT itself a chrome refit, because a
+      // chrome refit is itself a new box, so refilling wherever lastBoxSig is
+      // updated refills the budget it is spending -- measured, the runaway came
+      // straight back. Two is enough for the settle this exists for (64 -> 82,
+      // one refit), and a drag resets it as a new baseline for the shape.
+      requestAnimationFrame(function() { requestAnimationFrame(function() {
+        if (paneFitState[fig.id] !== st || st.generation !== mplGeneration) return;
+        var now = mplFigureChrome(fig);
+        if (now === st.chromeAtFit) return;
+        if (st.chromeRefits >= 2) return;
+        st.chromeRefits += 1;
+        paneFitNote('chrome', st.chromeAtFit, now);
+        paneFit(fig.id, true);
+      }); });
+      return;
+    }
+    // A drag is a new baseline for both the box and the refit budget.
+    if (st) { st.pendingFits = 0; st.lastBoxSig = null; st.chromeRefits = 0; }
+    paneFitNote('drag', w, h);
+    return orig.apply(fig, arguments);
+  };
+  window.mpl.figure.prototype.__trinketPaneFitClassified = true;
+}
+
+// Called once per figure, from whichever side built it: handleWorkerFigure on
+// the worker, __trinketMplFigureShown on the main thread. Both run while the
+// canvas is still at the HTML default 300x150, i.e. before mpl.js's first
+// ResizeObserver delivery -- which is what makes the first fit below land
+// before anything has been sized from the wrong numbers.
+function registerPaneFit(fig) {
+  if (!fig || fig.id === undefined || fig.id === null) return;
+  // Figure ids are REUSED -- Pyodide numbers the main thread's figures from 1
+  // every run, and the worker calls its figure 'fig1' -- so a bare
+  // `if (paneFitState[fig.id]) return;` made every run after the first inherit
+  // the PREVIOUS run's state, whose `fig` is a detached figure on a dead
+  // socket. Measured on the main thread at dpr 2: run twice, resize the window,
+  // and the figure stays 480px in a 398px pane with no classifier entry at all,
+  // because fits go to the old socket; a corner drag on the new figure is then
+  // classified as an echo, because the pointerdown listener is on a div that is
+  // no longer in the document, so `seq` never moves. Every teardown path that
+  // goes through resetMplFigures() clears this, but not every path does -- the
+  // step-through recorder runs MATPLOTLIB_SETUP_CODE without one -- so the
+  // identity check is what makes registration correct for callers we have not
+  // enumerated, rather than for the two we have.
+  var prior = paneFitState[fig.id];
+  if (prior) {
+    if (prior.fig === fig) return;          // genuinely the same figure, twice
+    try { document.removeEventListener('pointerup', prior.onPointerUp); } catch (e) {}
+    try { document.removeEventListener('pointercancel', prior.onPointerUp); } catch (e) {}
+    clearTimeout(prior.startupTimer);
+    delete paneFitState[fig.id];
+  }
+  var st = paneFitState[fig.id] = {
+    fig: fig, generation: mplGeneration,
+    seq: 0, seqAtFit: -1, pendingFits: 0, awaitStartup: true, lastBoxSig: null,
+    chromeAtFit: null, chromeRefits: 0, startupTimer: null,
+    pointerDown: false, deferred: false
+  };
+
+  var div = fig.canvas && fig.canvas.parentNode;
+  if (div && div.addEventListener) {
+    div.addEventListener('pointerdown', function() { st.seq++; st.pointerDown = true; });
+    // mpl.js gives canvas_div `resize: both`, so the browser draws a grip in
+    // its bottom-right corner and a student can drag it. That drag changes the
+    // figure's SHAPE -- its size in inches -- which is what gets downloaded,
+    // while the pane fit only changes the scale it is drawn at. Nothing said
+    // so, and the grip has no element of its own to hang a tooltip on, so the
+    // explanation goes on the div.
+    if (!div.title) {
+      div.title = 'Drag the bottom-right corner to change the figure\u2019s shape. ' +
+                  'That shape is what gets downloaded; resizing the pane only ' +
+                  'changes how large it is drawn.';
+    }
+  }
+  // On the document, not the div: a drag that ends with the pointer outside the
+  // figure still gets its pointerup, and a lost one leaves pointerDown stuck.
+  // Kept on the state so resetMplFigures can detach it -- see there.
+  st.onPointerUp = function() {
+    if (!st.pointerDown) return;
+    st.pointerDown = false;
+    if (!st.deferred) return;
+    st.deferred = false;
+    // Two frames, not now: the drag's final ResizeObserver delivery lands in
+    // the frame after the last pointermove, and observer callbacks run AFTER
+    // that frame's rAF callbacks. Then flush the debounced drag resize so it
+    // reaches Python BEFORE the fit, which fits the shape the student chose.
+    requestAnimationFrame(function() { requestAnimationFrame(function() {
+      if (fig.__trinketResizeFlush) fig.__trinketResizeFlush();
+      paneFit(fig.id);
+    }); });
+  };
+  // pointercancel too, with the same teardown. A cancelled gesture -- touch
+  // scrolling taking over, or a lost pointer capture -- never delivers
+  // pointerup, so without this `pointerDown` stays true for the life of the
+  // figure and EVERY later fit is deferred and never sent: the figure stops
+  // following the pane entirely, with nothing in the log to say why. Flushing
+  // rather than discarding, because the browser has already applied whatever
+  // size the drag reached before it was cancelled, and that size is the
+  // figure's shape now.
+  document.addEventListener('pointerup', st.onPointerUp);
+  document.addEventListener('pointercancel', st.onPointerUp);
+
+  ensureMplToolbarCss();
+  ensurePaneFitObserver();
+  armPaneFitClassifier();
+  exposePaneFitProbe();
+  // No fit here. The first fit is issued by the classifier when mpl.js's own
+  // startup resize is delivered (see armPaneFitClassifier): that delivery is
+  // the one event guaranteed to come after socket.onopen has carried the
+  // device pixel ratio to Python, and treating it as the fit's echo was the
+  // startup bug described there.
 }
 
 function ensureMplAssets(msg) {
@@ -3648,8 +4342,21 @@ function debounceMplResize() {
     var fig = this;
     var gen = mplGeneration;
     clearTimeout(fig.__trinketResizeTimer);
+    // Exposed so the pane fit can FLUSH the trailing drag resize before it
+    // fits: a fit deferred to pointerup that is sent while the drag's last
+    // resize is still in this timer fits the PREVIOUS figsize, and the drag's
+    // size then lands on a figure already fitted -- measured: canvas 721x542
+    // over a 642x482 figure, 79 px of mismatch, on both runtimes.
+    fig.__trinketResizeFlush = function() {
+      clearTimeout(fig.__trinketResizeTimer);
+      fig.__trinketResizeTimer = null;
+      fig.__trinketResizeFlush = null;
+      if (gen !== mplGeneration) return;
+      orig.call(fig, w, h);
+    };
     fig.__trinketResizeTimer = setTimeout(function() {
       fig.__trinketResizeTimer = null;
+      fig.__trinketResizeFlush = null;
       // Torn down while we waited. Drop it rather than send it: see
       // mplGeneration. 150 ms is short, but "drag the corner, then hit Run"
       // is an ordinary thing to do and lands inside it.
@@ -3705,6 +4412,48 @@ var MPL_TOOLBAR_ICONS = {
   filesave     : 'fa-floppy-o',
   download     : 'fa-download'
 };
+
+// Main-thread figures are constructed by Pyodide's own manager.show(), not by
+// handleWorkerFigure, so nothing on this side ever touched their toolbar. The
+// setup code calls this right after _m.show().
+//
+// TITLES ONLY, deliberately -- NOT applyMplToolbarIcons. Pyodide's patched
+// mpl.js sets icon_img.alt and a mouseover handler but never button.title, so
+// main-thread buttons have no native tooltip and nothing a test can select by.
+// That is the gap. The icons themselves are fine here: the main thread resolves
+// mpl.toolbar_image_callback through its own matplotlib and gets real icon
+// PNGs. The worker cannot -- it harvests them and gets zero bytes -- which is
+// why applyMplToolbarIcons substitutes Font Awesome there. Running that
+// substitution here would swap matplotlib's own icons for the worker's
+// workaround, which is parity in the wrong direction.
+window.__trinketMplFigureShown = function(fig) {
+  try { applyMplToolbarTitles(fig); } catch (e) {}
+  // The corner drag on main was undebounced: mpl.js's ResizeObserver fires once
+  // per animation frame during a drag and each request is a full render plus a
+  // PNG encode. Measured 12 outbound resizes, 14 frames and 14 Python draws for
+  // one 12-step drag, against 1/1/1 on the worker, which has had the debounce
+  // since it was armed in handleWorkerFigure. debounceMplResize patches the
+  // shared mpl.figure prototype and is idempotent, so arming it here -- once a
+  // figure exists, which is when window.mpl is guaranteed -- is enough.
+  try { debounceMplResize(); } catch (e) {}
+  // The pane fit registers here rather than in the setup code, because it
+  // needs the JS figure. Order matters: after debounceMplResize, so the
+  // classifier ends up the outer wrapper on request_resize.
+  try { registerPaneFit(fig); } catch (e) {}
+};
+
+// Idempotent: `button.title ||` leaves an existing tooltip alone, so this is
+// safe to call again on a figure that already has them.
+function applyMplToolbarTitles(fig) {
+  if (!fig || !fig.buttons || !window.mpl || !window.mpl.toolbar_items) return;
+  window.mpl.toolbar_items.forEach(function(item) {
+    var name   = item[0];                    // 'Home', 'Pan', … keys of fig.buttons
+    var button = name && fig.buttons[name];
+    if (!button) return;
+    var img = button.querySelector('img');
+    button.title = button.title || (img && img.alt) || name;
+  });
+}
 
 function applyMplToolbarIcons(fig) {
   if (!fig || !fig.buttons || !window.mpl || !window.mpl.toolbar_items) return;
@@ -4078,6 +4827,11 @@ function handleWorkerFigure(msg) {
     mplFigures[msg.figureId] = { fig: fig, socket: socket };
     applyMplToolbarIcons(fig);
     debounceMplResize();
+    // Same registration the main thread does from __trinketMplFigureShown.
+    // Not routed through that hook: it applies TITLES only, and the worker
+    // wants applyMplToolbarIcons above -- calling both appends a second icon
+    // to every button.
+    registerPaneFit(fig);
     if (typeof socket.onopen === 'function') { socket.onopen(); }
 
     return;
@@ -4191,7 +4945,10 @@ function runInWorker(program, files, serialized, decision) {
   // MEASURED, because the obvious guess is wrong: Pyodide's own artifacts (2.4 MB
   // stdlib, 2.7 MB wasm, 3.1 MB numpy) come from jsdelivr and are served from the
   // browser cache on run 2, but OUR wheel is refetched in full — all 3,516,355
-  // bytes — because app.js:65 puts `no-store` on every response trinket sends.
+  // bytes — because the server's root ./app.js:314 (and :300 for Boom errors)
+  // puts `no-store` on every response trinket sends, via
+  // cacheControl.headersFor. NOTE the path: this repo has six app.js files and
+  // only the one at the root is the server.
   // It carries an etag, so exempting /components/ from that blanket policy would
   // make it a 304. See the spec (V7a) for that and the standby-worker lever.
   // python3 runs never take this branch.
@@ -4222,11 +4979,22 @@ function runInWorker(program, files, serialized, decision) {
   openRuntimeLine('Loading Python (Pyodide)… ');
 
   // The worker cannot see the page, so it cannot know how wide the graphic pane
-  // is. Pyodide's patched FigureManagerWebAgg ignores mpl.js's `resize` message
-  // (the same gap that makes it ignore `supports_binary`), so the size has to be
-  // set in Python BEFORE the figure is created — hence sending it here.
-  // #graphic is still HIDDEN at this point (showGraphic() runs when the first
-  // figure arrives), so its clientWidth is 0. Measure a visible ancestor.
+  // is.
+  //
+  // The comment that used to sit here said Pyodide's patched
+  // FigureManagerWebAgg "ignores mpl.js's `resize` message (the same gap that
+  // makes it ignore `supports_binary`)", and concluded the size therefore had to
+  // be set in Python before the figure existed. THAT WAS WRONG, and it is worth
+  // recording why rather than deleting quietly: handle_resize is present in the
+  // shipped wheel and dispatched like any other event. What was actually
+  // happening is that mpl.js gates the resize on `fig.ws.readyState == 1` and
+  // Trinket's fake socket had no readyState, so the message was never SENT.
+  // Fixed in #279; the figure is now fitted after it exists, by scaling dpi.
+  //
+  // This width survives for one job only: the pane fit's own first measurement
+  // needs a number before #graphic is visible. #graphic is still HIDDEN at this
+  // point (showGraphic() runs when the first figure arrives), so its
+  // clientWidth is 0. Measure a visible ancestor.
   var graphicWidth = 0;
   ['graphic', 'outputContainer', 'codeOutput'].forEach(function(id) {
     if (graphicWidth) return;
@@ -4393,6 +5161,14 @@ function startRun() {
   // because a stale scene must not survive a run that isn't VPython at all (or
   // that escaped to the main thread with ?runtime=main) either.
   resetVPythonScene();
+
+  // Same argument for matplotlib, and for the same reason it is unconditional:
+  // resetOutput() has just emptied #graphic, so any figure from the last run is
+  // detached, and its pane-fit state -- including a document-level pointerup
+  // listener holding it alive -- must not survive into this one. runInWorker()
+  // does this for the worker path; the main thread had no equivalent, which is
+  // what left a dead figure's state in place for the next run to inherit.
+  resetMplFigures();
 
   // Default to a console-only layout each run; showGraphic() re-splits the pane
   // when the code uses matplotlib.

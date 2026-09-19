@@ -10,15 +10,29 @@ const { test, expect } = require('@playwright/test');
 // by the data coordinates Python reports for fixed pixels (.mpl-message echoes
 // "x=… y=…" on motion), which is the view itself rather than a picture of it.
 //
-// Home is asserted exactly on the y axis and on the x SPAN, not on pixels: the
-// worker sets figure.autolayout=True, so tight_layout re-runs on every draw and
-// the x mapping drifts a few percent per zoom/Home cycle as the y-tick-label
-// width changes the left margin (pan→Home, which keeps label widths, restores
-// both axes to the digit). Pre-existing, cosmetic, tracked separately; a
-// byte-identical-pixels assertion fails on it and would blame the wrong thing.
+// Home is asserted on both axes at toBeCloseTo(..., 2), i.e. within 0.005 of
+// the data units it started at. That is "restored", not "byte-exact", and the
+// difference is deliberate: tight_layout converges asymptotically, so a second
+// pass leaves a residual of about 0.0003 of the figure width (sub-pixel on a
+// single-axes plot, measured on a 2x2-with-colorbars figure) and a third buys
+// 0.1px for +100ms. The precision here sits far inside that residual and far
+// outside the bug.
 //
-// Worker deploys only: main-thread figures use matplotlib's own WebAgg page and
-// never had this bug.
+// Before #283 was fixed the x mapping came back a few percent off after
+// zoom→Home (measured +3.3% on the worker, +2.2% on the main thread):
+// tight_layout's first pass after the nav-stack restore reused the zoomed
+// figure's tight bbox and overwrote the restored axes position. The setup code
+// now runs a second layout pass on that draw, and these assertions are what
+// would catch a regression -- verified by reverting the fix and watching this
+// test go red at a received difference of 0.044.
+//
+// The skip below is about the TOOLBAR (#280), which only the worker's manager
+// lacked; both runtimes set figure.autolayout and both had the #283 drift.
+//
+// Read that as a statement about the CODE, not about this file's scope: the
+// skip at :99 means only the worker is ever exercised here, so the main
+// thread's #283 fix is asserted by nothing. Deliberate, not an oversight --
+// see R7-C2 in harness/panefit-coverage-round7.md.
 
 const PROG = 'import matplotlib.pyplot as plt\nplt.plot([0,1,2,3],[0,1,4,9])\nplt.show()\nprint("FINI")\n';
 
@@ -29,8 +43,17 @@ async function runProgram(page, src) {
   await page.locator('.run-it').first().click();
   await expect.poll(async () => page.evaluate(() =>
     document.querySelector('#console-output')?.innerText || ''), { timeout: 180_000 }).toContain('FINI');
-  const fig = page.locator('.worker-figure.mpl-figure').first();
-  await fig.waitFor({ state: 'attached', timeout: 60_000 });
+  // #graphic holds the one figure on BOTH runtimes; the worker's host div has
+  // class .worker-figure, the main thread's (built by Pyodide's manager.show())
+  // has none, so anchoring on the class would make the probes worker-only.
+  //
+  // But #graphic is in the page's own HTML and is therefore attached before the
+  // program has run, so waiting on IT proves nothing -- the readiness gate has
+  // to be the canvas mpl.js creates inside it. FINI only says Python reached
+  // the end of the program; on the worker the figure crosses postMessage after
+  // that, so the console is not a gate either.
+  const fig = page.locator('#graphic');
+  await fig.locator('canvas').first().waitFor({ state: 'attached', timeout: 60_000 });
   await page.waitForTimeout(2500);                 // first frame + first resize settle
   return fig;
 }
@@ -93,10 +116,10 @@ test.describe('worker figure toolbar (#280)', () => {
     await p.button('Reset original view').click();
     await page.waitForTimeout(2500);
     const home = await p.view();
-    expect(home.T.y, 'Home restores the y view exactly').toBeCloseTo(initial.T.y, 2);
+    expect(home.T.y, 'Home restores the y view (#283)').toBeCloseTo(initial.T.y, 2);
     expect(home.B.y).toBeCloseTo(initial.B.y, 2);
-    expect(Math.abs(home.xSpan - initial.xSpan) / initial.xSpan,
-      'Home restores the x span (tolerance is the autolayout drift, see header)').toBeLessThan(0.10);
+    expect(home.xSpan, 'Home restores the x span (#283)').toBeCloseTo(initial.xSpan, 2);
+    expect(home.L.x, 'Home restores L.x (#283)').toBeCloseTo(initial.L.x, 2);
   });
 
   test('Pan: a drag shifts the view, Home restores it to the digit', async ({ page }) => {
@@ -112,8 +135,8 @@ test.describe('worker figure toolbar (#280)', () => {
     await page.waitForTimeout(2500);
     const home = await p.view();
     for (const k of ['L', 'R', 'T', 'B']) {
-      expect(home[k].x, `Home restores ${k}.x exactly`).toBeCloseTo(initial[k].x, 2);
-      expect(home[k].y, `Home restores ${k}.y exactly`).toBeCloseTo(initial[k].y, 2);
+      expect(home[k].x, `Home restores ${k}.x`).toBeCloseTo(initial[k].x, 2);
+      expect(home[k].y, `Home restores ${k}.y`).toBeCloseTo(initial[k].y, 2);
     }
   });
 });

@@ -138,39 +138,56 @@ d('plot-style adapter — runtime and teardown', () => {
   });
 
   // hostRcKeys stopped being advisory in plotpolish v0.3.2: it is threaded into
-  // the GENERATED BLOCK as well as set_style()'s keep list, so this list now
-  // decides whether a re-run keeps the worker's pane-fitting figure.figsize or
-  // lets a style (seaborn-v0_8 is one of the default buttons) throw it away.
-  it('claims the pane-fitting figsize as a host key on a WORKER run', () => {
+  // the GENERATED BLOCK as well as set_style()'s keep list, so this list is what
+  // decides whether a re-run keeps the host's own rcParams or lets a style throw
+  // them away. All three keys are the host's on BOTH runtimes since the dpi pane
+  // fit -- it gave the main thread the same fixed figure.figsize and savefig.dpi
+  // the worker has.
+  const HOST_RC_KEYS = ['figure.autolayout', 'figure.figsize', 'savefig.dpi'];
+
+  // Each key earns its place against a measured failure:
+  //   figure.figsize  8 of the 29 styles set it, seaborn-v0_8 among them and a
+  //                   default curated button; without it, picking seaborn
+  //                   rewrote the fixed 4.8x3.6 to 8x5.5.
+  //   savefig.dpi     exactly one style sets it -- `classic`, to 100 -- which
+  //                   is in the dropdown, so picking it dropped a 300-dpi
+  //                   export to 100 silently.
+  it('claims all three host rcParams on a WORKER run', () => {
     const win = boot();
     addCanvas(win, null);
     win.trinketPlotpolish.afterRun('worker');
-    expect(pill(win).hostRcKeys).toEqual(['figure.autolayout', 'figure.figsize']);
+    expect(pill(win).hostRcKeys).toEqual(HOST_RC_KEYS);
   });
 
-  // The main thread sets autolayout and nothing else (pyodide.js
-  // MATPLOTLIB_SETUP_CODE), so claiming figsize here would be wrong rather than
-  // merely useless: the block would save and restore whatever figsize happened
-  // to be current and defeat a style's own choice for no reason.
-  it('does NOT claim figsize on a main-thread run, where nothing sets it', () => {
+  // It used to be ['figure.autolayout'] here, because nothing on the main thread
+  // set figsize. MATPLOTLIB_SETUP_CODE now sets figure.figsize and savefig.dpi
+  // too, so withholding them would let a style defeat the pane fit on main only
+  // -- exactly the kind of quiet divergence between the two matplotlib
+  // integrations this work exists to close.
+  it('claims the same three on a MAIN-THREAD run, which now sets them too', () => {
     const win = boot();
     addCanvas(win, null);
     win.trinketPlotpolish.afterRun('main');
-    expect(pill(win).hostRcKeys).toEqual(['figure.autolayout']);
+    expect(pill(win).hostRcKeys).toEqual(HOST_RC_KEYS);
   });
 
   // The reason the list is set in afterRun() and not mount(): mount() is
   // one-way, so assigning there would freeze the list at whichever runtime ran
   // first and silently mis-describe every later run.
-  it('follows the runtime across successive runs, not just the first', () => {
+  it('sets the list on EVERY run, not just the first', () => {
     const win = boot();
     addCanvas(win, null);
-    win.trinketPlotpolish.afterRun('main');
-    expect(pill(win).hostRcKeys).toEqual(['figure.autolayout']);
-    win.trinketPlotpolish.afterRun('worker');
-    expect(pill(win).hostRcKeys).toEqual(['figure.autolayout', 'figure.figsize']);
-    win.trinketPlotpolish.afterRun('main');
-    expect(pill(win).hostRcKeys).toEqual(['figure.autolayout']);
+    // The list no longer varies by runtime, so this can no longer catch a
+    // frozen list by watching it change. Assert the mechanism instead: clear it
+    // between runs and check each afterRun puts it back. A list assigned in
+    // mount() would come back undefined on the second run.
+    win.trinketPlotpolish.afterRun('main');        // the panel only exists after a run
+    expect(pill(win).hostRcKeys, 'after the first run').toEqual(HOST_RC_KEYS);
+    for (const runtime of ['worker', 'main', 'worker']) {
+      pill(win).hostRcKeys = undefined;
+      win.trinketPlotpolish.afterRun(runtime);
+      expect(pill(win).hostRcKeys, `after a later ${runtime} run`).toEqual(HOST_RC_KEYS);
+    }
   });
 
   it('Clear memory takes the panel down, and a later figure gets a fresh one', () => {

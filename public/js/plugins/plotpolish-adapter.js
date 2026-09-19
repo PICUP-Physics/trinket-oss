@@ -194,6 +194,33 @@
   // Mounting
   // ---------------------------------------------------------------------
 
+  // In its floating layout the panel draws everything in a fixed-position
+  // layer and leaves its host element at 0x0 -- but the host is still
+  // `display: inline-flex`, so it sits on a line of its own after #graphic and
+  // the wrap's 12px/18px strut gives that line box 18 px of height.
+  //
+  // That was free for as long as the figure left slack in the pane. The dpi
+  // pane fit removes the slack: in every window shape where HEIGHT binds the
+  // figure now fills #graphic-wrap exactly, so those 18 px are the only thing
+  // that does not fit and the output pane becomes scrollable by exactly that
+  // much. Measured 489 against a 471-px viewport at 1700x760 on both runtimes,
+  // and the wrap really scrolls to 18; removing the element takes scrollHeight
+  // back to 471 and re-adding it restores 489.
+  //
+  // A block box of zero height generates no line box, which is the whole fix.
+  // Scoped to the floating layout by attribute rather than set inline: the
+  // panel also has a `pill` layout, where the host is a real inline pill inside
+  // a toolbar row, and an inline style would break that one. A document rule
+  // beats the shadow root's own :host declaration.
+  function ensurePanelHostCss() {
+    if (document.getElementById('trinket-plotpolish-host-css')) return;
+    var style = document.createElement('style');
+    style.id = 'trinket-plotpolish-host-css';
+    style.textContent =
+      '#graphic-wrap > plotpolish-panel[layout="float"] { display: block; }';
+    document.head.appendChild(style);
+  }
+
   // Both the panel and its position anchor go on #graphic-wrap, not #graphic.
   // #graphic is the obvious choice -- resetOutput() empties it every run while
   // the node itself persists -- but it is also *taller* than the wrap, which
@@ -208,6 +235,7 @@
     var fig  = document.getElementById('graphic');
     if (!wrap || !fig) return false;
 
+    ensurePanelHostCss();
     panel = document.createElement('plotpolish-panel');
     // Trinket's embed is hard-coded light and defines no CSS custom
     // properties; without this the panel follows the student's OS dark mode.
@@ -226,11 +254,12 @@
     //
     // Fired through jQuery on #editor rather than by clicking `a.run-it`:
     // that is exactly what this embed's own Ctrl-Enter/Cmd-Enter run command
-    // does (pyodide.js:4830), and the document-level handler beside it
-    // (pyodide.js:4835) is what turns the event into a run, via showResult ->
-    // runCode. So a re-run from here inherits runCode's guards -- it is
-    // ignored while a step-through recording is in flight and while an
-    // ordinary run is still going (pyodide.js:4329) -- rather than simulating
+    // does (pyodide.js:5590, the editor's `run` command), and the
+    // document-level handler beside it (pyodide.js:5595) is what turns the
+    // event into a run, via showResult -> runCode. So a re-run from here
+    // inherits runCode's guards -- it is ignored while a step-through
+    // recording is in flight (pyodide.js:5088) and while an ordinary run is
+    // still going (pyodide.js:5090) -- rather than simulating
     // a click on a control that may be hidden, mid-run or replaced by Stop.
     panel.addEventListener('plotpolish-rerun-requested', function() {
       try {
@@ -313,28 +342,33 @@
       // in the generated block, which saves them, runs mpl.style.use(<name>),
       // and restores them, so a re-run draws what the preview showed.
       //
-      // The list mirrors what each runtime actually sets, and they differ:
-      //   main   pyodide.js MATPLOTLIB_SETUP_CODE -- figure.autolayout only
-      //   worker pyodide-worker.js MPL_SETUP      -- autolayout AND a
-      //          pane-fitting figure.figsize
+      // The keys the HOST sets, which a style must not be allowed to take back.
+      // Both runtimes now set all three -- the list used to differ, because the
+      // main thread set only figure.autolayout while the worker also set a
+      // pane-fitting figure.figsize. Since the dpi pane fit, both set a FIXED
+      // figure.figsize of 4.8 x 3.6 and a savefig.dpi of 300, so the runtime
+      // ternary is gone and the two cannot drift.
       //
-      // So figsize is listed on the worker only. On the main thread it would be
-      // wrong rather than merely useless: nothing sets figsize there, so the
-      // block would save and restore whatever happened to be current and
-      // defeat a style's own figsize for no reason.
+      // Why each one has to be here, all measured against the shipped wheel:
       //
-      // Why it matters on the worker: 8 of matplotlib's 29 styles set
-      // figure.figsize, seaborn-v0_8 among them -- and that is one of the
-      // default curated buttons. Before v0.3.2 picking it threw the pane fit
-      // away on every re-run while live preview went on showing it, which is
-      // the live-matches-re-run promise broken. Fixed upstream, and this line
-      // is what opts the host into the fix.
+      //   figure.figsize   8 of the 29 styles set it, seaborn-v0_8 among them,
+      //                    and that is one of the default curated buttons.
+      //                    Without it on the list, picking seaborn silently
+      //                    rewrote 4.8 x 3.6 to 8 x 5.5 -- changing both the
+      //                    exported shape and what the pane fit is fitting,
+      //                    while live preview went on showing the old figure.
+      //   savefig.dpi      exactly one style sets it: `classic`, to 100. Not a
+      //                    curated button, but it is in the style dropdown, so
+      //                    picking it dropped a 300-dpi export to 100 with
+      //                    nothing saying so.
+      //   figure.autolayout  as before: it is a student-facing control ("Fit
+      //                    labels in figure") and the host's default is True.
       //
       // Per run, not in mount(): mount() is one-way, and a session can run on
-      // either runtime, so the list has to follow the run that just happened.
-      panel.hostRcKeys = runtime === 'worker'
-        ? ['figure.autolayout', 'figure.figsize']
-        : ['figure.autolayout'];
+      // either runtime, so the list has to follow the run that just happened --
+      // kept per-run even though the list no longer varies, because that is
+      // what makes it correct if it ever varies again.
+      panel.hostRcKeys = ['figure.autolayout', 'figure.figsize', 'savefig.dpi'];
 
       // canRerun follows wantLive: the button only exists in the state where
       // nothing previews, which is the only state the notice appears in at
