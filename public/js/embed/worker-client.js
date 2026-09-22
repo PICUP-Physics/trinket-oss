@@ -22,6 +22,7 @@
     var readyInfo = null;      // the ready message (carries pyodideVersion)
     var pending = {};          // id -> resolve, for request/response messages
     var readyWaiters = [];     // resolvers waiting on that boot
+    var figureWorker = null;   // the worker whose figures are on the page
 
     function settle() {
       var run = current;
@@ -102,6 +103,7 @@
         // is not this worker. A finished-but-live worker still can, which is
         // exactly what we want.
         if (e.target !== worker) return;
+        figureWorker = worker;
         if (opts.onFigure) opts.onFigure(msg);
         return;
       }
@@ -275,10 +277,24 @@
       },
 
       // Toolbar clicks and mouse events, back to the figure's manager.
+      // Returns whether the message actually went anywhere. It used to return
+      // nothing and drop the frame in silence when there is no worker (after a
+      // Stop, or before the first run), which is fine for a toolbar click that
+      // nobody is waiting on -- but the plot-style panel's Save PNG asks this
+      // side whether it took the request, and answers the student "Saved" on
+      // the strength of it. Silence became a lie: click Stop, click Save, get
+      // "Saved" and no file.
+      //
+      // "A worker exists" is not enough either. A console statement after a
+      // Stop boots a FRESH worker (pushRepl -> ensureWorker) while the old
+      // figure stays on the page, and that worker has no figure managers and
+      // has never run MPL_SETUP: the frame is posted, the worker swallows the
+      // error, nothing ever replies, and Save said "Saved" again. So the frame
+      // goes only to the worker the figures came from.
       sendMplEvent: function(figureId, content) {
-        if (worker) {
-          worker.postMessage({ type: 'mpl-event', figureId: figureId, content: content });
-        }
+        if (!worker || worker !== figureWorker) return false;
+        worker.postMessage({ type: 'mpl-event', figureId: figureId, content: content });
+        return true;
       },
 
       // Browser events — or the bare pacing trigger `[{"trigger":1}]` — to the

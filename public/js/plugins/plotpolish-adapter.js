@@ -254,12 +254,12 @@
     //
     // Fired through jQuery on #editor rather than by clicking `a.run-it`:
     // that is exactly what this embed's own Ctrl-Enter/Cmd-Enter run command
-    // does (pyodide.js:5590, the editor's `run` command), and the
-    // document-level handler beside it (pyodide.js:5595) is what turns the
+    // does (pyodide.js:5970, the editor's `run` command), and the
+    // document-level handler beside it (pyodide.js:5975) is what turns the
     // event into a run, via showResult -> runCode. So a re-run from here
     // inherits runCode's guards -- it is ignored while a step-through
-    // recording is in flight (pyodide.js:5088) and while an ordinary run is
-    // still going (pyodide.js:5090) -- rather than simulating
+    // recording is in flight (pyodide.js:5464) and while an ordinary run is
+    // still going (pyodide.js:5466) -- rather than simulating
     // a click on a control that may be hidden, mid-run or replaced by Stop.
     panel.addEventListener('plotpolish-rerun-requested', function() {
       try {
@@ -269,6 +269,44 @@
         // still has the toolbar's own Run button, and the notice stays up
         // because only a completed run clears it.
       }
+    });
+
+    // Same reason as the re-run listener above, and the same shape. Save PNG
+    // goes through matplotlib's savefig in a backend, and on the worker runtime
+    // the panel has no backend -- so from plotpolish v0.3.5 it emits a
+    // cancelable request instead of answering "Run your code first", which is
+    // what it used to do forever on this runtime (plotpolish #30).
+    //
+    // preventDefault() is the contract: it is how the panel learns the ask was
+    // heard, and it is what makes it say "Saved" rather than "Saving isn't
+    // available here". So it is called ONLY when the host really took the
+    // request -- `saveFigure` returns false when there is no figure to send or
+    // no worker that owns it, and then the panel's honest message is the right
+    // one.
+    //
+    // The delivery is the host's, not ours: ctx.saveFigure sends the same
+    // {type:'save'} the mpl toolbar sends (plus a request_id, so the panel's
+    // reply can be told from the toolbar's), and pyodide.js downloads the savefig
+    // bytes the worker replies with. That is why savefig.dpi, transparent and
+    // bbox apply here, as the last run left them -- a Save-tab change since
+    // then reaches the worker only on the next run. A canvas grab in this file
+    // would have silently dropped all three.
+    panel.addEventListener('plotpolish-save-requested', function(e) {
+      var detail = e.detail || {};
+      var took   = false;
+      // No duplicate-click guard HERE. There was one, on a 1-second timer, and
+      // it was wrong twice: a slow save still duplicated just past the window,
+      // and a click inside the window returned before ctx.saveFigure was ever
+      // called -- so the no-worker detection was bypassed and the panel said
+      // "Saved" after a Stop. The host owns that state now, next to the reply
+      // that clears it (requestWorkerFigureSave in pyodide.js).
+      try {
+        took = !!(ctx && typeof ctx.saveFigure === 'function'
+                  && ctx.saveFigure(detail.format || 'png'));
+      } catch (err) {
+        took = false;
+      }
+      if (took) e.preventDefault();
     });
 
     wrap.appendChild(panel);
@@ -281,7 +319,15 @@
   function hasFigure() {
     var fig = document.getElementById('graphic');
     if (!fig) return false;
-    // A worker run posts the figure back as an image.
+    // DEAD, and kept because it is re-needed the day the orphan sender is
+    // revived -- removing it belongs with that cleanup, not ahead of it. (An
+    // earlier version of this comment said deleting it would be "a behavior
+    // change nobody has asked for", which is wrong: a branch whose condition
+    // can never be true has no behaviour to change. Right fact, wrong reason.)
+    // `img.worker-figure` is posted by `self.__trinket_worker_figure`
+    // in pyodide-worker.js, which has no caller in this repository, so a worker
+    // run never produces one. It used to read "a worker run posts the figure
+    // back as an image", which is what this check was written against.
     if (fig.querySelector('img.worker-figure')) return true;
     // Any <canvas> is not enough: Web VPython draws its 3D scene on a canvas
     // inside #graphic, so matching canvases alone mounted the plot-style pill

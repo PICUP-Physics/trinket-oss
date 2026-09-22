@@ -3771,6 +3771,7 @@ function resetMplFigures() {
     clearTimeout(st.startupTimer);
   });
   paneFitState = Object.create(null);
+  clearMplSaveWait();
 }
 
 // ---- the dpi pane fit, page half ------------------------------------------
@@ -4462,6 +4463,43 @@ function registerPaneFit(fig) {
   // startup bug described there.
 }
 
+/**
+ * A save is out and its reply has not come back.
+ *
+ * Owned HERE rather than in the adapter, because here is where the reply
+ * lands. The first version of the duplicate-click guard lived in the adapter
+ * on a 1-second timer, which was a debounce wearing a one-at-a-time label: a
+ * slow save (300 dpi, bbox='tight', a cold worker) still duplicated at 1.1 s,
+ * which is exactly the case the guard was for, while a click inside the window
+ * was reported to the student as "Saved" without ever reaching this file --
+ * punching a hole straight through the no-worker detection beside it.
+ */
+var mplSaveInFlight = false;
+var mplSaveWatchdog = null;
+var mplSaveOverdue = false;   // the watchdog spoke; the reply must answer it
+var MPL_SAVE_TIMEOUT_MS = 10000;
+// The panel's request carries an id the worker echoes, because the toolbar's
+// own Save sends the same {type:'save'} with none. Without it, a toolbar
+// reply arriving first cleared the panel's wait and its watchdog -- so a
+// panel reply that then never came was "Saved" with no file and no line.
+// Survives the watchdog on purpose: a late reply still has to retract it.
+var mplSaveRequestId = null;
+var mplSaveSeq = 0;
+
+function clearMplSaveWait() {
+  mplSaveInFlight = false;
+  mplSaveOverdue = false;
+  mplSaveRequestId = null;
+  if (mplSaveWatchdog !== null) { clearTimeout(mplSaveWatchdog); mplSaveWatchdog = null; }
+}
+
+/** True exactly once, for the reply that arrives after the watchdog spoke. */
+function takeMplSaveOverdue() {
+  var was = mplSaveOverdue;
+  mplSaveOverdue = false;
+  return was;
+}
+
 function ensureMplAssets(msg) {
   if (mplLoaded) return true;
   try {
@@ -4564,9 +4602,29 @@ function makeMplSocket(figureId) {
       // upstream that socket is a Python object, so no serialisation happens on
       // the JS side. Normalise here so the worker always parses a string.
       var content = (typeof payload === 'string') ? payload : JSON.stringify(payload);
-      if (workerClient && workerClient.sendMplEvent) {
-        workerClient.sendMplEvent(figureId, content);
-      }
+      if (!workerClient || !workerClient.sendMplEvent) return false;
+      // Passed through rather than swallowed: requestWorkerFigureSave() tells
+      // the panel whether the save was taken, and the panel tells the student.
+      //
+      // Returning a value where mpl.js used to get `undefined` is safe, and
+      // that is MEASURED against the shipped file rather than reasoned about.
+      // mpl.js is not in this repo -- it arrives at runtime from the pyodide
+      // matplotlib wheel and is PATCHED on the way -- so it was checked in a
+      // live worker run (pyodide 0.28.1, matplotlib loaded, real figure on
+      // screen): 30 functions on `mpl` and `mpl.figure.prototype`, three
+      // `.send(` call sites (send_message, send_draw_message, handle_save),
+      // and ZERO places that use the result -- no assignment, no `if`, no
+      // `return`, no `&&`/`||`, no chaining, no `await`, no negation.
+      //
+      // The same run settled two other things the source could only assert:
+      // handle_save -- which is Pyodide's patch, absent upstream -- sends
+      // `{type:'save', figure_id, format}`, the shape requestWorkerFigureSave
+      // sends (which adds only a request_id, so its reply can be told from the
+      // toolbar's), so "the same route as the toolbar" is now verified rather
+      // than claimed; and the figure came back as
+      // `div.worker-figure.mpl-figure` with no `img.worker-figure` anywhere,
+      // which is the dead fallback confirmed dead on the real host.
+      return workerClient.sendMplEvent(figureId, content);
     }
   };
 }
@@ -4971,8 +5029,15 @@ function handleWorkerFigure(msg) {
   if (msg.kind === 'assets') { ensureMplAssets(msg); return; }
 
   if (msg.kind === 'new') {
-    // If mpl.js could not be loaded, do nothing here — the worker also emits a
-    // static PNG for this figure, so a plot still appears.
+    // If mpl.js could not be loaded, do nothing here. This used to say "the
+    // worker also emits a static PNG for this figure, so a plot still
+    // appears", and that is FALSE: the only thing that posts `kind:'png'` is
+    // `self.__trinket_worker_figure` in pyodide-worker.js, which has no caller
+    // anywhere in this repository (its own comment points at an MPL_FALLBACK
+    // constant that was removed). So an mpl.js load failure means the student
+    // gets no figure at all, and nothing here softens it. Corrected rather
+    // than left, because it is the comment that made a dead <img> fallback
+    // look reasonable to write. See requestWorkerFigureSave below.
     if (!mplLoaded || mplFigures[msg.figureId]) return;
 
     var host = document.createElement('div');
@@ -5021,6 +5086,16 @@ function handleWorkerFigure(msg) {
   if (msg.kind === 'save') {
     var saved = null;
     try { saved = JSON.parse(msg.data); } catch (e) { saved = null; }
+    // Only the reply to the PANEL's request settles the panel's wait. A
+    // toolbar save's reply carries no id and still downloads below.
+    if (saved && saved.request_id != null && saved.request_id === mplSaveRequestId) {
+      // Before clearMplSaveWait(), which resets the flag it reads: if the
+      // watchdog already told the student this was overdue, the arrival has
+      // to retract that rather than leaving a stale failure line on screen.
+      var wasOverdue = takeMplSaveOverdue();
+      clearMplSaveWait();
+      if (wasOverdue) writeOut('[The figure answered after all -- saving it now.]\n');
+    }
     // Do not fail the way this button used to. A reply this side cannot read is
     // the same experience for the student as the bug being fixed here -- click,
     // nothing -- so it has to say something rather than return quietly.
@@ -5070,7 +5145,15 @@ function handleWorkerFigure(msg) {
   // A save that raised in the worker. Say so rather than failing the way this
   // button used to -- silently.
   if (msg.kind === 'save-error') {
-    writeOut('[Could not save the figure: ' + msg.data + ']\n');
+    // JSON {error, request_id} from the worker's save branch; a bare string
+    // is still accepted, because student Python can call _trinket_mpl_send.
+    var failed = null;
+    try { failed = JSON.parse(msg.data); } catch (e) { failed = null; }
+    var why = (failed && typeof failed === 'object' && 'error' in failed) ? failed.error : msg.data;
+    if (failed && failed.request_id != null && failed.request_id === mplSaveRequestId) {
+      clearMplSaveWait();
+    }
+    writeOut('[Could not save the figure: ' + why + ']\n');
     return;
   }
 
@@ -5093,6 +5176,124 @@ function handleWorkerFigure(msg) {
     wrap.appendChild(img);
     showGraphic();
   }
+}
+
+/**
+ * Save the worker run's figure, for the plot-style panel's Save PNG button.
+ *
+ * The panel cannot do this itself on the worker runtime: it has no backend
+ * there (nothing on this page to run savefig in), so from plotpolish v0.3.5 it
+ * emits a cancelable `plotpolish-save-requested` and asks the host instead.
+ * This is the host's answer, handed to the adapter through its init context
+ * the same way getPyodide and isBusy are.
+ *
+ * It sends the same message the mpl toolbar's own Save button sends -- the
+ * `{type:'save'}` the worker swallows and answers with real savefig bytes,
+ * which `handleWorkerFigure`'s `kind === 'save'` branch then downloads -- plus
+ * a request_id the worker echoes, so only this request's reply settles the
+ * wait below. So the
+ * panel's button and the toolbar's button end at one implementation, and the
+ * worker's savefig.dpi / transparent / bbox apply. Those are the values the
+ * LAST RUN set: a Save-tab change reaches the worker only through the
+ * generated block on the next run, so a change made since then is not in
+ * this file (the panel marks itself stale). A canvas grab
+ * here would honor none of them: it is on-screen pixels at screen dpi, which
+ * is exactly the substitution the comment at the ondownload callback above
+ * refuses for the toolbar.
+ *
+ * Returns true only when a request was actually sent, so the panel can tell
+ * the student the truth when there is nothing to save.
+ *
+ * The last figure, not the first: several show() calls stack canvases, and the
+ * one the student means is the one most recently drawn. `mplFigures` is keyed
+ * by figure id, so this reads the last key rather than assuming there is one.
+ */
+function requestWorkerFigureSave(format) {
+  // Two statements, not a ternary: the `|| 'png'` used to sit INSIDE the test
+  // and not in the result, so the guard inverted on exactly the inputs it
+  // exists for -- requestWorkerFigureSave() with no argument produced the
+  // nine-character string "undefined", which its own regex would reject.
+  // This is the shape used by the save handler above, which was always right.
+  var fmt = String(format || 'png').toLowerCase();
+  if (!/^[a-z0-9]{1,5}$/.test(fmt)) { fmt = 'png'; }
+  var ids  = Object.keys(mplFigures);
+  if (ids.length) {
+    var id    = ids[ids.length - 1];
+    var entry = mplFigures[id];
+    if (entry && entry.socket && typeof entry.socket.send === 'function') {
+      // A save is already out. The student's request WILL be satisfied by it,
+      // so this is a true answer, not a suppression dressed up as one -- and
+      // it costs the worker nothing.
+      //
+      // What the answer does NOT mean: that THIS call's arguments were used.
+      // Its `fmt` is discarded, and the figure was chosen by the call that
+      // actually sent. Harmless today (the panel only ever asks for png), but
+      // a figure created between two clicks is saved by neither.
+      //
+      // And note what protects a click after a Stop: NOT the check above it,
+      // which only asks whether a socket OBJECT exists -- `mplFigures` is
+      // untouched by stopCode(). It is stopCode() clearing this flag before it
+      // terminates the worker. Move that and this dedupe covers nothing.
+      if (mplSaveInFlight) return true;
+      try {
+        // The socket's own answer, not `true` for "did not throw". With no
+        // worker -- after a Stop -- postMessage never happens and nothing
+        // throws, so returning true told the panel to say "Saved" over a
+        // message that went nowhere.
+        var rid = 'panel-' + (++mplSaveSeq);
+        if (entry.socket.send({ type: 'save', figure_id: id, format: fmt, request_id: rid }) !== true) return false;
+        mplSaveInFlight = true;
+        mplSaveRequestId = rid;
+        // A new request answers for itself: an older save the watchdog spoke
+        // about downloads when it lands, as that line said it would, but it is
+        // no longer this request's to retract.
+        mplSaveOverdue = false;
+        // A backstop, not a debounce: the reply clears this. The timeout is
+        // reached by a worker that went away without a Stop, a reply that was
+        // lost or never sent, or a savefig slower than the timeout. Ten
+        // seconds because it has to outlast a genuinely slow savefig, and the
+        // point is to convert silence into a line the student can read --
+        // "Saved" is the panel's word and this cannot retract it, but it can
+        // stop the failure being invisible.
+        mplSaveWatchdog = setTimeout(function() {
+          mplSaveWatchdog = null;
+          mplSaveInFlight = false;
+          // REPORTS what was observed; does not DIAGNOSE. All this code knows
+          // is that ten seconds passed -- and the ordinary reason for that is
+          // a slow savefig, which is the very thing the ten seconds exist to
+          // outlast. The first wording said "the interpreter stopped before it
+          // answered", which is a conclusion it has no evidence for, and a
+          // student whose 600-dpi figure simply took twelve seconds was told
+          // it had failed and then handed the file.
+          mplSaveOverdue = true;
+          writeOut('[The figure has not saved after ' + Math.round(MPL_SAVE_TIMEOUT_MS / 1000)
+                   + ' seconds. The interpreter may have stopped; if it answers, the file '
+                   + 'will still download.]\n');
+        }, MPL_SAVE_TIMEOUT_MS);
+        return true;
+      } catch (e) {
+        clearMplSaveWait();
+        return false;
+      }
+    }
+  }
+
+  // NO `img.worker-figure` FALLBACK, and the reason is worth recording because
+  // the first version of this function had one and justified it at length.
+  //
+  // That justification was counterfactual. `img.worker-figure` is created by
+  // the `kind === 'png'` branch above, which is fed by
+  // `self.__trinket_worker_figure` in pyodide-worker.js -- a function with NO
+  // CALLER anywhere in this repository. Its own comment points at an
+  // "MPL_FALLBACK" constant that was removed, leaving the sender orphaned. So
+  // the <img> is never painted, the fallback could never run, and shipping it
+  // would have meant dead code defended by a paragraph that was not true.
+  //
+  // Two neighboring comments made the same mistake and are corrected on this
+  // branch: the one at the `kind === 'new'` early return, and hasFigure()'s
+  // `img.worker-figure` check in plotpolish-adapter.js. Removing the orphan
+  // sender itself is left to its own commit.
+  return false;
 }
 
 // `decision` is the runtime-router result for this program; `decision.vpython`
@@ -5510,6 +5711,10 @@ function stopCode() {
   // about.
   if (workerClient && workerClient.isRunning()) {
     rerunQueued = false;             // Stop means stop, not restart
+    // Any save waiting on that worker is never going to be answered. Cleared
+    // here rather than left to the watchdog, so the next Save click is judged
+    // on whether a worker exists instead of being swallowed as a duplicate.
+    clearMplSaveWait();
     workerClient.stop();
 
     // The interpreter is gone, so there is nothing left to ping: stop the clock
@@ -5874,6 +6079,7 @@ window.TrinketAPI = {
         trinketPlotpolish.init({
             api        : api
           , getPyodide : function() { return pyodideReady ? pyodide : null; }
+          , saveFigure : function(format) { return requestWorkerFigureSave(format); }
           , isBusy     : function() {
               // replEvaluating, not replActive: see its declaration. clearMemory()
               // uses the same three-way test and then handles the REPL separately

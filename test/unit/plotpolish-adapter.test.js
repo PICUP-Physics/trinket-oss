@@ -49,6 +49,12 @@ function boot(opts) {
   // and through which event" is the whole assertion. `win.$throws` makes the
   // trigger fail the way a broken or absent editor would.
   win.$runs = [];
+  // What the host hands back for Save PNG. Recorded, and its return value is
+  // the switch the adapter reads: true means "I took it", which is the only
+  // thing that may call preventDefault() on the panel's request.
+  win.$saves = [];
+  win.$saveResult = true;
+  win.$saveThrows = false;
   win.$ = function(selector) {
     return {
       trigger: function(name, data) {
@@ -66,6 +72,11 @@ function boot(opts) {
     win.trinketPlotpolish.init({
       api: { getEditor: () => widget, getMainFile: () => 'main.py' },
       getPyodide: () => null,          // no live preview; mounting is what we test
+      saveFigure: (format) => {
+        if (win.$saveThrows) throw new Error('no figure');
+        win.$saves.push(format);
+        return win.$saveResult;
+      },
       isBusy: () => false,
     });
   }
@@ -328,6 +339,135 @@ d('plot-style adapter — the re-run notice', () => {
     win.$throws = false;
     pill(win).dispatchEvent(new win.CustomEvent('plotpolish-rerun-requested'));
     expect(win.$runs).toHaveLength(1);
+  });
+});
+
+// plotpolish v0.3.5 stopped answering "Run your code first" on a host with no
+// backend and started ASKING instead (plotpolish #30). Nothing else in this
+// repo services `plotpolish-save-requested`, so if these break, Save PNG is
+// once again a button that cannot save on the runtime most students are on.
+d('plot-style adapter — Save PNG on the worker', () => {
+  /** Open the Save tab and return the rendered Save PNG button + its message. */
+  function saveSurface(win) {
+    const sr = pill(win).shadowRoot;
+    const tab = sr.querySelector('.pill button.tab[data-group="save"]');
+    if (tab) tab.click();
+    const row = sr.querySelector('.row[data-control="save_png"]');
+    return {
+      button: row.querySelector('button.save-fig'),
+      said: () => row.querySelector('.copy-said').textContent,
+    };
+  }
+
+  // The one that matters. Every other assertion here could pass with the
+  // rendered button unwired, exactly as Copilot pointed out for the re-run
+  // button on #281 -- so this one presses what the student presses.
+  it('asks the host when the STUDENT clicks the rendered button', () => {
+    const win = boot();
+    addCanvas(win, null);
+    win.trinketPlotpolish.afterRun('worker');
+    expect(pill(win).backend).toBeNull();   // the state the whole bug lived in
+
+    const { button, said } = saveSurface(win);
+    button.click();
+
+    expect(win.$saves).toEqual(['png']);
+    expect(said()).toBe('Saved');
+  });
+
+  // The regression guard proper. This exact string is what the button answered
+  // on every worker run before v0.3.5, forever, however many times the student
+  // ran their code -- and plotpolish's own suite asserted it, which is how it
+  // survived. If it ever comes back here, the bug is back.
+  it('never tells the student to run their code first', () => {
+    const win = boot();
+    addCanvas(win, null);
+    win.trinketPlotpolish.afterRun('worker');
+
+    const { button, said } = saveSurface(win);
+    button.click();
+    expect(said()).not.toContain('Run your code first');
+  });
+
+  // preventDefault() is the contract, so it has to be conditional: a host that
+  // could not take the request must leave the event alone, or the panel claims
+  // a save that never happened. `saveFigure` returns false when there is no
+  // live figure to ask and no fallback image.
+  it('does not claim a save the host declined', () => {
+    const win = boot();
+    addCanvas(win, null);
+    win.trinketPlotpolish.afterRun('worker');
+    win.$saveResult = false;
+
+    const { button, said } = saveSurface(win);
+    button.click();
+
+    expect(win.$saves).toEqual(['png']);
+    expect(said()).not.toBe('Saved');
+    expect(said()).toContain('available');
+  });
+
+  // Same reasoning as the re-run listener's: asserted on the window's error
+  // event, not on dispatchEvent throwing, because dispatchEvent never rethrows
+  // a listener's exception -- a `.not.toThrow()` here would pass with the
+  // try/catch deleted, which is a test that cannot fail.
+  it('survives a host save that throws, and does not claim one either', () => {
+    const win = boot();
+    addCanvas(win, null);
+    win.trinketPlotpolish.afterRun('worker');
+    win.$saveThrows = true;
+
+    const escaped = [];
+    win.addEventListener('error', (e) => escaped.push(e.message));
+
+    const { button, said } = saveSurface(win);
+    button.click();
+
+    expect(escaped).toEqual([]);
+    expect(said()).not.toBe('Saved');
+  });
+
+  // No duplicate-click guard in the adapter: every click is forwarded, and the
+  // host decides. There WAS one here, on a 1-second timer, and it returned
+  // before ctx.saveFigure was called -- so a click within a second of a Stop
+  // never reached the no-worker check and the panel said "Saved". Deduping
+  // belongs next to the reply that ends the save, which is in pyodide.js;
+  // worker-figure-save.test.js executes it there.
+  //
+  // (There was also a test here asserting the host is not asked when it
+  // declines. It was byte-identical to "does not claim a save the host
+  // declined" above -- coverage-shaped, adding none -- and is gone.)
+  it('forwards every click and lets the host decide about duplicates', () => {
+    const win = boot();
+    addCanvas(win, null);
+    win.trinketPlotpolish.afterRun('worker');
+
+    const { button } = saveSurface(win);
+    button.click();
+    button.click();
+    button.click();
+
+    expect(win.$saves).toEqual(['png', 'png', 'png']);
+  });
+
+  it('does not ask the host for anything until the button is pressed', () => {
+    const win = boot();
+    addCanvas(win, null);
+    win.trinketPlotpolish.afterRun('worker');
+    expect(win.$saves).toHaveLength(0);
+  });
+
+  // On the main thread the panel HAS a backend, so it runs savefig itself and
+  // must never route through the host. If it did, the Save tab's savefig keys
+  // would stop applying on the runtime where they already worked.
+  it('is not used on a main-thread run, where the panel saves for itself', () => {
+    const win = boot();
+    addCanvas(win, null);
+    win.trinketPlotpolish.afterRun('main');
+
+    const { button } = saveSurface(win);
+    button.click();
+    expect(win.$saves).toHaveLength(0);
   });
 });
 
