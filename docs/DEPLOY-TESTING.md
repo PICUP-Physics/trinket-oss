@@ -13,6 +13,7 @@ because most of them were reached by getting something wrong first.
 | `specs-deploy/course-journey.spec.js` | yes | yes | **trials only**, opt-in via env |
 | `specs-deploy/trinket-authoring.spec.js` | yes | yes | **trials only**, opt-in via env |
 | `specs-deploy/student-loop.spec.js` | yes, **two accounts** | yes | **trials only**, opt-in via env |
+| `specs-deploy/math-output-noop.spec.js` (#247) | no | no | any deployment, including production, via `playwright.noop.config.js` |
 
 ## Why authenticated deploy tests exist at all
 
@@ -168,3 +169,18 @@ node ../../scripts/smoke-cleanup.js --base-url https://<host> \
 ```
 
 `EXPECT_COMMIT=<sha>` additionally asserts which build is live.
+
+The #247 gate for `features.mathOutput` is two runs against one deploy, with the
+flag flipped and the server restarted between them; the second run compares.
+It uses its own config, because the deploy config's global setup refuses
+production before any test runs:
+
+```sh
+# run once with mathOutput off and once with it on, in either order
+TRINKET_CORPUS=<short codes on that deploy> TRINKET_BASE_URL=https://<host> \
+  npx playwright test -c playwright.noop.config.js math-output-noop math-output
+```
+
+Without `TRINKET_CORPUS` it runs built-in program shapes instead, which proves
+the no-op for programs like them, not for the trinkets stored on that deploy.
+See the spec's header for what it asserts and what it refuses to compare.

@@ -96,3 +96,4 @@ build-info.json
 
 # Captured deploy sessions — live credentials, never commit.
 test/browser/.auth/
+test/browser/.mathoutput-noop/
