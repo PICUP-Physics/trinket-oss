@@ -91,9 +91,11 @@
   <input id="roles" type='hidden' value='{{ user.roles | encrypt }}'>
   {% endif %}
   {# Exam mode (trinket settings.plainEditor): the plain-text editor for every
-     viewer, logged in or not. The owner's unsaved draft decides for the owner,
-     as with the other trinket settings. #}
-  {% set plainEditor = (draft and draft.settings and draft.settings.plainEditor) or (not draft and trinket and trinket.settings and trinket.settings.plainEditor) %}
+     viewer, logged in or not. Only the OWNER's unsaved draft can change it: any
+     logged-in viewer may hold a draft of someone else's trinket, and a student
+     must not be able to turn exam mode off (or on) for themselves. #}
+  {% set ownerDraft = draft if (isOwner and draft and draft.settings) else none %}
+  {% set plainEditor = ownerDraft.settings.plainEditor if ownerDraft else (trinket and trinket.settings and trinket.settings.plainEditor) %}
   <script>
     trinketObject = {% if trinket %}{{ trinket | escapeJSON | json | safe }}{% else %}{}{% endif %};
   {% if not outputOnly %}
@@ -104,6 +106,8 @@
     {% if plainEditor %}
     // Every editor type reads userSettings.disableAceEditor at startup.
     userSettings = Object.assign({}, window.userSettings, { disableAceEditor: true });
+    // The plain editor claims Tab for indenting only in exam mode (#318).
+    trinketExamMode = true;
     {% endif %}
   {% endif %}
   </script>

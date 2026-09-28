@@ -69,6 +69,41 @@ test.describe('exam mode', () => {
       if (await edit.count()) await edit.click();
       expect(await editorKind(viewer, marker), 'exam mode + calculator mode').toEqual({ ace: 0, plain: true });
 
+      // --- #318: indentation help and caret position in the plain editor ----
+      await viewer.goto(`/embed/glowscript/${examId}`);
+      await editorKind(viewer, marker);
+      const ta = viewer.locator('textarea.lined').first();
+      const state = () => ta.evaluate((t) => ({ value: t.value, caret: t.selectionStart }));
+
+      await ta.click();
+      await viewer.keyboard.press('ControlOrMeta+End');
+      await viewer.keyboard.type('for i in range(3):');
+      await viewer.keyboard.press('Enter');
+      let s = await state();
+      const tabSize = s.value.length - s.value.lastIndexOf('\n') - 1;
+      expect(tabSize, 'Enter after ":" indents one level').toBeGreaterThan(0);
+      await viewer.keyboard.type('pass');
+      await viewer.keyboard.press('Enter');
+      s = await state();
+      expect(s.value.endsWith('\n'), 'Enter after pass steps back out').toBe(true);
+
+      await viewer.keyboard.press('Tab');
+      s = await state();
+      expect(s.value.endsWith('\n' + ' '.repeat(tabSize)), 'Tab indents in exam mode').toBe(true);
+      expect(await ta.evaluate((t) => document.activeElement === t), 'Tab stays in the editor').toBe(true);
+      await viewer.keyboard.press('Shift+Tab');
+      expect((await state()).value.endsWith('\n'), 'Shift-Tab outdents').toBe(true);
+
+      await viewer.keyboard.press('ControlOrMeta+z');
+      expect((await state()).value.endsWith('\n' + ' '.repeat(tabSize)), 'Ctrl-Z undoes the outdent').toBe(true);
+
+      // The caret survives leaving the editor and coming back.
+      const before = (await state()).caret;
+      expect(before).toBeGreaterThan(0);
+      await ta.evaluate((t) => t.blur());
+      await ta.focus();
+      expect((await state()).caret, 'focus keeps the caret where it was').toBe(before);
+
       await viewer.goto(`/embed/glowscript/${plainId}`);
       const control = await editorKind(viewer, marker);
       expect(control.ace, 'an ordinary trinket still gets ACE').toBeGreaterThan(0);

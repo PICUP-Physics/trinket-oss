@@ -72,8 +72,41 @@
     var wrapper  = $(el);
     var textarea = $('<textarea class="lined" autocorrect="off" autocapitalize="off" spellcheck="false" tabindex="0" role="textbox" aria-multiline="true" aria-label="Code Editor"></textarea>');
 
-    textarea.on('focus', function() {
+    // #318: the caret used to be reset to the start on EVERY focus, so
+    // clicking back into the code after looking at the output threw you to
+    // line 1. It now starts at the top only when the text is (re)loaded —
+    // see setCaretToStart below — and otherwise stays where you left it.
+    function setCaretToStart() {
       textarea[0].setSelectionRange(0, 0);
+      textarea[0].scrollTop = 0;
+    }
+
+    // #318: indentation help (plain-indent.js). Enter always; Tab/Shift-Tab
+    // only in exam mode, since the screen-reader editor needs Tab to move
+    // focus. Edits go through execCommand('insertText') so Ctrl-Z still
+    // works; setRangeText is the fallback where that is unavailable.
+    textarea.on('keydown', function(e) {
+      var ta = textarea[0]
+        , examMode = !!window.trinketExamMode
+        , edit = window.TrinketPlainIndent && TrinketPlainIndent.handleKey(e.originalEvent || e,
+            ta.value, ta.selectionStart, ta.selectionEnd,
+            { lang: opts.lang, tabSize: opts.tabSize, examMode: examMode });
+
+      if (!edit) {
+        // In exam mode Tab never leaves the editor, even with nothing to outdent.
+        if (examMode && e.key === 'Tab' && !(e.ctrlKey || e.metaKey || e.altKey)) e.preventDefault();
+        return;
+      }
+
+      e.preventDefault();
+      ta.setSelectionRange(edit.start, edit.end);
+      var inserted = false;
+      try { inserted = document.execCommand('insertText', false, edit.text); } catch (err) {}
+      if (!inserted) {
+        ta.setRangeText(edit.text, edit.start, edit.end, 'end');
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      if (edit.select) ta.setSelectionRange(edit.select[0], edit.select[1]);
     });
 
     wrapper.append(textarea);
@@ -120,6 +153,7 @@
 
     if (opts.value) {
       textarea.val(opts.value, -1);
+      setCaretToStart();
     }
 
     /* Should the textarea get resized outside of our control */
@@ -174,14 +208,17 @@
       },
       setValue : function(value) {
         textarea.val(value, -1);
+        setCaretToStart();
       },
       getValue : function() {
         return textarea.val();
       },
       focus : function(position) {
-        if (position !== 'undefined') {
+        // Was `position !== 'undefined'` (the string), always true, so every
+        // programmatic refocus also sent the caret to the start (#318).
+        if (typeof position === 'number') {
           textarea.focus();
-          return textarea[0].setSelectionRange(position, 0);
+          return textarea[0].setSelectionRange(position, position);
         }
         else {
           return textarea.focus();
@@ -1979,6 +2016,8 @@
           , selectedLine : this.options.selectedLine
           , value        : content
           , name         : name
+          , lang         : this.options.lang
+          , tabSize      : this.options.tabSize
         });
 
         // add editor commands, if any

@@ -197,3 +197,52 @@ describe('the Trinket Settings modal offers the switch', () => {
       .toMatch(/<input id="plainEditor" type="checkbox" name="plainEditor" checked="checked"\s+data-trinket-settings>/);
   });
 });
+
+// Review follow-ups on #317 (Copilot).
+describe('create and fork sanitize settings too', () => {
+  // These two construct a Trinket straight from the payload. Mongo's Boolean
+  // cast rejects "yes please" and fails the whole create; Firestore casts
+  // nothing and stores the string, which base.html reads as truthy.
+  it('create stores a real boolean whatever the caller sends', async () => {
+    await flow.switchUser('user');
+    const t = await createTrinket({ lang: 'glowscript', code: 'box()', settings: { plainEditor: 'yes please' } });
+    expect((await getTrinket(t.id)).settings.plainEditor).toBe(false);
+    const u = await createTrinket({ lang: 'glowscript', code: 'box()', settings: { plainEditor: 'true' } });
+    expect((await getTrinket(u.id)).settings.plainEditor).toBe(true);
+  });
+
+  it('fork stores a real boolean whatever the caller sends', async () => {
+    const t = await glowscriptTrinket(false);
+    await flow.post('/api/trinkets/' + t.id + '/forks', { code: 'box()', settings: { plainEditor: 'yes please' } });
+    expect(flow.lastResponse.statusCode).toBe(200);
+    expect((await getTrinket(flow.lastResponse.body.data.id)).settings.plainEditor).toBe(false);
+  });
+});
+
+describe("only the owner's draft decides", () => {
+  // Any logged-in viewer can hold a draft of someone else's trinket, and the
+  // embed loads it. A student must not be able to switch exam mode off for
+  // themselves by saving a draft (or the settings switch) with it off.
+  it("a non-owner's draft does not switch exam mode off", async () => {
+    const t = await glowscriptTrinket(true);
+    await flow.switchUser('user2');
+    await flow.post('/api/trinkets/' + t.id + '/draft', { code: t.code, settings: { plainEditor: false } });
+    expect(flow.lastResponse.statusCode).toBe(200);
+    expect(await embedPage('glowscript', t.id)).toMatch(FORCED);
+  });
+
+  it("a non-owner's draft does not switch exam mode on either", async () => {
+    const t = await glowscriptTrinket(false);
+    await flow.switchUser('user2');
+    await flow.post('/api/trinkets/' + t.id + '/draft', { code: t.code, settings: { plainEditor: true } });
+    expect(flow.lastResponse.statusCode).toBe(200);
+    expect(await embedPage('glowscript', t.id)).not.toMatch(FORCED);
+  });
+
+  it('the settings switch is offered only to the owner', async () => {
+    const t = await glowscriptTrinket(true);
+    expect(await embedPage('glowscript', t.id)).toMatch(/id="plainEditor"/);
+    await flow.switchUser('user2');
+    expect(await embedPage('glowscript', t.id)).not.toMatch(/id="plainEditor"/);
+  });
+});
