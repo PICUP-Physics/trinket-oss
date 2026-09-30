@@ -5582,6 +5582,10 @@ function startRun() {
   // api._trinket (not window.trinket) and why it's whitelisted client-side too.
   var decision = runtimeRouter.chooseRuntime(workerProgram, {
     usesVPython   : usesVPython(workerProgram),
+    // #324: any file, not just main — a helper can import console too.
+    usesConsole   : Object.keys(workerFiles).some(function(f) {
+      return /\.py$/.test(f) && runtimeRouter.usesConsole(workerFiles[f]);
+    }),
     workerEnabled : !!(window.trinket && window.trinket.config && window.trinket.config.workerRuntime),
     workerVPython : !!(window.trinket && window.trinket.config && window.trinket.config.workerVPython),
     queryRuntime  : queryRuntime,
