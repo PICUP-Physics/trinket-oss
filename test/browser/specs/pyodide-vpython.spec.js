@@ -105,4 +105,34 @@ test.describe('Main-thread Pyodide VPython (default path)', () => {
 
     expect(pageErrors, 'uncaught page exception on the main-thread VPython path').toEqual([]);
   });
+
+  // #316: the classic "Web VPython 3.2" first line does not parse as Python,
+  // so an import scan of the raw file found nothing and none of the main
+  // file's packages loaded -- numpy here, on origin/main at 8c72067. runVpython
+  // comments the header out before running; the scan now sees the same text.
+  test('a Web VPython header does not stop the main file\'s imports loading', async ({ page }) => {
+    test.setTimeout(300_000);
+
+    await page.goto('/embed/python3?runtime=main');
+    await expect(page.locator('.ace_editor').first()).toBeVisible({ timeout: 30_000 });
+    await page.evaluate((code) => {
+      document.querySelector('.ace_editor').env.editor.setValue(code, 1);
+    }, [
+      'Web VPython 3.2',
+      'from vpython import *',
+      'import numpy as np',
+      'sphere(color=color.red)',
+      'print("header ok", int(np.arange(3).sum()))',
+      ''
+    ].join('\n'));
+    await page.locator('.run-it').first().click();
+
+    await expect(async () => {
+      const out = await page.evaluate(() =>
+        document.querySelector('#console-output')?.innerText || '');
+      expect(out).not.toContain('No module named');
+      expect(out).toContain('header ok 3');
+    }).toPass({ timeout: 240_000 });
+    expect(await page.evaluate(() => window.__trinketRuntime)).toBe('main');
+  });
 });

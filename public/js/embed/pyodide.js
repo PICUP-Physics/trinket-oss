@@ -38,8 +38,8 @@ var VPYTHON_ZIP_URL = assetUrl('/js/embed/wvpython/vpython.zip');
 // side alone is a run-time 404 with nothing pointing at the cause.
 var VPYTHON_WHEEL_NAME = 'vpython-7.6.6.dev0-py3-none-any.whl';
 
-// Python code injected before user code runs each time a matplotlib program
-// executes.  Pyodide 0.28+ ships a Pyodide-patched WebAgg backend that reads
+// Python code injected before user code runs, on every run once matplotlib is
+// loaded in the page's interpreter (matplotlibLoaded(), #316).  Pyodide 0.28+ ships a Pyodide-patched WebAgg backend that reads
 // document.pyodideMplTarget (set by JS below) so figures land in #graphic,
 // and wires the full interactive toolbar + 3D mouse-orbit automatically.
 // plt.close('all') ensures stale figures from a previous run don't resurface.
@@ -102,6 +102,10 @@ var MATPLOTLIB_SETUP_CODE = [
   // traceback pointing into injected code they never wrote.
   "        try:",
   "            if getattr(_m, 'js_fig', None) is None:",
+  // Open the pane BEFORE the JS figure is built, so mpl.js measures a visible
+  // #graphic rather than a hidden one (#316; the worker does the same on its
+  // first `new` figure message).
+  "                _js.window.__trinketMplFigureShowing()",
   "                _m.show()",
   // Pyodide's patched mpl.js builds the toolbar with icon <img>s and no
   // title attributes, so the buttons have no tooltips and nothing a test can
@@ -1018,19 +1022,79 @@ function syncFilesToFS(files, main) {
   return prog;
 }
 
-// Heuristics on the source so we can show a "loading packages" hint and decide
-// whether to set up matplotlib's render target. The package name can appear
-// anywhere on an import line, not just first — e.g. `import numpy, matplotlib`
-// or `from matplotlib import pyplot` — so match the whole (comment-stripped)
-// line, not only the token right after import/from. Missing matplotlib here
-// skips the render-target setup, so the figure falls back to document.body
-// instead of the #graphic pane (see issue #21).
-function importsMatch(code, names) {
-  var re = new RegExp('(^|\\n)\\s*(import|from)\\s+[^\\n#]*\\b(' + names + ')\\b');
-  return re.test(code);
+// Loads the Pyodide packages that ANY .py file imports, not just the main one
+// (#316). syncFilesToFS() puts helper modules on the FS, so `import helper`
+// resolves -- but scanning only the main file's text meant a package imported
+// only from helper.py was never fetched.
+//
+// Scanned PER FILE and unioned, never concatenated: find_imports returns []
+// for source that does not parse, so one helper's syntax error would otherwise
+// hide every other file's imports. The union goes to loadPackagesFromImports as
+// one synthesized source so Pyodide takes its package lock once and narrates
+// one "Loading ..." block. The name filter keeps a relative or odd import from
+// making that synthesized source itself unparseable. Non-.py files are skipped
+// here as they are by the FS write. The worker has its own copy of this
+// (pyodide-worker.js, loadImportsFromSources): it is a separate script.
+//
+// find_imports is reached through pyimport: 0.28.1 has NO `pyodide.code` on
+// the JS object (measured -- it is undefined), only the Python module. If the
+// scanner cannot be had, or one file fails to scan, those files go to
+// loadPackagesFromImports on their own instead, which is slower but still per
+// file; a scan that silently loaded nothing would bring back every symptom of
+// #316.
+function loadImportsFromFiles(files) {
+  var keys = Object.keys(files || {}).filter(function(k) { return /\.py$/.test(k); });
+  var names = {}, direct = [], mod = null, findImports = null;
+  try {
+    mod = pyodide.pyimport('pyodide.code');
+    findImports = mod.find_imports;
+  } catch (e) {}
+  if (typeof findImports !== 'function') {
+    // Covers a missing module AND a module without find_imports, which is an
+    // attribute miss (undefined), not a throw.
+    console.warn('find_imports unavailable; loading imports file by file');
+    direct = keys.map(function(k) { return files[k]; });
+  } else {
+    keys.forEach(function(k) {
+      var found = null;
+      try {
+        found = findImports(files[k]);
+        found.toJs().forEach(function(n) {
+          if (/^[A-Za-z_][\w.]*$/.test(n)) names[n] = true;
+        });
+      } catch (e) {
+        // Anything but a clean scan loads that file the old way, rather than
+        // silently contributing nothing. (Unparseable source is not an error
+        // here: find_imports returns [] for it.)
+        direct.push(files[k]);
+      }
+      if (found) { try { found.destroy(); } catch (e) {} }
+    });
+  }
+  try { if (findImports) findImports.destroy(); } catch (e) {}
+  try { if (mod) mod.destroy(); } catch (e) {}
+  var src = Object.keys(names).map(function(n) { return 'import ' + n; }).join('\n');
+  return direct.reduce(function(p, text) {
+    return p.then(function() { return pyodide.loadPackagesFromImports(text); });
+  }, pyodide.loadPackagesFromImports(src));
 }
-function usesMatplotlib(code) {
-  return importsMatch(code, 'matplotlib');
+
+// Whether matplotlib's render target and backend need setting up, decided by
+// asking the interpreter what is LOADED rather than by reading the program's
+// text (#316). A text match missed `from pylab import *` and a matplotlib
+// pulled in by another package (networkx), so the figure fell back to
+// document.body instead of the #graphic pane (#21); and it fired on a program
+// that failed to parse, where nothing had loaded, so the setup's own
+// `import matplotlib` replaced the student's SyntaxError with a missing-module
+// error at "main.py, line 1". Call it only after the imports have loaded.
+//
+// loadedPackages persists for the page's interpreter, so after any plotting run
+// this stays true. That is why the pane opens when a figure is SHOWN
+// (__trinketMplFigureShowing) rather than here, and why the setup must not
+// displace the console transform in startRun().
+function matplotlibLoaded() {
+  return !!(pyodide && pyodide.loadedPackages &&
+            Object.prototype.hasOwnProperty.call(pyodide.loadedPackages, 'matplotlib'));
 }
 
 // ---------------------------------------------------------------------------
@@ -1583,7 +1647,7 @@ function ensureConsoleTransform() {
 // Deliberately NOT routed through runProgram(): typeset math output covers the
 // plain run and worker paths in slice 1 only. See slice 2 in
 // docs/superpowers/plans/2026-09-04-sympy-math-output.md.
-function runVpython(prog) {
+function runVpython(prog, files) {
   // No trailing newline: completed with "ready" once the library and bridge are
   // loaded, so the ellipsis never lingers as if it were still working (#27).
   openRuntimeLine('Loading VPython (GlowScript)… ');
@@ -1628,13 +1692,21 @@ function runVpython(prog) {
       '_vpy.rate = _wrapped_rate\n'
     );
   }).then(function() {
-    // Load bundled packages the program imports (numpy, matplotlib, …).
-    return pyodide.loadPackagesFromImports(prog);
+    // Load bundled packages any of the program's files import (numpy,
+    // matplotlib, …). The main file is scanned with its "Web VPython 3.2"
+    // header commented out, as it will run below: with the header in place it
+    // does not parse, find_imports returns [] and none of main's imports load.
+    // `files` is startRun's snapshot, the one syncFilesToFS wrote, so an edit
+    // made while glow loads cannot make the scan disagree with what imports.
+    var scan = {};
+    Object.keys(files).forEach(function(k) { scan[k] = files[k]; });
+    scan[mainFile] = (prog || '').replace(/^(\s*(Web\s+VPython|GlowScript)\b)/i, '#$1');
+    return loadImportsFromFiles(scan);
   }).then(function() {
     // A VPython program can also plot. Without this, matplotlib falls back to
     // its default target and the figure floats loose in the page next to the
     // 3D scene; point its canvas backend at the graphic pane instead.
-    if (usesMatplotlib(prog)) {
+    if (matplotlibLoaded()) {
       window.document.pyodideMplTarget = document.getElementById('graphic');
       return pyodide.runPythonAsync(MATPLOTLIB_SETUP_CODE);
     }
@@ -3368,7 +3440,8 @@ function runStepThrough(defer) {
     // Deliberately NOT routed through runProgram(): typeset math output covers
     // the plain run and worker paths in slice 1 only. See slice 2 in
     // docs/superpowers/plans/2026-09-04-sympy-math-output.md.
-    var prog = syncFilesToFS(editor.getAllFiles(), mainFile);
+    var files = editor.getAllFiles();
+    var prog = syncFilesToFS(files, mainFile);
     if (usesVPython(prog)) {
       // setDebugNote, not $('#debug-note').text: with features.debugPanel on
       // the in-tab note lives in a pane the panel never opens, so writing
@@ -3391,12 +3464,15 @@ function runStepThrough(defer) {
       setTimeout(function() { clearDebugNoteIf(inputMsg); }, 4000);
       return null;
     }
-    return pyodide.loadPackagesFromImports(prog).then(function() {
+    return loadImportsFromFiles(files).then(function() {
       if (debugCancelled || running) return null; // cancelled, or a normal run got in first
       var setup = Promise.resolve();
-      if (usesMatplotlib(prog)) {
+      // No showGraphic() here: a plt.show() in the recording pass goes through
+      // _trinket_show, which opens the pane when a figure is actually shown
+      // (#316). fig.show() bypasses it -- and fails with "mpl is not defined"
+      // on origin/main as well, since the initialize() it needs is in there too.
+      if (matplotlibLoaded()) {
         window.document.pyodideMplTarget = document.getElementById('graphic');
-        showGraphic();
         setup = pyodide.runPythonAsync(MATPLOTLIB_SETUP_CODE);
       }
       return setup.then(function() {
@@ -4658,6 +4734,14 @@ var MPL_TOOLBAR_ICONS = {
 // why applyMplToolbarIcons substitutes Font Awesome there. Running that
 // substitution here would swap matplotlib's own icons for the worker's
 // workaround, which is parity in the wrong direction.
+// Called by _trinket_show just before a figure's JS side is built. The pane is
+// opened here, when a figure actually appears, rather than before the program
+// runs: matplotlibLoaded() stays true for every run after a plotting one, so
+// opening it up front would give a print-only program an empty pane (#316).
+window.__trinketMplFigureShowing = function() {
+  showGraphic();
+};
+
 window.__trinketMplFigureShown = function(fig) {
   try { applyMplToolbarTitles(fig); } catch (e) {}
   // The corner drag on main was undebounced: mpl.js's ResizeObserver fires once
@@ -5560,7 +5644,7 @@ function startRun() {
   resetMplFigures();
 
   // Default to a console-only layout each run; showGraphic() re-splits the pane
-  // when the code uses matplotlib.
+  // when a figure is shown (__trinketMplFigureShowing).
   $('#graphic-wrap').addClass('hide');
   $('#output-dragbar').addClass('hide');
   $('#console-wrap').css('height', '100%');
@@ -5608,7 +5692,8 @@ function startRun() {
 
   ensurePyodide().then(function() {
     closeRuntimeLine();   // "…" -> "… ready" (#27)
-    var prog = syncFilesToFS(editor.getAllFiles(), mainFile);
+    var files = editor.getAllFiles();
+    var prog = syncFilesToFS(files, mainFile);
 
     // Make time.sleep() a cancellation point so Stop can unwind a sleeping loop
     // (#108). Idempotent and installed once per interpreter; failure here must
@@ -5619,7 +5704,7 @@ function startRun() {
     // vpython bridge + async rewriting, rendering 3D into the graphic pane.
     if (usesVPython(prog)) {
       runningIsVpython = true;  // mark cancellable so Run-while-running restarts
-      return runVpython(prog);
+      return runVpython(prog, files);
     }
 
     // No "Loading packages…" line of our own: Pyodide narrates installs itself
@@ -5627,48 +5712,58 @@ function startRun() {
     // complete. Ours added a second ellipsis that nothing ever closed (#27).
 
     // Auto-install any Pyodide-bundled packages the code imports (numpy,
-    // matplotlib, pandas, …) from the CDN before running.
-    return pyodide.loadPackagesFromImports(prog).then(function() {
-      if (usesMatplotlib(prog)) {
+    // matplotlib, pandas, …) from the CDN before running -- from every .py
+    // file, not just the main one (#316).
+    return loadImportsFromFiles(files).then(function() {
+      // Decided from what LOADED, not from the program text (#316), and a
+      // PREFIX step rather than a branch: loadedPackages persists, so once any
+      // run has loaded matplotlib this is true for every later run in the
+      // session. As a branch it returned before the console transform below,
+      // which left every later `import console` program with an un-awaited
+      // console.input(). No showGraphic() here either -- see
+      // __trinketMplFigureShowing.
+      var mpl = matplotlibLoaded();
+      var setup = Promise.resolve();
+      if (mpl) {
         // Point matplotlib's canvas backend at the trinket graphic pane, then
         // select that backend before the user's code imports pyplot.
         window.document.pyodideMplTarget = document.getElementById('graphic');
-        showGraphic();
-        return pyodide.runPythonAsync(MATPLOTLIB_SETUP_CODE).then(function() {
-          return runProgram(prog);
-        }).then(function(result) {
-          // Notebook-style auto-display: show any figure the program left
-          // open. #254 — this used to ask the DOM "did anything render?" via
-          // g.querySelector('canvas') and skip if so, which is a different
-          // question from "has every open figure been shown". A program that
-          // called show() and THEN created a second figure rendered only the
-          // first, because the guard saw the first one's canvas and returned.
-          // Measured: get_fignums() == [1, 2], one figure on the page.
-          //
-          // No guard is needed now. show() is idempotent per figure (see
-          // MATPLOTLIB_SETUP_CODE), so figures already on the page redraw in
-          // place instead of double-plotting, and this call is also what
-          // picks up edits made after the student's own show().
-          return pyodide.runPythonAsync(
-            "import matplotlib.pyplot\n" +
-            "if matplotlib.pyplot.get_fignums():\n" +
-            "    matplotlib.pyplot.show()\n"
-          ).then(function() { return result; });
-        });
+        setup = pyodide.runPythonAsync(MATPLOTLIB_SETUP_CODE);
       }
-      if (usesConsole(prog) && !userShadowsConsole()) {
-        return ensureConsoleTransform().then(function() {
-          pyodide.globals.set('__user_source__', prog || '');
-          var asyncProg = pyodide.runPython(
-            // Clear memory restores the bootstrap namespace, so this import is
-            // intentionally repeated instead of depending on the one global
-            // transform_source name created when the helper was first loaded.
-            'from _trinket_async_transform import transform_source\n' +
-            'transform_source(__user_source__)');
-          return runProgram(asyncProg, prog);
-        });
-      }
-      return runProgram(prog);
+      return setup.then(function() {
+        if (usesConsole(prog) && !userShadowsConsole()) {
+          return ensureConsoleTransform().then(function() {
+            pyodide.globals.set('__user_source__', prog || '');
+            var asyncProg = pyodide.runPython(
+              // Clear memory restores the bootstrap namespace, so this import is
+              // intentionally repeated instead of depending on the one global
+              // transform_source name created when the helper was first loaded.
+              'from _trinket_async_transform import transform_source\n' +
+              'transform_source(__user_source__)');
+            return runProgram(asyncProg, prog);
+          });
+        }
+        return runProgram(prog);
+      }).then(function(result) {
+        if (!mpl) return result;
+        // Notebook-style auto-display: show any figure the program left
+        // open. #254 — this used to ask the DOM "did anything render?" via
+        // g.querySelector('canvas') and skip if so, which is a different
+        // question from "has every open figure been shown". A program that
+        // called show() and THEN created a second figure rendered only the
+        // first, because the guard saw the first one's canvas and returned.
+        // Measured: get_fignums() == [1, 2], one figure on the page.
+        //
+        // No guard is needed now. show() is idempotent per figure (see
+        // MATPLOTLIB_SETUP_CODE), so figures already on the page redraw in
+        // place instead of double-plotting, and this call is also what
+        // picks up edits made after the student's own show().
+        return pyodide.runPythonAsync(
+          "import matplotlib.pyplot\n" +
+          "if matplotlib.pyplot.get_fignums():\n" +
+          "    matplotlib.pyplot.show()\n"
+        ).then(function() { return result; });
+      });
     });
   }).then(function(result) {
     renderRichResult(result);
