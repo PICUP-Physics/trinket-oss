@@ -171,10 +171,24 @@
     return line + '\n';
   }
 
+  // #321: the classic first-line header ("Web VPython 3.2", "GlowScript 3.2
+  // VPython") that Web VPython programs start with is not Python. Comment it out
+  // -- never delete it -- so the program parses and every traceback still
+  // points at the line the student sees. Line 1 only, the same rule runVpython
+  // applies on the main thread.
+  var VERSION_HEADER = /^\s*(Web\s+VPython|GlowScript)\b/i;
+
+  function commentOutVersionHeader(src) {
+    var lines = String(src || '').split('\n');
+    if (VERSION_HEADER.test(lines[0])) lines[0] = '#' + lines[0];
+    return lines.join('\n');
+  }
+
   var router = {
     chooseRuntime      : chooseRuntime,
     hasUnawaitableCall : hasUnawaitableCall,
-    runtimeNotice      : runtimeNotice
+    runtimeNotice      : runtimeNotice,
+    commentOutVersionHeader : commentOutVersionHeader
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = router;

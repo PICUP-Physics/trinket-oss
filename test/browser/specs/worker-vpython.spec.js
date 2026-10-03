@@ -1328,3 +1328,54 @@ test.describe('Worker VPython (vpython-jupyter adoption)', () => {
     }).toPass({ timeout: 60_000 });
   });
 });
+
+// #321: a program pasted from Web VPython starts with its version header. The
+// main thread comments that line out before running (runVpython); the worker
+// path did not, so the program died at line 1 with a SyntaxError.
+test.describe('Worker VPython: the "Web VPython 3.2" header (#321)', () => {
+  const consoleText = (page) => page.evaluate(() =>
+    document.querySelector('#console-output')?.innerText || '');
+
+  test('a program that starts with the header runs on the worker', async ({ page }) => {
+    test.setTimeout(300_000);
+    await runVPython(page, 'Web VPython 3.2\nfrom vpython import *\nsphere()\nprint("FINI")\n');
+
+    await expect.poll(() => consoleText(page), { timeout: 180_000 })
+      .toMatch(/FINI|Error/);
+    const out = await consoleText(page);
+    expect(out).not.toContain('SyntaxError');
+    expect(out).toContain('FINI');
+    expect(await page.evaluate(() => window.__trinketRuntime)).toBe('worker');
+  });
+
+  // The main thread has always handled the header; it now shares the worker's
+  // helper, so pin it there too. ?runtime=main wins over workerVPython.
+  test('the main thread still runs a program that starts with the header', async ({ page }) => {
+    test.setTimeout(300_000);
+    await page.goto('/embed/python3?runtime=main');
+    await expect(page.locator('.ace_editor').first()).toBeVisible({ timeout: 30_000 });
+    await page.evaluate((code) => {
+      document.querySelector('.ace_editor').env.editor.setValue(code, 1);
+    }, 'Web VPython 3.2\nfrom vpython import *\nsphere()\nprint("FINI")\n');
+    await page.locator('.run-it').first().click();
+
+    await expect.poll(() => consoleText(page), { timeout: 180_000 }).toMatch(/FINI|Error/);
+    const out = await consoleText(page);
+    expect(out).not.toContain('SyntaxError');
+    expect(out).toContain('FINI');
+    expect(await page.evaluate(() => window.__trinketRuntime)).toBe('main');
+  });
+
+  test('the header keeps its line, so an error is reported on the line it is on', async ({ page }) => {
+    test.setTimeout(300_000);
+    await runVPython(page, 'Web VPython 3.2\nfrom vpython import *\nundefined_name_on_line_3\n');
+
+    await expect.poll(() => consoleText(page), { timeout: 180_000 })
+      .toMatch(/NameError|SyntaxError/);
+    const out = await consoleText(page);
+    expect(out).not.toContain('SyntaxError');
+    expect(out).toContain('NameError');
+    expect(out).toMatch(/line 3\b/);
+    expect(await page.evaluate(() => window.__trinketRuntime)).toBe('worker');
+  });
+});

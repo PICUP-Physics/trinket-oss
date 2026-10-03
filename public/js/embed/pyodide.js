@@ -1652,11 +1652,8 @@ function runVpython(prog) {
       try { pyodide.runPython('__trinket_baseline__ |= set(globals().keys())'); } catch (e) {}
       vpythonBaselineCaptured = true;
     }
-    var lines = prog.split('\n');
-    if (/^\s*(Web\s+VPython|GlowScript)\b/i.test(lines[0])) {
-      lines[0] = '#' + lines[0];
-    }
-    pyodide.globals.set('__user_source__', lines.join('\n'));
+    // The one rule for the header, shared with the worker hand-off (#321).
+    pyodide.globals.set('__user_source__', runtimeRouter.commentOutVersionHeader(prog));
     var asyncProg = pyodide.runPython(
       'from vpython._async_transform import transform_source\n' +
       'transform_source(__user_source__)'
@@ -5597,6 +5594,16 @@ function startRun() {
 
   if (decision.runtime === 'worker') {
     running = true;
+    // #321: runVpython comments the "Web VPython 3.2" header out before
+    // anything parses the program; a VPython program sent to the worker needs
+    // the same, or it dies at line 1. Done here, before the hand-off, so the
+    // worker's transform, import scan and run all see the commented text. The
+    // main file's copy in `files` too -- the worker writes every .py file.
+    // getAllFiles() returned a fresh object, so the editor is untouched.
+    if (decision.vpython) {
+      workerProgram = runtimeRouter.commentOutVersionHeader(workerProgram);
+      workerFiles[mainFile] = workerProgram;
+    }
     return runInWorker(workerProgram, workerFiles, serializedCode, decision);
   }
 

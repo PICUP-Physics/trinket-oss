@@ -1,7 +1,7 @@
 'use strict';
 // #108: chooseRuntime decides, per program, whether to run in the Web Worker or
 // on the main thread. It is pure so the rules can be tested without a browser.
-const { chooseRuntime, hasUnawaitableCall, runtimeNotice } = require('../../public/js/embed/runtime-router.js');
+const { chooseRuntime, hasUnawaitableCall, runtimeNotice, commentOutVersionHeader } = require('../../public/js/embed/runtime-router.js');
 
 const OPTS = { usesVPython: false, workerEnabled: true, queryRuntime: undefined };
 
@@ -321,5 +321,49 @@ describe('runtimeNotice with a stored setting', () => {
   it('speaks for a stored main, which is otherwise an ordinary quiet main-thread run — this is what actually exercises the new worthSaying clause', () => {
     const d = chooseRuntime('print(1)', { ...OPTS, workerEnabled: true, storedRuntime: 'main' });
     expect(runtimeNotice(d, undefined)).toMatch(/this trinket's setting/);
+  });
+});
+
+// #321: the classic first-line header ("Web VPython 3.2", "GlowScript 3.2
+// VPython") is not Python. The main thread comments it out before running;
+// a VPython program sent to the worker must get the same treatment.
+describe('commentOutVersionHeader', () => {
+  it('comments out a Web VPython header on line 1', () => {
+    expect(commentOutVersionHeader('Web VPython 3.2\nsphere()\n'))
+      .toBe('#Web VPython 3.2\nsphere()\n');
+  });
+
+  it('comments out a GlowScript header on line 1', () => {
+    expect(commentOutVersionHeader('GlowScript 3.2 VPython\nbox()'))
+      .toBe('#GlowScript 3.2 VPython\nbox()');
+  });
+
+  it('matches the header case-insensitively and after leading spaces, as runVpython does', () => {
+    expect(commentOutVersionHeader('  web vpython 3.2\nx = 1')).toBe('#  web vpython 3.2\nx = 1');
+  });
+
+  it('keeps the line count, so tracebacks point at the right line', () => {
+    const src = 'Web VPython 3.2\nfrom vpython import *\n\nsphere()\n';
+    expect(commentOutVersionHeader(src).split('\n').length).toBe(src.split('\n').length);
+  });
+
+  it('leaves a header that is not on line 1 alone', () => {
+    const src = '# a comment\nWeb VPython 3.2\nsphere()';
+    expect(commentOutVersionHeader(src)).toBe(src);
+  });
+
+  it('leaves a program with no header unchanged', () => {
+    const src = 'from vpython import *\nsphere()\n';
+    expect(commentOutVersionHeader(src)).toBe(src);
+  });
+
+  it('leaves a name that merely starts with the word alone', () => {
+    const src = 'GlowScriptish = 1\nprint(GlowScriptish)';
+    expect(commentOutVersionHeader(src)).toBe(src);
+  });
+
+  it('treats an empty or missing program as empty', () => {
+    expect(commentOutVersionHeader('')).toBe('');
+    expect(commentOutVersionHeader(undefined)).toBe('');
   });
 });
