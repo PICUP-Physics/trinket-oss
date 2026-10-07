@@ -363,6 +363,19 @@
     }
   }
 
+  // #330: layer `#region` / `#endregion` folding over a Python session's own
+  // fold rules (colons and brackets), once per mode change. A no-op for other
+  // modes, or when region-fold.js is not on the page.
+  function installRegionFolds(session, Range) {
+    var regions = window.TrinketRegionFold;
+    var base    = session.$foldMode;
+    if (!regions || !base || base.$trinketRegions) return;
+    if ((session.getMode() || {}).$id !== 'ace/mode/python') return;
+    var wrapped = regions.wrapFoldMode(base, Range);
+    wrapped.$trinketRegions = true;
+    session.$setFolding(wrapped);
+  }
+
   function createDesktopAPI(el, opts) {
     var modes          = ace.require('ace/ext/modelist')
         , mode         = modes.getModeForPath('foo.' + opts.ext)
@@ -376,6 +389,14 @@
 
     e.$blockScrolling = Infinity;
     e.setTheme("ace/theme/xcode");
+    // #330: `#region` / `#endregion` folds in Python mode (region-fold.js).
+    // ACE installs a mode's fold rules and THEN emits changeMode, on every mode
+    // change (a rename through setModeFromName too), so wrapping them here
+    // always lands on top. Registered before the first setMode, which can
+    // complete synchronously when the mode is already loaded.
+    e.getSession().on('changeMode', function() {
+      installRegionFolds(e.getSession(), Range);
+    });
     e.getSession().setMode(mode ? mode.mode : "ace/mode/text");
     e.getSession().setUseSoftTabs(true);
 
