@@ -1703,9 +1703,11 @@ function runVpython(prog, files) {
     // does not parse, find_imports returns [] and none of main's imports load.
     // `files` is startRun's snapshot, the one syncFilesToFS wrote, so an edit
     // made while glow loads cannot make the scan disagree with what imports.
+    // The header is commented by the same helper the run below uses (#321),
+    // so the scan and the run always agree on what the program is.
     var scan = {};
     Object.keys(files).forEach(function(k) { scan[k] = files[k]; });
-    scan[mainFile] = (prog || '').replace(/^(\s*(Web\s+VPython|GlowScript)\b)/i, '#$1');
+    scan[mainFile] = runtimeRouter.commentOutVersionHeader(prog);
     return loadImportsFromFiles(scan);
   }).then(function() {
     // A VPython program can also plot. Without this, matplotlib falls back to
@@ -1729,11 +1731,8 @@ function runVpython(prog, files) {
       try { pyodide.runPython('__trinket_baseline__ |= set(globals().keys())'); } catch (e) {}
       vpythonBaselineCaptured = true;
     }
-    var lines = prog.split('\n');
-    if (/^\s*(Web\s+VPython|GlowScript)\b/i.test(lines[0])) {
-      lines[0] = '#' + lines[0];
-    }
-    pyodide.globals.set('__user_source__', lines.join('\n'));
+    // The one rule for the header, shared with the worker hand-off (#321).
+    pyodide.globals.set('__user_source__', runtimeRouter.commentOutVersionHeader(prog));
     var asyncProg = pyodide.runPython(
       'from vpython._async_transform import transform_source\n' +
       'transform_source(__user_source__)'
@@ -5692,6 +5691,16 @@ function startRun() {
 
   if (decision.runtime === 'worker') {
     running = true;
+    // #321: runVpython comments the "Web VPython 3.2" header out before
+    // anything parses the program; a VPython program sent to the worker needs
+    // the same, or it dies at line 1. Done here, before the hand-off, so the
+    // worker's transform, import scan and run all see the commented text. The
+    // main file's copy in `files` too -- the worker writes every .py file.
+    // getAllFiles() returned a fresh object, so the editor is untouched.
+    if (decision.vpython) {
+      workerProgram = runtimeRouter.commentOutVersionHeader(workerProgram);
+      workerFiles[mainFile] = workerProgram;
+    }
     return runInWorker(workerProgram, workerFiles, serializedCode, decision);
   }
 
