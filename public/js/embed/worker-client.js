@@ -311,6 +311,17 @@
       // main thread just to read sys.version.
       ready: function() { return whenReady().then(function() { return readyInfo || {}; }); },
 
+      // Has the CURRENT worker finished booting Pyodide? The synchronous
+      // counterpart of ready(), for a caller that must decide NOW whether the
+      // next run is going to wait on a boot -- the page's "Loading Python
+      // (Pyodide)…" status line, which only a boot ever completes (#333).
+      //
+      // `ready` alone is not enough: it is reset when a replacement worker is
+      // CREATED, not when the old one is destroyed, so after stop() or
+      // discardWorker() it would still read true for a worker that no longer
+      // exists -- and the cold boot that follows would be announced by nothing.
+      isReady: function() { return !!worker && ready; },
+
       isRunning: function() { return !!current; },
 
       dispose: function() {
