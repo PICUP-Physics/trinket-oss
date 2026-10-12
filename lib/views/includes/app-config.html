@@ -59,6 +59,7 @@
         calculatorOption  : ["{{ config.app.calculatorOption | join('","') | safe }}"],
         runOption         : {{ config.app.runOption      | json        | safe }},
         emailEnabled      : {{ 'true' if emailEnabled else 'false' }},
+        inviteEmailEnabled : {{ 'true' if inviteEmailEnabled else 'false' }},
         assetsEnabled     : {{ 'true' if config.features.assets else 'false' }},
         accessCodeEnrollment : {{ 'true' if config.features.accessCodeEnrollment else 'false' }},
         {# Whether this user may reach /account/import. Injected here because the
