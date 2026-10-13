@@ -1,0 +1,178 @@
+// The Run control while a GlowScript program runs or is stopping, and while it
+// runs but the editor holds something else (run-state-edited, the ↻ Run look).
+// run-stop-button.js adds the run-state-* classes and nothing else does, so the
+// Run controls of other runtimes are untouched. Values are the spec's:
+// docs/superpowers/specs/2026-10-09-glowscript-stop-button-design.md
+//
+// Colors are !important because Foundation's icon-bar and the toolbar rules in
+// _wrapper.scss style items, their children (the strip included) and their
+// hover and focus fills through several nested selectors; a state color has to
+// win over all of them.
+
+$run-stop-color: #C62828;      // 5.6:1 on white
+$run-stopping-color: #6B6B6B;  // 5.3:1 on white
+$run-edited-color: $icon-bar-font-color;   // the Run control's own text
+$run-edited-fill: $icon-bar-hover-color;   // its hover fill
+
+.run-it .run-stop-trace {
+  display: none;
+}
+
+.run-it.run-state-running,
+.run-it.run-state-stopping {
+  position: relative;
+
+  .run-stop-trace {
+    display: block;
+    position: absolute;
+    left: 3px;
+    top: 3px;
+    width: calc(100% - 6px);
+    height: calc(100% - 6px);
+    overflow: visible;
+    pointer-events: none;
+
+    rect {
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2px;
+      stroke-linecap: round;
+      stroke-dasharray: 24 76;
+      animation: run-stop-lap 1.6s linear infinite;
+    }
+  }
+}
+
+.run-it.run-state-running {
+  &,
+  > i,
+  > label,
+  > .run-stop-trace {
+    color: $run-stop-color !important;
+  }
+
+  // A mouse click focuses the output-only toolbar's <button>. That is not a
+  // keyboard focus, so it keeps the plain look instead of the toolbar's fill.
+  &:focus {
+    background: transparent !important;
+  }
+
+  // Separate rules: a browser without :focus-visible drops any selector list
+  // that names it, which would take the hover fill with it.
+  &:hover {
+    background: $run-stop-color !important;
+
+    &,
+    > i,
+    > label,
+    > .run-stop-trace {
+      color: #fff !important;
+    }
+  }
+
+  &:focus-visible {
+    background: $run-stop-color !important;
+    // 4-6 px in: on the red fill, so the ring shows (at -2px it merged with
+    // the white toolbar), and just inside the strip's band (2-4 px in), so
+    // the lap stays visible.
+    outline: 2px solid #fff;
+    outline-offset: -6px;
+
+    &,
+    > i,
+    > label,
+    > .run-stop-trace {
+      color: #fff !important;
+    }
+  }
+}
+
+// ↻ Run: the program runs, but the editor no longer holds what it runs. The control
+// has both classes, run-state-running and run-state-edited, so everything above that
+// is not replaced here carries over to it: the strip and its lap, the white focus
+// ring, the plain look of a mouse-focused <button>, the reduced-motion outline.
+// What is red above becomes the normal Run look: the toolbar's own gray text and
+// blue hover fill, with the strip in the stopping gray.
+//
+// Each selector here has one class more than the running rule it replaces, so it
+// wins whatever the order. Hover and focus are restated for the same reason: the
+// white text that running's :hover sets ties on specificity with the gray set below
+// for the resting control, and the gray, coming later, would win it.
+.run-it.run-state-running.run-state-edited {
+  &,
+  > i,
+  > label {
+    color: $run-edited-color !important;
+  }
+
+  > .run-stop-trace {
+    color: $run-stopping-color !important;
+  }
+
+  // Separate rules, as above, for a browser without :focus-visible.
+  &:hover {
+    background: $run-edited-fill !important;
+
+    &,
+    > i,
+    > label,
+    > .run-stop-trace {
+      color: #fff !important;
+    }
+  }
+
+  &:focus-visible {
+    background: $run-edited-fill !important;
+
+    &,
+    > i,
+    > label,
+    > .run-stop-trace {
+      color: #fff !important;
+    }
+  }
+}
+
+.run-it.run-state-stopping {
+  cursor: progress;
+
+  &,
+  > i,
+  > label,
+  > .run-stop-trace {
+    color: $run-stopping-color !important;
+  }
+
+  &:hover,
+  &:focus,
+  &:active {
+    background: transparent !important;
+  }
+
+  .run-stop-trace rect {
+    animation-play-state: paused;
+    opacity: 0.5;
+  }
+}
+
+@keyframes run-stop-lap {
+  to {
+    stroke-dashoffset: -100;
+  }
+}
+
+// The strip is drawn in its own color, so the ↻ Run control's static outline is gray.
+@media (prefers-reduced-motion: reduce) {
+  .run-it.run-state-running .run-stop-trace rect,
+  .run-it.run-state-stopping .run-stop-trace rect {
+    animation: none;
+    stroke-dasharray: none;
+    stroke-width: 1.5px;
+  }
+}
+
+.glowscript-stopped-note {
+  margin: 2em 1em;
+  text-align: center;
+  color: #525252;
+}

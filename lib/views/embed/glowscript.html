@@ -208,10 +208,24 @@ while True:
 <script id="glowscript_source" type="text/plain">{{prog}}</script>
 
         <script type="text/javascript">
+          // Stop button: true while the program's main flow runs (runProgram,
+          // GlowScript 2.9 and later). There the main flow's own errors arrive
+          // through runProgram, so an error window.onerror sees meanwhile came
+          // from outside it (an event handler, a timer), and is reported as a
+          // background error, which does not end the run.
+          var __trinketMainRunning = false;
+
           window.onerror = function(msg, url, line, col, err) {
-            window.parent.postMessage(JSON.stringify({ "glowscript.error": "SRCDOC ERROR: " + msg + " at " + url + ":" + line, type: "runtime" }), "*");
+            var report = { "glowscript.error": "SRCDOC ERROR: " + msg + " at " + url + ":" + line, type: "runtime" };
+            if (parseFloat('{{version}}') >= 2.9 && __trinketMainRunning) { report["glowscript.background"] = true; }
+            window.parent.postMessage(JSON.stringify(report), "*");
             return false;
           };
+
+          // Stop button: parks the program on request (glowscript-stop-shim.js).
+          // A failed shim must never keep the program from running; Stop then
+          // falls back to teardown.
+          try { {{stopShim}} } catch (e) { if (window.console) { console.warn('Stop button unavailable:', e); } }
 
           var prog = $('#glowscript_source').text()
             , compiled, main_func;
@@ -238,7 +252,9 @@ while True:
           async function runProgram(program) {
             try {
               eval(program);
+              __trinketMainRunning = true;
               await __main__();
+              window.parent.postMessage(JSON.stringify({ "glowscript.done": true }), "*");
             } catch(err) {
               // todo: figure out why stack trace parsing doesn't work for newer version of GS
               var stack = reportScriptError(program, err, {{versionStringAdded}});
@@ -248,6 +264,8 @@ while True:
               else {
                 window.parent.postMessage(JSON.stringify({ "glowscript.error" : err.message, type : "runtime" }), "*");
               }
+            } finally {
+              __trinketMainRunning = false;
             }
           }
 
@@ -264,6 +282,24 @@ while True:
             cx.drawImage(img, 0, 0, w, h);
             var snapshot = cvs.toDataURL();
             window.parent.postMessage(JSON.stringify({ snapshot: snapshot }), "*");
+          }
+
+          // Stop button: after a stop the program's waits are parked
+          // (glowscript-stop-shim.js), and a screenshot goes through them.
+          // Let waits that start from now on through, so the screenshot can
+          // finish, until the returned function is called. The shim lets any
+          // flow's waits through meanwhile, not only the screenshot's. A failure
+          // here must never keep a snapshot from being taken, so it falls back
+          // to doing nothing.
+          function allowSnapshotWaits() {
+            var release = function () {};
+            try {
+              var shim = window.__trinketStop;
+              if (shim && typeof shim.allowWaits === 'function') { release = shim.allowWaits(); }
+            } catch (e) { if (window.console) { console.warn('Stop button: snapshot waits not allowed:', e); } }
+            return function () {
+              try { release(); } catch (e) { if (window.console) { console.warn('Stop button: snapshot waits not closed:', e); } }
+            };
           }
 
           try {
@@ -297,6 +333,9 @@ while True:
                         window.parent.postMessage(JSON.stringify({ "glowscript.error" : err.message, type : "runtime" }), "*");
                       }
                     }
+                    else {
+                      window.parent.postMessage(JSON.stringify({ "glowscript.done": true }), "*");
+                    }
                   });
                 }
               } catch(err) {
@@ -323,30 +362,36 @@ while True:
                 }
               }
               if (scene) {
+                // Released when the screenshot completes or fails; a failure
+                // still surfaces exactly as it did before.
+                var release = allowSnapshotWaits();
                 if (parseFloat('{{version}}') >= 2.9) {
-                  async_screenshot(scene);
+                  async_screenshot(scene).then(release, function (err) { release(); throw err; });
                 }
                 else {
-                  (scene.__renderer || scene.renderer).screenshot(function (err, img) {
-                    if (!err) {
-                      $(img).load(function () {
-                        // Rescale the image to 128px max dimension and save it as a screenshot
-                        var targetSize = 270;
-                        var aspect = img.width / img.height;
-                        var w = aspect >= 1 ? targetSize : targetSize * aspect;
-                        var h = aspect >= 1 ? targetSize / aspect : targetSize;
+                  try {
+                    (scene.__renderer || scene.renderer).screenshot(function (err, img) {
+                      release();
+                      if (!err) {
+                        $(img).load(function () {
+                          // Rescale the image to 128px max dimension and save it as a screenshot
+                          var targetSize = 270;
+                          var aspect = img.width / img.height;
+                          var w = aspect >= 1 ? targetSize : targetSize * aspect;
+                          var h = aspect >= 1 ? targetSize / aspect : targetSize;
 
-                        var canvas = document.createElement("canvas");
-                        canvas.width = w;
-                        canvas.height = h;
-                        var cx = canvas.getContext('2d');
-                        cx.drawImage(img, 0, 0, w, h);
-                        var snapshot = canvas.toDataURL("image/png");
+                          var canvas = document.createElement("canvas");
+                          canvas.width = w;
+                          canvas.height = h;
+                          var cx = canvas.getContext('2d');
+                          cx.drawImage(img, 0, 0, w, h);
+                          var snapshot = canvas.toDataURL("image/png");
 
-                        window.parent.postMessage(JSON.stringify({ snapshot: snapshot }), "*");
-                      });
-                    }
-                  });
+                          window.parent.postMessage(JSON.stringify({ snapshot: snapshot }), "*");
+                        });
+                      }
+                    });
+                  } catch (err) { release(); throw err; }
                 }
               }
               else {
@@ -386,6 +431,9 @@ while True:
        '/js/plugins/region-fold.js',
        '/js/embed/analytics/activity-log.js',
        '/js/embed/runner-retry.js',
+       '/js/embed/glowscript-stop-shim.js',
+       '/js/embed/glowscript-run-state.js',
+       '/js/embed/run-stop-button.js',
        '/js/embed/glowscript.js'
      ])
   %}

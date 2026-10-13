@@ -77,6 +77,49 @@ var runnerRetry = (typeof trinketRunnerRetry !== 'undefined')
   ? trinketRunnerRetry.create()
   : null;
 
+// Run/Stop button (docs/superpowers/specs/2026-10-09-glowscript-stop-button-design.md).
+// runState decides, runButton draws, and this file owns the DOM and the runner.
+var runState  = null;
+var runButton = null;
+// The serialized program (api.getValue(), every file) the current run launched
+// with. While the editor holds anything else, the control offers ↻ Run.
+var launchedCode = null;
+// A runner whose messages must not move the Run/Stop control: the previous
+// run's runner, until this run's runner replaces it (external sandbox mode waits
+// on a POST first), or a runner that reported a load failure and is about to be
+// rebuilt (the compile error it reports next is expected).
+var ignoredRunner = null;
+
+function currentRunnerWindow() {
+  var frame = document.getElementById('glowscriptOutput');
+  return frame ? frame.contentWindow : null;
+}
+
+// ↻ Run while a running program is no longer what the editor holds, Stop again
+// once the editor holds it again. Only a running program has anything to be
+// edited from: the view ignores the rest too, so a stopping control stays as it
+// is, and an idle one is plain Run.
+function syncEditedLook() {
+  if (!runState || runState.state() !== 'running') { return; }
+  // Drawing the control must never keep an edit or a Run from happening.
+  try { runButton.edited(api.getValue() !== launchedCode); }
+  catch (e) { console.warn('Run/Stop control update failed:', e); }
+}
+
+// No confirmation from the runner (or it was never ready): remove it outright.
+function tearDownRunner() {
+  // A torn-down run is over: there is nothing left to rebuild.
+  lastRunnerHtml = null;
+  $('#glowscriptIframeContainer').empty().append(
+    $('<p>', { 'class': 'glowscript-stopped-note', text: 'Program stopped. Press Run to start it again.' })
+  );
+  $('#loadingContent').hide();
+}
+
+function stopShimSource() {
+  return (typeof trinketGlowscriptStopShim !== 'undefined') ? trinketGlowscriptStopShim.source() : '';
+}
+
 // A runtime file failed inside the runner (reported by the srcdoc's __lf).
 // Rebuild after the policy's backoff: under the cold-start herd that shed the
 // file, the fleet is warm by the first retry. In a lockdown browser (Safe
@@ -93,16 +136,23 @@ function rebuildRunner() {
   }
 }
 
-function handleRunnerLoadFailure(src) {
+function handleRunnerLoadFailure(src, source) {
   if (!runnerRetry || !lastRunnerHtml) { return; }
   var verdict = runnerRetry.onLoadFailure(src);
   if (verdict.retry) {
-    setTimeout(rebuildRunner, verdict.delayMs);
+    ignoredRunner = source || null;
+    var generation = runState ? runState.generation() : null;
+    setTimeout(function() {
+      // A Stop, or a newer Run, since this was scheduled: don't resurrect it.
+      if (runState && runState.generation() !== generation) { return; }
+      rebuildRunner();
+    }, verdict.delayMs);
   }
   else if (verdict.reason === 'exhausted') {
     api.showMessage('alert',
       'The 3D runtime could not be loaded after several tries. ' +
       'Please check your connection and press Run again.');
+    if (runState) { runState.loadFailed(); }
   }
 }
 
@@ -132,8 +182,12 @@ function runCodeExternal(html) {
   var sandboxUrl = trinketSandboxConfig.protocol + '://' + trinketSandboxConfig.subdomain + trinketSandboxConfig.domain + '/';
   var files = { 'index.html': html };
 
+  var generation = runState ? runState.generation() : null;
+
   $.post(sandboxUrl, {files: files})
     .done(function(data, status) {
+      // A Stop, or a newer Run, since this was sent: don't resurrect it.
+      if (runState && runState.generation() !== generation) { return; }
       if (status === "success") {
         $('#glowscriptIframeContainer').empty();
         $('#glowscriptIframeContainer').html("<iframe id='glowscriptOutput' src='" + sandboxUrl + data.token + "/index.html'></iframe>");
@@ -142,6 +196,10 @@ function runCodeExternal(html) {
           $('#glowscriptOutput').focus();
         });
       }
+    })
+    .fail(function() {
+      // The sandbox never got the program: the run is over before it began.
+      if (runState && runState.generation() === generation) { runState.loadFailed(); }
     });
 }
 
@@ -262,7 +320,8 @@ function runCode() {
     version    : trinketVersion,
     versionStringAdded: versionStringAdded,
     jqueryList : jquerySrcs.join("\n"),
-    glowscriptTextarea : glowscriptTextarea
+    glowscriptTextarea : glowscriptTextarea,
+    stopShim   : stopShimSource()
   });
 
   $("#loadingContent").show();
@@ -271,6 +330,19 @@ function runCode() {
   // load failure can rebuild this exact runner (see handleRunnerLoadFailure).
   lastRunnerHtml = glowscriptHtml;
   if (runnerRetry) { runnerRetry.reset(); }
+
+  // The control is Stop for as long as this run lasts. The outgoing runner stays
+  // the current iframe until this run's runner replaces it, so it is ignored now.
+  ignoredRunner = currentRunnerWindow();
+  launchedCode = serializedCode;
+  if (runState) {
+    runState.launched();
+    // A run launched while another is going (↻ Run, Ctrl/Cmd-Enter) leaves the
+    // controller in 'running', which draws nothing: the control would stay ↻ Run
+    // for a run the editor matches. Check it against what was just launched, so
+    // every run starts as Stop (and a click right after is a double-click's).
+    syncEditedLook();
+  }
 
   // Choose rendering mode based on configuration
   if (trinketSandboxConfig.mode === 'local') {
@@ -327,6 +399,22 @@ window.TrinketAPI = {
     runMode = $('#runMode-value').val();
     autoRun = (start === 'result');
 
+    // Before anything can start a run (start=result runs from api.reset below).
+    if (typeof trinketGlowscriptRunState !== 'undefined' && typeof trinketRunStopButton !== 'undefined') {
+      runButton = trinketRunStopButton.create(document.querySelectorAll('.run-it'), $);
+      runState = trinketGlowscriptRunState.create({
+        // Drawing the control must never keep Run or Stop from happening.
+        onState     : function(state) {
+          try { runButton.set(state); } catch (e) { console.warn('Run/Stop control update failed:', e); }
+        },
+        requestStop : function() {
+          var runner = currentRunnerWindow();
+          if (runner) { runner.postMessage('glowscript.stop', '*'); }
+        },
+        teardown    : tearDownRunner
+      });
+    }
+
     var uiType = api.getUIType();
 
     editor = $('#editor').codeEditor({
@@ -377,6 +465,17 @@ window.TrinketAPI = {
 
     $(document).on('trinket.code.edit', $.proxy(this.showCode, this));
     $(document).on('trinket.code.run',  $.proxy(this.showResult, this));
+    $(document).on('trinket.code.stop', function() { if (runState) { runState.stop(); } });
+    // Fired on every change to the code (api.triggerChange, below): ↻ Run follows the text.
+    $(document).on('trinket.code.change', syncEditedLook);
+
+    // embed.js acts on Enter's keypress; cancel the click the browser would
+    // synthesize from it, so a <button> Run/Stop control is dispatched once.
+    // Otherwise Enter on Stop while the runtime loads tears the run down and
+    // the synthesized click, by then Run again, restarts it.
+    $(document).on('keypress', '.run-it', function(evt) {
+      if ((evt.keyCode || evt.which) === 13 && this.tagName === 'BUTTON') { evt.preventDefault(); }
+    });
 
     $(document).on('trinket.output.view',       $.proxy(api.showOutput, api));
     $(document).on('trinket.instructions.view', $.proxy(api.showInstructions, api));
@@ -472,13 +571,21 @@ window.TrinketAPI = {
         data = JSON.parse(e.data);
       } catch(e) {}
 
+      // Only the current run's runner may move the Run/Stop control or ask for
+      // a rebuild: a message from a replaced or torn-down runner is history.
+      var fromCurrentRunner = e.source === currentRunnerWindow() && e.source !== ignoredRunner;
+
       if (data && typeof data["glowscript.loadfail"] !== 'undefined') {
-        handleRunnerLoadFailure(data["glowscript.loadfail"]);
+        if (fromCurrentRunner) { handleRunnerLoadFailure(data["glowscript.loadfail"], e.source); }
         return;
       }
 
       if (data && data["glowscript.error"]) {
         api.showMessage('alert', data["glowscript.error"]);
+      }
+
+      if (runState) {
+        runState.receive(data, fromCurrentRunner);
       }
     });
 
@@ -674,6 +781,10 @@ window.TrinketAPI = {
       this.showCode();
       resetOutput();
     }
+    // The editor's text was just replaced without a change event, and a running
+    // program is not touched by that: the Reset button, a restored session and the
+    // remix version toggle all come through here. Work out ↻ Run or Stop again.
+    syncEditedLook();
   },
   focus : function() {
     if (!$('body').data('is-mobile') && $('body').data('autofocus')) {
