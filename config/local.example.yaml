@@ -38,6 +38,13 @@ db:
 # OPTIONAL: Email (for password reset)
 # =============================================================================
 # Without email, users can still register and log in, but password reset won't work.
+# A failed send of a password reset, email verification, email change confirmation, share by email,
+# course invitation or admin session alert is logged as one "MAIL_SEND_FAILED type=... to=... message=..."
+# line in the app log (it includes the recipient address and the mail server's reply); grep for it if
+# mail is not arriving. Most of these flows answer the user before
+# sending, so a failure is invisible to them (share by email is the exception: its request never completes).
+# Export-ready and export-failed notifications are NOT covered: a failure there surfaces through the export
+# job's failure handling, not this line. Mailgun sandbox domains only deliver to authorized recipients.
 
 # app:
 #   mail:
