@@ -11,6 +11,10 @@ two roughly in sync when adding a release.
 
 ### Writing and running code
 
+- **Web VPython programs can be stopped.** While a program runs, Run turns into
+  a red Stop with a strip lapping its edge; Stop freezes the scene where it
+  stands (it can still be rotated and zoomed), and the button returns to Run,
+  as it also does when a program finishes on its own (#336).
 - **Python runs real CPython in the browser** via Pyodide, so `numpy`,
   `matplotlib` and true language semantics work instead of the previous
   Skulpt approximation (#12). The New Trinket menu shows a single **Python**
