@@ -5439,7 +5439,18 @@ function runInWorker(program, files, serialized, decision) {
   // Completed by the client's onReady callback when the worker finishes booting
   // Pyodide (#27). This path never had the completion — it was added after the
   // original fix, so it inherited the dangling ellipsis rather than the fix.
-  openRuntimeLine('Loading Python (Pyodide)… ');
+  //
+  // Opened only when THIS run is going to wait on a boot. onReady fires once
+  // per worker, on its `ready` message, so on a warm worker nothing would ever
+  // close the line: it was left open on every run after the first, and the
+  // program's first output line was written onto the end of it (#333). The
+  // main-thread path below guards the same way with `if (!pyodideReady)`.
+  // ensureWorkerClient() ran at the top of this function, so workerClient is
+  // set; isReady() is false for a worker that is booting AND for one that stop()
+  // or discardWorker() just threw away, which is when a cold boot really follows.
+  if (!workerClient.isReady()) {
+    openRuntimeLine('Loading Python (Pyodide)… ');
+  }
 
   // The worker cannot see the page, so it cannot know how wide the graphic pane
   // is.
