@@ -145,6 +145,15 @@ describe('token key', () => {
     expect(warnSpy).toHaveBeenCalledTimes(1);
     expect(warnSpy.mock.calls[0][0]).toContain('cannot be looked up');
   });
+
+  it('reports where the key comes from without warning', () => {
+    expect(logPrivacy.keySource()).toBe('dedicated');
+    config.ferpa.logTokenSecret = '';
+    expect(logPrivacy.keySource()).toBe('session');
+    config.app.plugins.session.cookieOptions.password = '';
+    expect(logPrivacy.keySource()).toBe('random');
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
 });
 
 describe('never throws', () => {

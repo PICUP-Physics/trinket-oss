@@ -1,4 +1,6 @@
 'use strict';
+const fs            = require('fs');
+const os            = require('os');
 const path          = require('path');
 const crypto        = require('crypto');
 const { spawnSync } = require('child_process');
@@ -7,12 +9,19 @@ const ROOT   = path.join(__dirname, '../..');
 const SCRIPT = path.join(ROOT, 'scripts/log-email-token.js');
 const KEY    = 'k'.repeat(40);
 
-function run(args) {
-  return spawnSync(process.execPath, [SCRIPT].concat(args), {
-    cwd      : ROOT,
-    encoding : 'utf8',
-    env      : Object.assign({}, process.env, { NODE_ENV: 'test', FERPA_LOG_TOKEN_SECRET: KEY }),
-  });
+const RUNTIME_JSON = path.join(os.tmpdir(), 'log-email-token-runtime-' + process.pid + '.json');
+
+// The child runs as an operator's shell would: without vitest's node-config
+// guards, a developer's deploy overlay or NODE_CONFIG. NODE_CONFIG_RUNTIME_JSON
+// points node-config's persistence file at a temp path, never into the repo.
+function run(args, extraEnv) {
+  const env = Object.assign({}, process.env,
+    { NODE_ENV: 'test', FERPA_LOG_TOKEN_SECRET: KEY, NODE_CONFIG_RUNTIME_JSON: RUNTIME_JSON }, extraEnv || {});
+  delete env.NODE_CONFIG_PERSIST_ON_CHANGE;
+  delete env.NODE_CONFIG_DISABLE_FILE_WATCH;
+  delete env.TRINKET_DEPLOY;
+  delete env.NODE_CONFIG;
+  return spawnSync(process.execPath, [SCRIPT].concat(args), { cwd: ROOT, encoding: 'utf8', env: env });
 }
 
 // The documented algorithm, computed independently of the script.
@@ -37,5 +46,19 @@ describe('scripts/log-email-token.js', () => {
     const result = run([]);
     expect(result.status).toBe(2);
     expect(result.stderr).toContain('usage: node scripts/log-email-token.js');
+  });
+
+  it('does not write a node-config runtime.json (same guards as app.js)', () => {
+    fs.rmSync(RUNTIME_JSON, { force: true });
+    const result = run(['a@b.edu']);
+    expect(result.status).toBe(0);
+    expect(fs.existsSync(RUNTIME_JSON)).toBe(false);
+  });
+
+  it('refuses, with status 1 and nothing on stdout, when no key is configured', () => {
+    const result = run(['a@b.edu'], { FERPA_LOG_TOKEN_SECRET: '', SESSION_PASSWORD: '' });
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('could never match the logs');
   });
 });
