@@ -93,6 +93,14 @@ describe('logPrivacy.text', () => {
     expect(logPrivacy.text("quoted 'student@cnu.edu' here")).toBe("quoted '" + expectedToken('student@cnu.edu', KEY) + "' here");
   });
 
+  it('stops at key=, path and query separators, so the token matches the bare address', () => {
+    expect(logPrivacy.text('email=bob@cnu.edu')).toBe('email=' + expectedToken('bob@cnu.edu', KEY));
+    expect(logPrivacy.text('GET /users/bob@cnu.edu/profile')).toBe('GET /users/' + expectedToken('bob@cnu.edu', KEY) + '/profile');
+    expect(logPrivacy.text('?to=a@b.edu&cc=c@d.edu')).toBe('?to=' + expectedToken('a@b.edu', KEY) + '&cc=' + expectedToken('c@d.edu', KEY));
+    const nfd = 'josé@cnu.edu';  // e + combining acute, not the precomposed é
+    expect(logPrivacy.text('to ' + nfd)).toBe('to ' + expectedToken(nfd, KEY));
+  });
+
   it('scans long text in linear time', () => {
     const started = Date.now();
     logPrivacy.text('a'.repeat(200000));
