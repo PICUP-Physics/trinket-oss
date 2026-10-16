@@ -3,6 +3,13 @@ const config     = require('config');
 const mailer     = require('../../../lib/util/mailer');
 const nunjucks   = require('../../../lib/util/nunjucks');
 const logPrivacy = require('../../../lib/util/logPrivacy');
+const flow     = require('../../helpers/flow.cjs');
+const defaults = require('../../helpers/defaults');
+const Store    = require('../../../lib/util/store');
+const users    = require('../../../lib/controllers/users');
+
+// The login form route exists only with the local auth provider.
+const FB_MODE = process.env.TEST_AUTH_PROVIDER === 'firebase';
 
 // With the default ferpa.logEmails (token), every log line that used to print a
 // student's email address prints u-xxxxxxxx@domain instead; with `full` it prints
@@ -81,6 +88,56 @@ describe('Student email addresses in server logs (ferpa.logEmails)', () => {
       expect(lines.some((l) => l.startsWith('MAIL_SEND_FAILED type=course-invitation to=' + token + ' '))).toBe(true);
       expect(lines).toContain('Failed to send course invitation email: Message failed: 550 <' + token + '> rejected');
       expect(lines.join('\n')).not.toContain(ADDRESS);
+    });
+  });
+
+  describe.skipIf(FB_MODE)('login lines (users.login)', () => {
+    beforeEach(async () => {
+      flow.cookies    = {};
+      flow.activeUser = 'user';
+      await new User(Object.assign({}, defaults.user, { email: 'student@cnu.edu' })).save();
+    });
+
+    it('writes the same token on both LOGIN lines for an email login', async () => {
+      await flow.login({ email: 'Student@CNU.edu', password: defaults.user.password });
+      const token = logPrivacy.email('student@cnu.edu');
+      const lines = calls(logSpy);
+      expect(lines).toContain('LOGIN: Starting login for ' + token);
+      expect(lines).toContain('LOGIN: findByLogin callback null ' + token);
+      expect(lines.join('\n').toLowerCase()).not.toContain('student@cnu.edu');
+    });
+
+    it('prints a typed username unchanged, and the stored email as a token', async () => {
+      await flow.login({ email: defaults.user.username, password: defaults.user.password });
+      const lines = calls(logSpy);
+      expect(lines).toContain('LOGIN: Starting login for ' + defaults.user.username);
+      expect(lines).toContain('LOGIN: findByLogin callback null ' + logPrivacy.email('student@cnu.edu'));
+    });
+
+    it('prints addresses as written with ferpa.logEmails: full', async () => {
+      config.ferpa.logEmails = 'full';
+      await flow.login({ email: 'student@cnu.edu', password: defaults.user.password });
+      expect(calls(logSpy)).toContain('LOGIN: Starting login for student@cnu.edu');
+    });
+  });
+
+  describe('signup from a blocked domain (users.create)', () => {
+    it('writes a token in the log line and in the error that request.fail logs', async () => {
+      vi.spyOn(Store.email(), 'blockListLookup').mockResolvedValue(true);
+      const request = {
+        payload : { email: ADDRESS, password: 'secret-password', 'g-recaptcha-response': 'x' },
+        yar     : { get: () => undefined, flash: vi.fn() },
+        success : vi.fn(),
+        fail    : vi.fn(),
+      };
+
+      await users.create(request, vi.fn());
+
+      const token = logPrivacy.email(ADDRESS);
+      expect(calls(logSpy)).toContain('blocking signup from: ' + token);
+      expect(request.success).not.toHaveBeenCalled();
+      expect(request.fail).toHaveBeenCalledTimes(1);
+      expect(request.fail.mock.calls[0][1].message).toBe('blocking signup from: ' + token);
     });
   });
 });
