@@ -64,6 +64,9 @@ db:
 # where the app runs, from the repository root, so it uses the app's key:
 #   docker compose exec app node scripts/log-email-token.js student@cnu.edu
 #   node scripts/log-email-token.js student@cnu.edu      (installs without Docker)
+# On a host with no exec into the app (e.g. Cloud Run), run it from a checkout of the
+# same version with FERPA_LOG_TOKEN_SECRET set to the production value. Tokens are
+# short (8 hex characters), so confirm a match by time and user id.
 # Set logTokenSecret once (32+ random characters, e.g. from `openssl rand -hex 32`)
 # and do not change it: older log lines can only be looked up with the key they
 # were written with. With Docker, set it here in local.yaml: the stock
@@ -84,9 +87,11 @@ db:
 #                                       response dumps) go to this file, unbounded and
 #                                       unrotated; set it to '' to turn it off. console.*
 #                                       output (MAIL_SEND_FAILED, LOGIN lines) is not in it
-#   app.log.debug.routehandlertiming    on by default: every request taking over 10 ms (most
-#                                       of them) logs the session id, user id and path, to
-#                                       the console and the debug file
+#   app.log.debug.routehandlertiming    on by default: every request taking over 10 ms logs
+#                                       the session id, path and (when signed in) user id,
+#                                       to the console and the debug file; requests still
+#                                       running after 1 s are logged the same way even when
+#                                       it is off
 #   app.mail.*                          your SMTP provider receives recipient addresses
 #                                       and message bodies (a sub-processor)
 #   app.adminEmail                      if set, session alerts (usernames, page URLs) are
@@ -98,7 +103,9 @@ db:
 #   storage.backend, aws.buckets.*      student uploads and work exports; the app never
 #                                       deletes export archives, so set a bucket lifecycle rule
 #   app.embed.logClientCodeError        stores a student's code when it errors (400-day TTL
-#                                       on MongoDB; on Firestore see firestore.indexes.json)
+#                                       on MongoDB; the Firestore TTL declared in
+#                                       firestore.indexes.json is on the creation time, see
+#                                       the assessment, section 2.7)
 #   app.embed.logClientMetric           stores user id, IP address and browser (no expiry)
 #   app.assets.*, app.csp.*, features.pyodideVersion
 #                                       third-party CDNs see visitor IP and referrer;
