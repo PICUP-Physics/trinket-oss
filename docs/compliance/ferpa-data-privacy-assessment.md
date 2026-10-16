@@ -108,23 +108,31 @@ infrastructure-level access (GCP IAM) separately.
 ### 2.7 Server logs and operational records
 
 - **Student email addresses in logs** are written as pseudonymous tokens by default
-  (`ferpa.logEmails: token`): `student@school.edu` appears as `u-3f9a2c1d@school.edu`, the same
+  (`ferpa.logEmails: token`) on the server log lines known to print them (mail failures, the
+  login and signup lines): `student@school.edu` appears as `u-3f9a2c1d@school.edu`, the same
   token every time for the same address, so an operator can find one student's log lines
-  (`scripts/log-email-token.js`) without the address being stored in the logs. A token is an
-  HMAC keyed by `ferpa.logTokenSecret`; anyone holding that key can test a candidate address, so
-  the key is handled like a password. `ferpa.logEmails: full` turns tokenizing off.
-- **Still in logs:** usernames (for example when a user logs in with a username) and client IP
+  (`scripts/log-email-token.js`) without the address being stored in the logs. Other free-text
+  error output is not scrubbed. A token is an HMAC keyed by `ferpa.logTokenSecret` (or, if that
+  is not set, by the session cookie password); anyone holding the key can test a candidate
+  address, so the key is handled like a password. `ferpa.logEmails: full` turns tokenizing off.
+- **Still in logs:** usernames (for example when a user logs in with a username), user ids and
+  session ids (request timing, `app.log.debug.routehandlertiming`, on by default) and client IP
   addresses on some lines; interaction records also store IP addresses.
 - **Log retention** depends on the deployment: container logs are kept until rotated (Docker keeps
   them indefinitely unless a `max-size` is set), and the debug log file
-  (`app.log.debug.filename`, default `/tmp/debug.txt`) is unbounded.
-  «CONFIRM: production log retention and rotation».
-- **Hard-coded retention:** sessions expire after 24 hours without activity; export download links
-  expire after 3 days, but the archives themselves are not deleted by the app (a bucket lifecycle
-  rule is needed); client metrics (user id, IP address, browser) have no expiry; client
-  code-error records (the student's code at the time of an error) are kept 400 days.
-- **LTI identity:** the tool requests the `name` and `email` claims, and its LTI 1.1
-  configuration sets `privacy_level` to `public`. Neither is configurable.
+  (`app.log.debug.filename`, default `/tmp/debug.txt`), which receives the app logger's output,
+  is unbounded. «CONFIRM: production log retention and rotation».
+- **Sessions:** most sessions live in the browser cookie and have no server-side expiry (the
+  login cookie is set to expire after one year); only sessions too large for the cookie are kept
+  server-side, and those expire after 24 hours without activity.
+- **Other hard-coded retention:** export downloads are refused after 3 days, but the archives
+  themselves are not deleted by the app (a bucket lifecycle rule is needed); client metrics
+  (user id, IP address, browser) have no expiry; client code-error records (the student's code
+  at the time of an error) are kept 400 days on MongoDB (TTL index), and on Firestore follow the
+  TTL policy on `errorevents.created` in `firestore.indexes.json` once it is deployed.
+  «CONFIRM: Firestore TTL policies deployed in production».
+- **LTI identity:** the tool requests the `name`, `given_name`, `family_name` and `email` claims,
+  and its LTI 1.1 configuration sets `privacy_level` to `public`. Neither is configurable.
 - The settings that affect student data are listed in the FERPA section of
   `config/local.example.yaml`.
 
@@ -185,6 +193,7 @@ Ordered by what unblocks an institutional review soonest:
 - [ ] **Set log retention and rotation** for container logs and the debug log file (§2.7).
 - [ ] **Expire client metrics and delete expired export archives** (§2.7).
 - [ ] **Decide on usernames and IP addresses in logs** (§2.7).
+- [ ] **Enforce a session lifetime**: cookie-stored sessions currently have no server-side expiry (§2.7).
 
 ---
 

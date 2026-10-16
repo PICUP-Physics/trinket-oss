@@ -79,9 +79,14 @@ db:
 
 # Other settings that affect student data (pointers only; set them in their own
 # sections). Checked against the code on 2026-10-15:
-#   app.log.debug.filename              every log line also goes to this file, unbounded
-#                                       and unrotated; set it to '' to turn it off
-#   app.log.debug.routehandlertiming    slow requests log the session id, user id and URL
+#   app.log.debug.filename              lines written through the app's logger (including
+#                                       debug-level ones the console omits, and request and
+#                                       response dumps) go to this file, unbounded and
+#                                       unrotated; set it to '' to turn it off. console.*
+#                                       output (MAIL_SEND_FAILED, LOGIN lines) is not in it
+#   app.log.debug.routehandlertiming    on by default: every request taking over 10 ms (most
+#                                       of them) logs the session id, user id and path, to
+#                                       the console and the debug file
 #   app.mail.*                          your SMTP provider receives recipient addresses
 #                                       and message bodies (a sub-processor)
 #   app.adminEmail                      if set, session alerts (usernames, page URLs) are
@@ -92,7 +97,8 @@ db:
 #   db.backend, db.firestore.projectId  where student records live
 #   storage.backend, aws.buckets.*      student uploads and work exports; the app never
 #                                       deletes export archives, so set a bucket lifecycle rule
-#   app.embed.logClientCodeError        stores a student's code when it errors (kept 400 days)
+#   app.embed.logClientCodeError        stores a student's code when it errors (400-day TTL
+#                                       on MongoDB; on Firestore see firestore.indexes.json)
 #   app.embed.logClientMetric           stores user id, IP address and browser (no expiry)
 #   app.assets.*, app.csp.*, features.pyodideVersion
 #                                       third-party CDNs see visitor IP and referrer;
