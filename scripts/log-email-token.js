@@ -4,7 +4,7 @@
 // or FERPA_LOG_TOKEN_SECRET; otherwise the session-password fallback, with the
 // same warning the app writes). Run it from the repository root:
 //   node scripts/log-email-token.js student@school.edu
-//   docker compose exec trinket node scripts/log-email-token.js student@school.edu
+//   docker compose exec app node scripts/log-email-token.js student@school.edu
 // Run it in the app's environment and from the repository root, or the key (and
 // so the token) will differ from the logs.
 
@@ -27,7 +27,7 @@ if (!addresses.length) {
 if (logPrivacy.keySource() === 'random') {
   console.error('log-email-token: no ferpa.logTokenSecret or session cookie password is configured here, ' +
     'so a token printed now could never match the logs. Run this where the app runs, from the ' +
-    'repository root (e.g. docker compose exec trinket node scripts/log-email-token.js <address>).');
+    'repository root (e.g. docker compose exec app node scripts/log-email-token.js <address>).');
   process.exit(1);
 }
 

@@ -62,7 +62,7 @@ db:
 # appears as u-3f9a2c1d@cnu.edu, the same token every time for the same address.
 # To find one student's log lines, print their token and grep for it. Run this
 # where the app runs, from the repository root, so it uses the app's key:
-#   docker compose exec trinket node scripts/log-email-token.js student@cnu.edu
+#   docker compose exec app node scripts/log-email-token.js student@cnu.edu
 #   node scripts/log-email-token.js student@cnu.edu      (installs without Docker)
 # Set logTokenSecret once (32+ random characters, e.g. from `openssl rand -hex 32`)
 # and do not change it: older log lines can only be looked up with the key they
