@@ -15,12 +15,12 @@ const RUNTIME_JSON = path.join(os.tmpdir(), 'log-email-token-runtime-' + process
 // guards, a developer's deploy overlay or NODE_CONFIG. NODE_CONFIG_RUNTIME_JSON
 // points node-config's persistence file at a temp path, never into the repo.
 function run(args, extraEnv) {
-  const env = Object.assign({}, process.env,
-    { NODE_ENV: 'test', FERPA_LOG_TOKEN_SECRET: KEY, NODE_CONFIG_RUNTIME_JSON: RUNTIME_JSON }, extraEnv || {});
+  const env = Object.assign({}, process.env);
   delete env.NODE_CONFIG_PERSIST_ON_CHANGE;
   delete env.NODE_CONFIG_DISABLE_FILE_WATCH;
   delete env.TRINKET_DEPLOY;
   delete env.NODE_CONFIG;
+  Object.assign(env, { NODE_ENV: 'test', FERPA_LOG_TOKEN_SECRET: KEY, NODE_CONFIG_RUNTIME_JSON: RUNTIME_JSON }, extraEnv || {});
   return spawnSync(process.execPath, [SCRIPT].concat(args), { cwd: ROOT, encoding: 'utf8', env: env });
 }
 
@@ -56,7 +56,12 @@ describe('scripts/log-email-token.js', () => {
   });
 
   it('refuses, with status 1 and nothing on stdout, when no key is configured', () => {
-    const result = run(['a@b.edu'], { FERPA_LOG_TOKEN_SECRET: '', SESSION_PASSWORD: '' });
+    const result = run(['a@b.edu'], {
+      FERPA_LOG_TOKEN_SECRET : '',
+      SESSION_PASSWORD       : '',
+      // A developer's config/local.yaml may set a session password; make the "no key" case real.
+      NODE_CONFIG            : JSON.stringify({ app: { plugins: { session: { cookieOptions: { password: '' } } } }, ferpa: { logTokenSecret: '' } }),
+    });
     expect(result.status).toBe(1);
     expect(result.stdout).toBe('');
     expect(result.stderr).toContain('could never match the logs');
