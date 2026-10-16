@@ -40,7 +40,8 @@ db:
 # Without email, users can still register and log in, but password reset won't work.
 # A failed send of a password reset, email verification, email change confirmation, share by email,
 # course invitation or admin session alert is logged as one "MAIL_SEND_FAILED type=... to=... message=..."
-# line in the app log (it includes the recipient address and the mail server's reply); grep for it if
+# line in the app log (addresses in it, including any in the mail server's reply, appear as tokens
+# unless ferpa.logEmails is full; see the FERPA section below); grep for it if
 # mail is not arriving. Most of these flows answer the user before
 # sending, so a failure is invisible to them (share by email is the exception: its request never completes).
 # Export-ready and export-failed notifications are NOT covered: a failure there surfaces through the export
@@ -53,6 +54,52 @@ db:
 #     port: 587
 #     user: 'your-smtp-username'
 #     pass: 'your-smtp-password'
+
+# =============================================================================
+# OPTIONAL: FERPA / student privacy
+# =============================================================================
+# Server logs show student email addresses as tokens by default: student@cnu.edu
+# appears as u-3f9a2c1d@cnu.edu, the same token every time for the same address.
+# To find one student's log lines, print their token and grep for it. Run this
+# where the app runs, from the repository root, so it uses the app's key:
+#   docker compose exec trinket node scripts/log-email-token.js student@cnu.edu
+#   node scripts/log-email-token.js student@cnu.edu      (installs without Docker)
+# Set logTokenSecret once (32+ random characters, e.g. from `openssl rand -hex 32`)
+# and do not change it: older log lines can only be looked up with the key they
+# were written with. With Docker, set it here in local.yaml: the stock
+# docker-compose.yml does not pass FERPA_LOG_TOKEN_SECRET into the container;
+# deployments that inject secrets as environment variables (e.g. Cloud Run) can
+# use FERPA_LOG_TOKEN_SECRET instead. Without a key, tokens follow the session
+# cookie password above and change whenever that is rotated. If you kept the
+# example session password above, change it: anyone can read it in this file.
+
+# ferpa:
+#   logEmails: token          # or: full (log addresses as written)
+#   logTokenSecret: ''        # 32+ random characters
+
+# Other settings that affect student data (pointers only; set them in their own
+# sections). Checked against the code on 2026-10-15:
+#   app.log.debug.filename              every log line also goes to this file, unbounded
+#                                       and unrotated; set it to '' to turn it off
+#   app.log.debug.routehandlertiming    slow requests log the session id, user id and URL
+#   app.mail.*                          your SMTP provider receives recipient addresses
+#                                       and message bodies (a sub-processor)
+#   app.adminEmail                      if set, session alerts (usernames, page URLs) are
+#                                       emailed to it; leave it empty unless you need them
+#   app.recaptcha.*                     with a site key, Google sees visitor IP and browser
+#                                       details on every page
+#   auth.provider, auth.firebase.*      'firebase' makes Google the identity provider
+#   db.backend, db.firestore.projectId  where student records live
+#   storage.backend, aws.buckets.*      student uploads and work exports; the app never
+#                                       deletes export archives, so set a bucket lifecycle rule
+#   app.embed.logClientCodeError        stores a student's code when it errors (kept 400 days)
+#   app.embed.logClientMetric           stores user id, IP address and browser (no expiry)
+#   app.assets.*, app.csp.*, features.pyodideVersion
+#                                       third-party CDNs see visitor IP and referrer;
+#                                       self-host the files to avoid that
+# Not configurable today (session lifetime, export link expiry, LTI identity claims,
+# usernames and IP addresses in some log lines): see
+# docs/compliance/ferpa-data-privacy-assessment.md, section 2.7.
 
 # =============================================================================
 # OPTIONAL: File Storage (for asset uploads in trinkets)

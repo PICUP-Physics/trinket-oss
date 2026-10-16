@@ -105,6 +105,29 @@ with DB access)? What authentication + audit covers that access? The unified sit
 (`hasRole("admin")`, see `docs/lti/authority-model.md`) gates the in-app `/admin` area; document the
 infrastructure-level access (GCP IAM) separately.
 
+### 2.7 Server logs and operational records
+
+- **Student email addresses in logs** are written as pseudonymous tokens by default
+  (`ferpa.logEmails: token`): `student@school.edu` appears as `u-3f9a2c1d@school.edu`, the same
+  token every time for the same address, so an operator can find one student's log lines
+  (`scripts/log-email-token.js`) without the address being stored in the logs. A token is an
+  HMAC keyed by `ferpa.logTokenSecret`; anyone holding that key can test a candidate address, so
+  the key is handled like a password. `ferpa.logEmails: full` turns tokenizing off.
+- **Still in logs:** usernames (for example when a user logs in with a username) and client IP
+  addresses on some lines; interaction records also store IP addresses.
+- **Log retention** depends on the deployment: container logs are kept until rotated (Docker keeps
+  them indefinitely unless a `max-size` is set), and the debug log file
+  (`app.log.debug.filename`, default `/tmp/debug.txt`) is unbounded.
+  «CONFIRM: production log retention and rotation».
+- **Hard-coded retention:** sessions expire after 24 hours without activity; export download links
+  expire after 3 days, but the archives themselves are not deleted by the app (a bucket lifecycle
+  rule is needed); client metrics (user id, IP address, browser) have no expiry; client
+  code-error records (the student's code at the time of an error) are kept 400 days.
+- **LTI identity:** the tool requests the `name` and `email` claims, and its LTI 1.1
+  configuration sets `privacy_level` to `public`. Neither is configurable.
+- The settings that affect student data are listed in the FERPA section of
+  `config/local.example.yaml`.
+
 ---
 
 ## 3. Data-minimization statement
@@ -158,6 +181,10 @@ Ordered by what unblocks an institutional review soonest:
 - [ ] Confirm GCP region + encryption-key posture (§2.4) for the security questionnaire.
 - [ ] (Optional, later) evaluate **1EdTech Data Privacy / TrustEd Apps** certification once several
       institutions are onboard.
+- [x] **Tokenize student email addresses in server logs by default** (`ferpa.logEmails`, §2.7).
+- [ ] **Set log retention and rotation** for container logs and the debug log file (§2.7).
+- [ ] **Expire client metrics and delete expired export archives** (§2.7).
+- [ ] **Decide on usernames and IP addresses in logs** (§2.7).
 
 ---
 
