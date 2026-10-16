@@ -86,6 +86,19 @@ describe('logPrivacy.text', () => {
     config.ferpa.logEmails = 'full';
     expect(logPrivacy.text('to <a@b.edu>')).toBe('to <a@b.edu>');
   });
+
+  it('tokenizes addresses with apostrophes or non-ASCII letters whole, and leaves surrounding quotes', () => {
+    expect(logPrivacy.text("550 <o'brien@cnu.edu> rejected")).toBe('550 <' + expectedToken("o'brien@cnu.edu", KEY) + '> rejected');
+    expect(logPrivacy.text('to josé@cnu.edu')).toBe('to ' + expectedToken('josé@cnu.edu', KEY));
+    expect(logPrivacy.text("quoted 'student@cnu.edu' here")).toBe("quoted '" + expectedToken('student@cnu.edu', KEY) + "' here");
+  });
+
+  it('scans long text in linear time', () => {
+    const started = Date.now();
+    logPrivacy.text('a'.repeat(200000));
+    logPrivacy.text('x@' + 'b.'.repeat(30000));
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
 });
 
 describe('token key', () => {
