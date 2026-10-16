@@ -119,6 +119,30 @@ describe('Student email addresses in server logs (ferpa.logEmails)', () => {
       await flow.login({ email: 'student@cnu.edu', password: defaults.user.password });
       expect(calls(logSpy)).toContain('LOGIN: Starting login for student@cnu.edu');
     });
+
+    // request.fail logs the failure message through the global winston logger
+    // ("Unknown user <what was typed>"), a path separate from console.log.
+    describe('failed login with an unknown address (request.fail)', () => {
+      // Lower case: the login payload's email is lower-cased before the handler logs it.
+      const UNKNOWN = 'nobody@cnu.edu';
+      let infoSpy;
+      beforeEach(() => { infoSpy = vi.spyOn(log, 'info'); });
+
+      it('logs the token, not the address', async () => {
+        await flow.login({ email: UNKNOWN, password: 'wrong-password' });
+        const token = logPrivacy.email(UNKNOWN);
+        expect(token).toMatch(TOKEN_RE);
+        const lines = calls(infoSpy);
+        expect(lines.some((l) => l.includes('Unknown user ' + token))).toBe(true);
+        expect(lines.join('\n').toLowerCase()).not.toContain(UNKNOWN);
+      });
+
+      it('logs the address as written with ferpa.logEmails: full', async () => {
+        config.ferpa.logEmails = 'full';
+        await flow.login({ email: UNKNOWN, password: 'wrong-password' });
+        expect(calls(infoSpy).some((l) => l.includes('Unknown user ' + UNKNOWN))).toBe(true);
+      });
+    });
   });
 
   describe('signup from a blocked domain (users.create)', () => {

@@ -69,6 +69,38 @@ describe('logPrivacy.email', () => {
     expect(logPrivacy.email(42)).toBe(42);
   });
 
+  it('maps each element of an array through email', () => {
+    expect(logPrivacy.email(['a@x.edu', 'B@Y.edu'])).toEqual([
+      expectedToken('a@x.edu', KEY),
+      expectedToken('B@Y.edu', KEY),
+    ]);
+  });
+
+  it('tokenizes the address of an { name, address } object and drops the display name', () => {
+    const out = logPrivacy.email({ name: 'Jane', address: 'a@x.edu' });
+    expect(out).toBe(expectedToken('a@x.edu', KEY));
+    expect(JSON.stringify(out)).not.toContain('Jane');
+    // nodemailer also accepts a list of them
+    expect(logPrivacy.email([{ name: 'Jane', address: 'a@x.edu' }, 'B@Y.edu'])).toEqual([
+      expectedToken('a@x.edu', KEY),
+      expectedToken('B@Y.edu', KEY),
+    ]);
+  });
+
+  it('returns arrays and address objects unchanged with ferpa.logEmails: full', () => {
+    config.ferpa.logEmails = 'full';
+    const list   = ['a@x.edu', 'B@Y.edu'];
+    const person = { name: 'Jane', address: 'a@x.edu' };
+    expect(logPrivacy.email(list)).toBe(list);
+    expect(logPrivacy.email(person)).toBe(person);
+  });
+
+  it('passes other objects through unchanged', () => {
+    const other = { name: 'Jane', mail: 'a@x.edu' };
+    expect(logPrivacy.email(other)).toBe(other);
+    expect(logPrivacy.email({ address: 42 })).toEqual({ address: 42 });
+  });
+
   it('still tokenizes, without throwing, when the ferpa section is missing', () => {
     config.ferpa = undefined;
     expect(logPrivacy.email('a@b.edu')).toBe(expectedToken('a@b.edu', SESSION));

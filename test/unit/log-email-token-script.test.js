@@ -48,6 +48,25 @@ describe('scripts/log-email-token.js', () => {
     expect(result.stderr).toContain('usage: node scripts/log-email-token.js');
   });
 
+  it.each([
+    ['a mailto: link',                'mailto:x@school.edu'],
+    ['a display name with brackets',  'Jane <x@school.edu>'],
+    ['a username with no @',          'jsmith'],
+    ['more than one @',               'a@b@school.edu'],
+  ])('rejects %s with status 2, an error on stderr and nothing on stdout', (_label, bad) => {
+    const result = run([bad]);
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('"' + bad + '" is not a bare email address');
+  });
+
+  it('prints nothing on stdout when only the last of several addresses is invalid', () => {
+    const result = run(['ok@school.edu', 'Jane <x@school.edu>']);
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('is not a bare email address');
+  });
+
   it('does not write a node-config runtime.json (same guards as app.js)', () => {
     fs.rmSync(RUNTIME_JSON, { force: true });
     const result = run(['a@b.edu']);
