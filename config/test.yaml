@@ -22,3 +22,8 @@ aws:
     exports:
       name: 'test-exports'
       host: 'https://example.invalid/test-exports'
+
+# Silences the "ferpa.logTokenSecret is not set" fallback warning in test output.
+# Not a real secret.
+ferpa:
+  logTokenSecret: 'test-only-ferpa-log-token-secret-not-for-production'

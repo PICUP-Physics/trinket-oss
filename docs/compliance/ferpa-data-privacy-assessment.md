@@ -105,6 +105,45 @@ with DB access)? What authentication + audit covers that access? The unified sit
 (`hasRole("admin")`, see `docs/lti/authority-model.md`) gates the in-app `/admin` area; document the
 infrastructure-level access (GCP IAM) separately.
 
+### 2.7 Server logs and operational records
+
+- **Student email addresses in logs** are written as pseudonymous tokens by default
+  (`ferpa.logEmails: token`) on the server log lines known to print them: mail send failures
+  (including export notification failures), the login lines, the blocked-signup line, and the
+  request-failure lines the request handler writes (for example "Unknown user ..." after a
+  failed login). `student@school.edu` appears as `u-3f9a2c1d@school.edu`, the same token every
+  time for the same address, so an operator can find one student's log lines
+  (`scripts/log-email-token.js`) without the address being stored in the logs. Other free-text
+  error output is not scrubbed. Tokens are 8 hex characters, so two addresses at one domain can
+  occasionally share one; confirm a match by time and user id. A token is an HMAC keyed by
+  `ferpa.logTokenSecret` (or, if that is not set, by the session cookie password); anyone
+  holding the key can test a candidate address, so the key is handled like a password.
+  `ferpa.logEmails: full` turns tokenizing off.
+- **Still in logs:** usernames (for example when a user logs in with a username), client IP
+  addresses on some lines, and session ids and, for signed-in users, user ids: these are logged
+  for every request over 10 ms while `app.log.debug.routehandlertiming` is on (the default), and
+  for every request still running after 1 s even when it is off. Interaction records also store
+  IP addresses.
+- **Log retention** depends on the deployment: container logs are kept until rotated (Docker keeps
+  them indefinitely unless a `max-size` is set), and the debug log file
+  (`app.log.debug.filename`, default `/tmp/debug.txt`), which receives the app logger's output,
+  is unbounded. «CONFIRM: production log retention and rotation».
+- **Sessions:** most sessions live in the browser cookie and have no server-side expiry (the
+  login, signup and logout responses set the cookie to expire after one year); only sessions too
+  large for the cookie are kept server-side, and those expire after 24 hours without activity.
+- **Other hard-coded retention:** export downloads are refused after 3 days, but the archives
+  themselves are not deleted by the app (a bucket lifecycle rule is needed); client metrics
+  (user id, IP address, browser) have no expiry; client code-error records (the student's code
+  at the time of an error) are kept 400 days on MongoDB (TTL index). On Firestore,
+  `firestore.indexes.json` declares the TTL policy on `errorevents.created` itself (the creation
+  time), so if it is deployed Firestore deletes each record soon after it is written (typically
+  within a day), not after 400 days. «CONFIRM: whether Firestore TTL policies are deployed in
+  production, and the intended retention for these records».
+- **LTI identity:** the tool requests the `name`, `given_name`, `family_name` and `email` claims,
+  and its LTI 1.1 configuration sets `privacy_level` to `public`. Neither is configurable.
+- The settings that affect student data are listed in the FERPA section of
+  `config/local.example.yaml`.
+
 ---
 
 ## 3. Data-minimization statement
@@ -158,6 +197,12 @@ Ordered by what unblocks an institutional review soonest:
 - [ ] Confirm GCP region + encryption-key posture (§2.4) for the security questionnaire.
 - [ ] (Optional, later) evaluate **1EdTech Data Privacy / TrustEd Apps** certification once several
       institutions are onboard.
+- [x] **Tokenize student email addresses in server logs by default** (`ferpa.logEmails`, §2.7).
+- [ ] **Set log retention and rotation** for container logs and the debug log file (§2.7).
+- [ ] **Expire client metrics and delete expired export archives** (§2.7).
+- [ ] **Decide on usernames and IP addresses in logs** (§2.7).
+- [ ] **Enforce a session lifetime**: cookie-stored sessions currently have no server-side expiry (§2.7).
+- [ ] **Decide code-error retention on Firestore**: the declared TTL policy is on the creation time (§2.7).
 
 ---
 
