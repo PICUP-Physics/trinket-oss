@@ -5,7 +5,7 @@
       <a class="current">My Trinkets</a>
     </nav>
     <section id="listview-options">
-      <trinket-search on-select="gotoSelectedTrinket" placeholder-text="search by name or instructions" search-input-open="searchInputOpen"></trinket-search>
+      <trinket-search on-select="gotoSelectedTrinket" see-all="onSeeAll" placeholder-text="search by name or instructions" search-input-open="searchInputOpen"></trinket-search>
       <section id="listview-menus" ng-show="!searchInputOpen" class="fade-in-out">
         <label>Sort:</label>
         <button class="button small" data-dropdown="library-sort-options">
@@ -41,6 +41,14 @@
   <section class="right" id="import-trinkets-section" ng-if="canImport">
     <a class="small button secondary" href="/account/import" title="Import trinkets or a course from a zip file"><span class="show-for-xlarge-up"><i class="fa fa-upload"></i>&nbsp;import</span><i class="hide-for-xlarge-up fa fa-upload"></i></a>
   </section>
+</div>
+<div class="row" ng-if="filters.q">
+  <div class="small-12 columns">
+    <span class="label radius secondary library-search-chip">
+      Search: "{{ filters.q }}" (name or instructions)
+      <a href="" ng-click="clearSearch()" title="Clear search" aria-label="Clear search">&times;</a>
+    </span>
+  </div>
 </div>
 <div class="row bulk-toolbar" ng-show="items.length || folders.length || isFiltering()">
   <button class="button small secondary bulk-filter-toggle" ng-click="showFilters = !showFilters">

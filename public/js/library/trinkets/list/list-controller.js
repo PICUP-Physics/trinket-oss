@@ -3,7 +3,10 @@ TrinketIO.export('library.trinkets.list.controller', [
 function($scope, $state, $stateParams, $window, $timeout, $filter, $http, trinketConfig, trinketUtil, trinketsApi, libraryState, foldersApi) {
   var allLoaded = false,
       loading   = false,
+      listGen   = 0,        // bumped by each fresh load; older responses are dropped
       cache     = TrinketIO.import('utils.cache'),
+      searchState = window.librarySearchState,
+      searchSaved = null,   // sort/scope to restore when a See-all search is cleared (#344)
       last, lastCount;
 
   if (libraryState.userParam && !$stateParams.user) {
@@ -20,6 +23,9 @@ function($scope, $state, $stateParams, $window, $timeout, $filter, $http, trinke
   $scope.items    = libraryState.trinkets;
   $scope.folders  = libraryState.folders;
   $scope.sortBy   = cache.get("library-sort-by") || libraryState.listParams.sort;
+  if ($scope.sortBy === 'relevance') {
+    $scope.sortBy = searchState.persistableSort('relevance', null);
+  }
   last            = libraryState.listParams.from;
   lastCount       = libraryState.listParams.offset;
 
@@ -32,6 +38,15 @@ function($scope, $state, $stateParams, $window, $timeout, $filter, $http, trinke
   var selectionModel = TrinketIO.import('library.selection');
   $scope.selection = selectionModel.create();
   $scope.filters   = { name : '', updatedWithin : 'all', updatedAfter : '', updatedBefore : '', scope : 'root' };
+  // Back from a trinket: restore the filters (and any See-all search) the kept
+  // items were loaded with, so the list and its paging stay consistent (#344).
+  var carriedSearch = null;
+  if (libraryState.listFilters && !$stateParams.user) {
+    carriedSearch  = libraryState.listFilters;
+    $scope.filters = carriedSearch.filters;
+    searchSaved    = carriedSearch.saved;
+  }
+  libraryState.listFilters = undefined;
   $scope.showFilters = false;   // progressive disclosure — hidden until opened
 
   // Surface the modification date (instead of last-viewed) when the user is
@@ -57,6 +72,9 @@ function($scope, $state, $stateParams, $window, $timeout, $filter, $http, trinke
       if ($scope.filters.name) {
         params.name = $scope.filters.name;
       }
+      if ($scope.filters.q) {
+        params.q = $scope.filters.q;
+      }
       if ($scope.filters.updatedWithin && $scope.filters.updatedWithin !== 'all') {
         params.updatedWithin = $scope.filters.updatedWithin;
       }
@@ -74,6 +92,8 @@ function($scope, $state, $stateParams, $window, $timeout, $filter, $http, trinke
     libraryState.resetList();
     $scope.items = undefined;
     allLoaded    = false;
+    loading      = false;
+    listGen++;
     last         = undefined;
     lastCount    = 0;
     $scope.moreTrinkets();
@@ -85,12 +105,39 @@ function($scope, $state, $stateParams, $window, $timeout, $filter, $http, trinke
   // "no trinkets".
   $scope.isFiltering = function() {
     var f = $scope.filters || {};
-    return !!(f.name || (f.updatedWithin && f.updatedWithin !== 'all') ||
+    return !!(f.q || f.name || (f.updatedWithin && f.updatedWithin !== 'all') ||
               f.updatedAfter || f.updatedBefore || (f.scope && f.scope !== 'root'));
   };
 
   $scope.clearFilters = function() {
+    if ($scope.filters && $scope.filters.q) {
+      leaveSearch();
+    }
     $scope.filters = { name : '', updatedWithin : 'all', updatedAfter : '', updatedBefore : '', scope : 'root' };
+    $scope.reloadWithFilters();
+  };
+
+  // "See all" from the search box (#344): the paged list, filtered by the same
+  // match, in relevance order, across all folders.
+  var RELEVANCE_OPTION = { label : 'Best match', class : 'fa fa-search fa-fw' };
+
+  function leaveSearch() {
+    var st = searchState.leave({ filters : $scope.filters, sortBy : $scope.sortBy, saved : searchSaved });
+    searchSaved = null;
+    delete $scope.sortOptions.relevance;
+    $scope.sortBy = st.sortBy;
+  }
+
+  $scope.onSeeAll = function(term) {
+    var st = searchState.enter({ filters : $scope.filters, sortBy : $scope.sortBy, saved : searchSaved }, term);
+    searchSaved = st.saved;
+    $scope.sortOptions.relevance = RELEVANCE_OPTION;
+    $scope.sortBy = st.sortBy;
+    $scope.reloadWithFilters();
+  };
+
+  $scope.clearSearch = function() {
+    leaveSearch();
     $scope.reloadWithFilters();
   };
 
@@ -167,6 +214,8 @@ function($scope, $state, $stateParams, $window, $timeout, $filter, $http, trinke
     $scope.sortBy = sortBy;
     $scope.items  = undefined;
     allLoaded     = false;
+    loading       = false;
+    listGen++;
     last          = undefined;
     lastCount     = 0;
 
@@ -204,6 +253,12 @@ function($scope, $state, $stateParams, $window, $timeout, $filter, $http, trinke
         , class : 'fa fa-sort-alpha-asc fa-fw'
       }
   };
+  // Restored See-all search (Back from a trinket): resume it in the sort its
+  // kept items were loaded with (relevance unless the user picked another).
+  if ($scope.filters.q) {
+    $scope.sortOptions.relevance = RELEVANCE_OPTION;
+    $scope.sortBy = searchState.resumeSort(carriedSearch);
+  }
   $scope.viewOptions = {
       'large' : {
           label : 'Grid'
@@ -297,8 +352,9 @@ function($scope, $state, $stateParams, $window, $timeout, $filter, $http, trinke
   });
 
   $scope.$on("$destroy", function() {
+    libraryState.listFilters = searchState.carry($scope.filters, searchSaved, $scope.sortBy);
     libraryState.listParams = {
-      sort   : $scope.sortBy,
+      sort   : searchState.persistableSort($scope.sortBy, searchSaved),
       from   : last,
       offset : lastCount
     }
@@ -328,7 +384,7 @@ function($scope, $state, $stateParams, $window, $timeout, $filter, $http, trinke
   });
 
   $scope.$watch('sortBy', function(newValue, oldValue) {
-    cache.set("library-sort-by", newValue);
+    cache.set("library-sort-by", searchState.persistableSort(newValue, searchSaved));
   });
 
   $scope.moreTrinkets = function() {
@@ -342,6 +398,9 @@ function($scope, $state, $stateParams, $window, $timeout, $filter, $http, trinke
     }
 
     loading = true;
+    // A sort or filter change while this request is in flight starts a fresh
+    // load; this one's response then belongs to the old list and is ignored.
+    var gen = listGen;
 
     if (last != null && last != undefined) {
       trinketParams.from = last.toString().length ? last : '~~~';
@@ -372,6 +431,9 @@ function($scope, $state, $stateParams, $window, $timeout, $filter, $http, trinke
     // to retrieve metrics
     trinketsApi.getList(trinketParams)
       .then(function(trinkets) {
+        if (gen !== listGen) {
+          return;
+        }
         if (!$scope.items) {
           $scope.items = [];
         }
@@ -401,7 +463,9 @@ function($scope, $state, $stateParams, $window, $timeout, $filter, $http, trinke
         }, 0, false);
       })
       .catch(function() {
-        loading = false;
+        if (gen === listGen) {
+          loading = false;
+        }
       });
   };
 
