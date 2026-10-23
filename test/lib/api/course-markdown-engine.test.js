@@ -160,6 +160,10 @@ describe('Course export markdown engine selection', () => {
       expect(manifestEntry).toBeTruthy();
       const manifest = JSON.parse(archive.readAsText(manifestEntry));
       expect(manifest.globalSettings.markdownEngine).toBe('modern');
+
+      // The handler builds the archive under /tmp/<owner> and removes that
+      // directory before replying, so nothing is left behind on the server.
+      expect(fs.existsSync('/tmp/' + defaults.user.username), 'build dir removed').toBe(false);
     });
 
     it('legacy-engine course: downloaded HTML has the raw script ESCAPED', async () => {
