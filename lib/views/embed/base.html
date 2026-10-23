@@ -263,7 +263,7 @@
 
       {% include "embed/left-menu.html" %}
 
-      {% if not outputOnly and not library %}
+      {% if not outputOnly and not library and runMode != "calculator" %}
       <aside class="right-off-canvas-menu" data-interface="user-menu" aria-hidden="true">
         <ul id="userMenu" class="off-canvas-list"></ul>
       </aside>
@@ -413,6 +413,11 @@
     </li>
   </script>
 
+  {% endraw %}
+  {# Calculator mode keeps the student inside the trinket (#291): no Log In
+     form and no links into the library. Without these templates the account
+     menu renders empty. #}
+  {% if runMode != "calculator" %}{% raw %}
   <script id="guestMenuTemplate" type="text/html">
     <li>
       <form id="accountForm">
@@ -438,6 +443,7 @@
     </li>
     {% endraw %}{% include "includes/external_links.html" %}{% raw %}
   </script>
+  {% endraw %}{% endif %}{% raw %}
 
   <script id="draftTextTemplate" type="text/html">
     <a class="menu-button" data-action="code.reset" title="Reset"><i class="fa fa-refresh"></i></a> {{draftText}}
