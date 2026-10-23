@@ -105,6 +105,19 @@ lti:
   # 'M&I Trinket'). Defaults to 'Trinket'.
   toolName: 'Trinket'
 
+# FERPA / student privacy: settings that limit where student personal data
+# appears. Other settings that affect student data are listed in the FERPA
+# section of config/local.example.yaml; see also docs/compliance/.
+ferpa:
+  logEmails: token     # How email addresses appear in server logs.
+                       #   token: u-3f9a2c1d@school.edu (default; same address -> same token)
+                       #   full:  the address as written
+  logTokenSecret: ''   # Key for the tokens, 32+ characters (or set FERPA_LOG_TOKEN_SECRET).
+                       # Blank or too short: falls back to the session cookie password, with a
+                       # warning, and tokens then change whenever that password is rotated.
+  # Not built yet, documented for a later audit: scrubAllLogs, which would scrub
+  # email-shaped text from every log line, not just the known ones.
+
 app:
   siteName: 'Trinket'
   # Landing-page branding text (lib/views/index.html). Per-deploy overrides go

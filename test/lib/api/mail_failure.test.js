@@ -34,6 +34,12 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+// These tests pin the logged addresses as written. The FERPA token default
+// (ferpa.logEmails) is tested in test/lib/api/ferpa_log_privacy.test.js.
+let logEmailsWas;
+beforeEach(() => { logEmailsWas = config.ferpa.logEmails; config.ferpa.logEmails = 'full'; });
+afterEach(() => { config.ferpa.logEmails = logEmailsWas; });
+
 // The mail work runs after the handler has already answered, and Node reports an
 // unhandled rejection one tick after it happens, so give both time to play out.
 const settle = () => new Promise((resolve) => setTimeout(resolve, 100));

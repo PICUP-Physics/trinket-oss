@@ -1,5 +1,13 @@
 'use strict';
 const mailer = require('../../lib/util/mailer');
+const config = require('config');
+
+// These tests pin the MAIL_SEND_FAILED format with addresses as written. The
+// FERPA token default (ferpa.logEmails) is tested in test/unit/log-privacy.test.js
+// and test/lib/api/ferpa_log_privacy.test.js.
+let logEmailsWas;
+beforeEach(() => { logEmailsWas = config.ferpa.logEmails; config.ferpa.logEmails = 'full'; });
+afterEach(() => { config.ferpa.logEmails = logEmailsWas; });
 
 describe('mailer.logFailure', () => {
   let errSpy;
