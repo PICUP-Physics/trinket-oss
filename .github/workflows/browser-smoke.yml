@@ -19,7 +19,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
       # The dev app reads its session password from config/local.yaml; supply a
       # throwaway CI one. Everything else (firestore/auth/storage emulator wiring,

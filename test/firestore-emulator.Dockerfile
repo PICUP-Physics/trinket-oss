@@ -1,5 +1,5 @@
 # Test image for the firestore-profile suite runs:
-#   node:20 (matches Cloud Run) + a JRE + the standalone Firestore emulator jar
+#   node:24 (matches Cloud Run) + a JRE + the standalone Firestore emulator jar
 #   + firebase-tools (for the AUTH emulator).
 # Build (once; from repo root):
 #   docker build --platform linux/amd64 -t trinket-test-firestore -f test/firestore-emulator.Dockerfile .
@@ -33,7 +33,7 @@
 # firestore profile, and its cached mongod links libcrypto.so.1.1, which
 # bookworm (OpenSSL 3) does not ship.
 FROM eclipse-temurin:17-jre AS jre
-FROM node:20-bullseye
+FROM node:24-bullseye
 COPY --from=jre /opt/java/openjdk /opt/java/openjdk
 ENV JAVA_HOME=/opt/java/openjdk
 ENV PATH=/opt/java/openjdk/bin:$PATH
