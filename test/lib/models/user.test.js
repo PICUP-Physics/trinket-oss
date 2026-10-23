@@ -72,6 +72,18 @@ describe('User model', () => {
         );
         expect(isMatch).toBe(false);
       });
+
+      // Hashes already stored in production were made by bcrypt 5.1.1. This
+      // one was too (cost 10, a throwaway password), so a bcrypt upgrade that
+      // stopped reading them would fail here rather than at everyone's login.
+      it('verifies a hash made by bcrypt 5.1.1', async () => {
+        const stored = { password: '$2b$10$wWVt4pCcXukfj29LG2zObeO.Mdxdh0UX17mdWpI96I.deAas0dbU6' };
+        const check = (pw) => new Promise((res, rej) =>
+          comparePassword.call(stored, pw, (err, m) => (err ? rej(err) : res(m)))
+        );
+        expect(await check('correct horse battery')).toBe(true);
+        expect(await check('correct horse batterY')).toBe(false);
+      });
     });
 
     describe('isAdmin', () => {
