@@ -10,12 +10,10 @@ const flow    = require('../../helpers/flow.cjs');
 const JSZip   = require('jszip');
 const crypto  = require('crypto');
 // storage-backend / FileUtil are required lazily (inside the test bodies below,
-// not at module top-level): both pull in config/aws.js, which snapshots AWS
-// credentials into the aws-sdk v2 global singleton AT REQUIRE TIME. Under
-// TEST_S3=garage those credentials are only set by vitest-setup.cjs's
-// beforeAll, which runs AFTER this file's top-level requires — a top-level
-// require here would freeze in empty credentials. Same pattern as
-// storage-signing.test.js.
+// not at module top-level). With aws-sdk v2, config/aws.js snapshotted the
+// credentials at require time, before vitest-setup.cjs's beforeAll wires up
+// garage's (TEST_S3=garage). config/aws.js now reads config.aws per client, so
+// that no longer bites, but the lazy requires are harmless and kept.
 
 async function currentUserId() {
   const doc = await new Promise((resolve, reject) =>
@@ -33,6 +31,18 @@ async function freshLogin(user) {
 }
 
 describe('POST /api/imports/upload-url', () => {
+  // Signing needs credentials; the base test profile has none (garage's are
+  // set under TEST_S3=garage). aws-sdk v2 signed without them and returned a
+  // URL that could never work; v3 refuses, so give it fake ones.
+  let savedCreds = null;
+  beforeAll(() => {
+    if (!config.aws.keyId) {
+      savedCreds = { keyId: config.aws.keyId, key: config.aws.key };
+      Object.assign(config.aws, { keyId: 'test-access-key', key: 'test-secret-key' });
+    }
+  });
+  afterAll(() => { if (savedCreds) Object.assign(config.aws, savedCreds); });
+
   it('returns a signed URL + key + expiresAt for an authorized user', async () => {
     await freshLogin('user');
     const userId = await currentUserId();

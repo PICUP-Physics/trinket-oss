@@ -14,10 +14,8 @@ const mongoose = require('mongoose');
 // assignments (Course/Lesson/Material/User/Trinket are), so pull it in
 // directly, same as createSubmissionsArchive.test.js.
 const Export = require('../../../lib/models/export');
-// config/aws.js just re-exports the real aws-sdk module (AWS.config.update +
-// module.exports = AWS) — requiring it here gets the same AWS.S3 class the
-// worker instantiates, so we can stub the SDK boundary (see putObject spy
-// below) without touching lib/workers/exports.js.
+// config/aws.js hands out S3 clients through s3Client(); stubbing that (see
+// below) swaps in a fake client without touching lib/workers/exports.js.
 const aws = require('../../../config/aws');
 
 let exportsQueue;
@@ -56,32 +54,22 @@ let s3Spy;
 let nunjucksRenderSpy;
 
 beforeEach(() => {
-  // Stub the S3 upload at the aws-sdk boundary. uploadToS3() (a bare,
-  // unexported function in lib/workers/exports.js) does `new aws.S3()` and
-  // calls `client.putObject(...)` directly — it isn't called through the
-  // module's own exports object, so there's no monkeypatch seam inside the
-  // worker file itself.
-  //
-  // aws-sdk v2's S3 client doesn't expose operations (putObject etc.) as own
-  // properties of AWS.S3.prototype — they're installed on a per-API-version
-  // prototype object swapped in per instance (Object.getPrototypeOf(new
-  // AWS.S3()) !== AWS.S3.prototype), confirmed by inspection. Spying on
-  // AWS.S3.prototype.putObject is therefore a no-op ("putObject does not
-  // exist"). Spy on the aws.S3 constructor itself instead — it's a plain
-  // property of the exports object — and return a fake client.
+  // Stub the S3 upload at the client seam: uploadToS3() goes through
+  // lib/util/storage-backend, whose S3 backend gets its client from
+  // config/aws.js's s3Client(). The fake client receives the SDK v3 command;
+  // its input carries the PutObject params.
   uploadedZip = null;        // never let one test satisfy the next test's assertion
   uploadReadError = null;
-  putObjectMock = vi.fn(function(params, cb) {
+  putObjectMock = vi.fn(function(params) {
     // Keep the bytes: asserting "an archive was uploaded" is not the same
     // as asserting the students' work is inside it. A seeding mistake that
     // produced EMPTY files passed every other assertion in this file.
     try { uploadedZip = require('fs').readFileSync(params.Body.path); }
     catch (e) { uploadedZip = null; uploadReadError = e; }
-    setImmediate(function() { cb(null, {}); });
-    return {};
+    return Promise.resolve({});
   });
-  s3Spy = vi.spyOn(aws, 'S3').mockImplementation(function() {
-    return { putObject: putObjectMock };
+  s3Spy = vi.spyOn(aws, 's3Client').mockImplementation(function() {
+    return { send: function(command) { return putObjectMock(command.input); } };
   });
 
   // The worker only calls nunjucks.configure() when !config.isTest; in test
