@@ -327,6 +327,8 @@
               <div class="row">
                 <div class="small-12 columns">
                   <p>Paste a list of students, one per line. Each line can be an email address alone, or <strong>First, Last, email</strong> — or paste rows straight from a spreadsheet (tabs work like commas, and the email is found in any column — everything else on the line becomes the name). Duplicate emails are added once. Lines without an email address are not added; they stay in the box so you can fix them.</p>
+                  <p ng-if="inviteEmailEnabled">Students who already have an account are enrolled right away. Everyone else is emailed an invitation with a link to join.</p>
+                  <p ng-if="!inviteEmailEnabled">Students who already have an account are enrolled right away. Trinket doesn't email students: give them this site's address, and they join the course the first time they sign in with the email address you add here.</p>
                 </div>
               </div>
               <div class="row" data-equalizer data-equalizer-mq="large-up">
@@ -431,7 +433,7 @@
 
     <div class="row" ng-show="haveInvitations()">
       <div class="large-12 columns">
-        <strong>Pending Students</strong>
+        <strong>Pending Students</strong> <span class="subheader">(haven't joined yet)</span>
       </div>
     </div>
     <div class="row" ng-show="haveInvitations()">

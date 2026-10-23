@@ -8,6 +8,9 @@
       $scope.currentMaterial     = currentMaterial;
       $scope.assignmentDashboard = assignmentDashboard;
       $scope.emailEnabled        = trinketConfig.get('emailEnabled');
+      // Whether course invitations are actually emailed (mailer.isConfigured(),
+      // the check course.js sends on). Not the same as emailEnabled.
+      $scope.inviteEmailEnabled  = trinketConfig.get('inviteEmailEnabled');
       $scope.accessCodeEnrollment = trinketConfig.get('accessCodeEnrollment');
 
       $scope.users    = [];
@@ -208,32 +211,11 @@
         });
       }
 
+      // Wording lives in rosterMessage.js (shared with the unit tests). It has
+      // to know whether this deploy emails invitations: see the header there.
       function reportRoster(totals) {
-        var parts = [];
-        if (totals.enrolled) { parts.push(totals.enrolled + " enrolled"); }
-        if (totals.invited)  { parts.push(totals.invited + " invited"); }
-
-        var message, className;
-        if (parts.length) {
-          message   = parts.join(", ") + ".";
-          className = 'success';
-          if (totals.invited) {
-            message += " Invited students will join when they sign in with their email address.";
-          }
-        }
-        else {
-          message   = "No new students added.";
-          className = 'warning';
-        }
-        if (totals.invalid) { message += " " + totals.invalid + " invalid email(s) skipped."; }
-        if (totals.held) {
-          message += " " + totals.held + " line(s) had no email address and were left in the box.";
-          if (className === 'success') { className = 'warning'; }
-        }
-        if (totals.duplicates) { message += " " + totals.duplicates + " duplicate line(s) ignored."; }
-        if (totals.failed)  { message += " " + totals.failed + " batch(es) failed — their lines were left in the box; please retry."; className = 'alert'; }
-
-        $("#invitations-sent-messages").notify(message, { className : className });
+        var result = trinketRosterMessage.report(totals, { inviteEmail : $scope.inviteEmailEnabled });
+        $("#invitations-sent-messages").notify(result.message, { className : result.className });
       }
 
       $scope.inviteUsersToCourse = function() {

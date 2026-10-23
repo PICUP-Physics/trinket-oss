@@ -123,6 +123,28 @@ test.describe('Add Students accepts a spreadsheet paste', () => {
     await expect(page.getByText(/1 line\(s\) had no email address/i).first(),
       'the held-back line should be reported').toBeVisible({ timeout: 30_000 });
 
+    // #337: the message says whether students are emailed, following the
+    // deploy's own mailer check (exposed as inviteEmailEnabled), and never
+    // claims delivery, since a failed send is logged and swallowed. One run
+    // covers whichever case this trial is; run it on a mail and a no-mail trial.
+    const inviteEmail = await page.evaluate(() => window.trinketConfig.get('inviteEmailEnabled'));
+    if (inviteEmail === undefined) {
+      test.info().annotations.push({ type: 'skip-337', description: 'deploy predates #337 (no inviteEmailEnabled)' });
+    } else {
+      test.info().annotations.push({ type: 'inviteEmailEnabled', description: String(inviteEmail) });
+      if (inviteEmail) {
+        await expect(page.getByText(/2 invited\./).first()).toBeVisible();
+        await expect(page.getByText(/Trinket is emailing each invited student a link to join/).first()).toBeVisible();
+        await expect(page.getByText(/If an email doesn't arrive/).first()).toBeVisible();
+        await expect(page.getByText('Everyone else is emailed an invitation with a link to join.'), 'help text: mail deploy').toBeVisible();
+      } else {
+        await expect(page.getByText(/2 added\./).first()).toBeVisible();
+        await expect(page.getByText(/Trinket doesn't email students: give them this site's address/).first()).toBeVisible();
+        await expect(page.getByText(/give them this site's address, and they join the course/), 'help text: no-mail deploy').toBeVisible();
+      }
+      await expect(page.getByText(/has been emailed|have been emailed/), 'never claims delivery').toHaveCount(0);
+    }
+
     // The junk row stays so the instructor can fix it; the good rows do not.
     const left = await box.inputValue();
     expect(left, 'the row without an email should remain').toMatch(/NoAddress/);
