@@ -60,7 +60,6 @@
     "passport-google-oauth": "^0.1.5",
     "passport-local": "~1.0.0",
     "passport-strategy": "~1.0.0",
-    "q": "~1.0.0",
     "redis": "^4.0.0",
     "request": "^2.51.0",
     "rimraf": "~2.2.6",
