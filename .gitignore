@@ -20,6 +20,9 @@ public/maintenance.html
 
 # Local environment secrets (Garage/S3 credentials, etc.)
 .env
+.env.*
+!.env.example
+*.pem
 
 Vagrantfile
 .vagrant
