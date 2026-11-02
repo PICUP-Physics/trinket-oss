@@ -40,28 +40,32 @@ RUN curl -L --silent -o public/components/src-min-noconflict/theme-github.js \
     && curl -L --silent -o public/components/src-min-noconflict/mode-markdown.js \
     https://cdnjs.cloudflare.com/ajax/libs/ace/1.2.6/mode-markdown.min.js
 
-# Web VPython runtime from the rsWVPRunner build (gs://rswvprunner), pinned as 3.2.3
-# in the versionMap (lib/views/embed/glowscript-config.html). The stock 3.2.2 build
-# from the tarball stays in place as a fallback. Bump GLOWSCRIPT_PACKAGE_BUILD after
-# redeploying rsWVPRunner: it busts both this layer's cache and (as a query param)
-# the GCS edge cache, which can otherwise serve hour-old copies.
+# Web VPython runtime from a pinned vpython/rsWVPRunner GitHub release, served as
+# 3.2.3 in the versionMap (lib/views/embed/glowscript-config.html). The stock 3.2.2
+# build from the tarball stays in place as a fallback.
 #
-# Each file is pinned to its rsWVPRunner build by sha256: if upstream republishes a
-# changed runtime, the sha256sum -c check fails the build instead of silently shipping
-# it. After an *intended* rsWVPRunner glow change: redeploy rsWVPRunner, then bump
-# GLOWSCRIPT_PACKAGE_BUILD and update the *_SHA256 values below. Recompute via:
-#   curl -fsSL "https://storage.googleapis.com/rswvprunner/package/<file>.3.2.min.js" | sha256sum
-ARG GLOWSCRIPT_PACKAGE_BUILD=2026-10-31a
+# A release, not the gs://rswvprunner bucket: the bucket holds one copy of each
+# file, which every rsWVPRunner deploy (do_build.sh, for webvpython.org)
+# overwrites. Pinned to the bucket, the sha256 check below failed every trinket
+# build between a runner deploy and the pin update. A release tag is fixed, so
+# a runner deploy changes nothing here.
+#
+# Each file is pinned by sha256: if a release asset is ever replaced, the
+# sha256sum -c check fails the build instead of silently shipping it. To move
+# to a new runtime: set RSWVPRUNNER_RELEASE and the *_SHA256 values from that
+# release's SHA256SUMS asset. Local dev: scripts/setup-glowscript.sh does this
+# same fetch, parsing these ARGs so the pins cannot drift.
+ARG RSWVPRUNNER_RELEASE=v3.2.4-rc1
 ARG GLOW_SHA256=1587799056b9d5aa5a854ec653653e0c0b6c11ab708a9783e3bffc126104f5ca
-ARG RSCOMPILER_SHA256=6376aa0899c68a2a99137f579f2ced923a09c55bc0283e0ba3f1a589761040aa
+ARG RSCOMPILER_SHA256=cad1c5f23a3f40209f8ad4bee4d0c24044c3357612b5ac05155e495b4b0dcbf4
 ARG RSRUN_SHA256=2735844b615f87b4147e9cb2b90bf8a7a15da208fc8876eae469fc98861e429d
 RUN set -eu; \
     RETRY="--retry 5 --retry-delay 2 --retry-connrefused --retry-all-errors"; \
-    base="https://storage.googleapis.com/rswvprunner/package"; \
+    base="https://github.com/vpython/rsWVPRunner/releases/download/${RSWVPRUNNER_RELEASE}"; \
     dir="public/components/vpython-glowscript/package"; \
-    curl -fL --silent $RETRY -o "$dir/glow.3.2.3.min.js"       "$base/glow.3.2.min.js?build=${GLOWSCRIPT_PACKAGE_BUILD}"; \
-    curl -fL --silent $RETRY -o "$dir/RScompiler.3.2.3.min.js" "$base/RScompiler.3.2.min.js?build=${GLOWSCRIPT_PACKAGE_BUILD}"; \
-    curl -fL --silent $RETRY -o "$dir/RSrun.3.2.3.min.js"      "$base/RSrun.3.2.min.js?build=${GLOWSCRIPT_PACKAGE_BUILD}"; \
+    curl -fL --silent $RETRY -o "$dir/glow.3.2.3.min.js"       "$base/glow.3.2.min.js"; \
+    curl -fL --silent $RETRY -o "$dir/RScompiler.3.2.3.min.js" "$base/RScompiler.3.2.min.js"; \
+    curl -fL --silent $RETRY -o "$dir/RSrun.3.2.3.min.js"      "$base/RSrun.3.2.min.js"; \
     echo "${GLOW_SHA256}  $dir/glow.3.2.3.min.js"             | sha256sum -c -; \
     echo "${RSCOMPILER_SHA256}  $dir/RScompiler.3.2.3.min.js" | sha256sum -c -; \
     echo "${RSRUN_SHA256}  $dir/RSrun.3.2.3.min.js"           | sha256sum -c -
