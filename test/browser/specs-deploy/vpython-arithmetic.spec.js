@@ -14,10 +14,10 @@ const { test, expect } = require('@playwright/test');
 //     (randint truncated toward zero)
 //
 // A wider table of expressions, each checked against CPython's answer, guards
-// the rest of the arithmetic, including "- -x", which the first #223 runtime
-// compiled as the JavaScript decrement "--x". Differences from Python that
-// predate these fixes (vpython/glowscript#224) are pinned as known, so a
-// runtime that fixes or breaks one shows up here.
+// the rest of the arithmetic, including two #223 regressions: "- -x" compiled
+// as the JavaScript decrement "--x", and "-(x+1)**2" came out positive.
+// Differences from Python that predate these fixes (vpython/glowscript#224)
+// are pinned as known, so a runtime that fixes or breaks one shows up here.
 //
 // Anonymous and unsaved, like deploy-smoke, so it is safe on a live server.
 
@@ -174,6 +174,18 @@ const PASSING = [
   ["a = 7\na -= -3", 10],
   ["a = 10\na /= -4", -2.5],
   ["a = 2\na *= -x", -10],
+  // unary minus with ** (the first #223 runtimes got the sign wrong)
+  ["-(x)**2", -25],
+  ["-(x+1)**2", -36],
+  ["-(-x)**2", -25],
+  ["- -x**2", 25],
+  ["- - -x**2", -25],
+  ["-(2)**2", -4],
+  ["-x**2**0.5", -9.738517742335421],
+  ["-(x-3)**2/8", -0.5],
+  ["exp(-(x-3)**2/8)", 0.6065306597126334],
+  ["2**3**2", 512],
+  ["2**-1**2", 0.5],
 ];
 
 // Pre-existing differences from Python (vpython/glowscript#224), with
@@ -184,10 +196,6 @@ const KNOWN = {
     ["-7 % 3", 2],
     ["-7.5 % 2", 0.5],
     ["a = 7\na %= -3", -2],
-  ],
-  pow: [
-    ["2**3**2", 512],
-    ["2**-1**2", 0.5],
   ],
   round: [
     ["round(2.5)", 2],
