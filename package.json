@@ -7,6 +7,8 @@
     "test": "test"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1156.0",
+    "@aws-sdk/s3-request-presigner": "^3.1156.0",
     "@google-cloud/datastore": "^10.1.0",
     "@google-cloud/firestore": "^8.6.0",
     "@google-cloud/storage": "^7.19.0",
@@ -20,7 +22,6 @@
     "accepts": "~1.1.0",
     "adm-zip": "~0.4.4",
     "archiver": "^5.3.2",
-    "aws-sdk": "^2.1.20",
     "bcrypt": "^6.0.0",
     "bull": "^0.7.0",
     "chokidar": "^3.5.3",

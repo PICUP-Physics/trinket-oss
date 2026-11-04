@@ -1,16 +1,19 @@
 describe('storage signUploadUrl', () => {
+  const config = require('config');
+  let savedCreds = null;
+  function useFakeCredentials() {
+    if (config.aws.keyId) return;
+    savedCreds = savedCreds || { keyId: config.aws.keyId, key: config.aws.key };
+    Object.assign(config.aws, { keyId: 'test-access-key', key: 'test-secret-key' });
+  }
+  afterAll(() => { if (savedCreds) Object.assign(config.aws, savedCreds); });
+
   it('s3 backend returns a presigned PUT url string', async () => {
-    // aws-sdk v2 getSignedUrl signs synchronously off static credentials.
-    // The base test profile ships empty aws.key/keyId (config/default.yaml)
-    // since no other suite exercises a real signing codepath — stub in fake
-    // static credentials so the SigV2 signature step actually runs. Skipped
-    // when garage has already wired up real ones (TEST_S3=garage, see
-    // test/helpers/vitest-setup.cjs) so the round-trip test below keeps its
-    // real credentials.
-    const AWS = require('aws-sdk');
-    if (!AWS.config.credentials || !AWS.config.credentials.accessKeyId) {
-      AWS.config.update({ accessKeyId: 'test-access-key', secretAccessKey: 'test-secret-key' });
-    }
+    // Signing needs credentials, and the base test profile ships empty
+    // aws.key/keyId (config/default.yaml). useFakeCredentials() supplies fake
+    // ones, unless garage has already wired up real ones (TEST_S3=garage, see
+    // test/helpers/vitest-setup.cjs), so the round-trip test keeps them.
+    useFakeCredentials();
     const s3 = require('../../../lib/util/storage-backend-s3');
     const url = await s3.signUploadUrl('some-bucket', 'imports/tmp/u1/abc.zip', 'application/zip', 900);
     expect(typeof url).toBe('string');
@@ -25,10 +28,7 @@ describe('storage signUploadUrl', () => {
     // signed PUT URL must be SIGNED against the public endpoint, not
     // rewritten afterward. Same requirement as the signed-GET precedent at
     // lib/controllers/users.js:1184-1198.
-    const AWS = require('aws-sdk');
-    if (!AWS.config.credentials || !AWS.config.credentials.accessKeyId) {
-      AWS.config.update({ accessKeyId: 'test-access-key', secretAccessKey: 'test-secret-key' });
-    }
+    useFakeCredentials();
     const config = require('config');
     const s3 = require('../../../lib/util/storage-backend-s3');
 
