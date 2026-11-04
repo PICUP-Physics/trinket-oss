@@ -44,8 +44,8 @@ describe('addTrinketToArchive with a failing asset download', () => {
   beforeEach(() => {
     unhandled = [];
     process.on('unhandledRejection', onUnhandled);
-    vi.spyOn(aws, 'S3').mockImplementation(function() {
-      return { getObject: (_params, cb) => setImmediate(() => cb(new Error('NoSuchKey'))) };
+    vi.spyOn(aws, 's3Client').mockImplementation(function() {
+      return { send: () => Promise.reject(new Error('NoSuchKey')) };
     });
   });
   afterEach(() => {
