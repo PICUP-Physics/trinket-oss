@@ -31,3 +31,38 @@ describe('addTrinketToArchive basePath', () => {
     expect(a.names).toContain('assignment-1/jane/metadata.json');
   });
 });
+
+// One missing asset must not fail the trinket, and must not leave a rejected
+// promise nobody handles: under native promises Node treats that as fatal and
+// would take the export worker down with it. Two things keep that true today,
+// the per-asset .catch and Promise.allSettled; this fails if both go.
+describe('addTrinketToArchive with a failing asset download', () => {
+  const aws = require('../../../config/aws');
+  let unhandled;
+  const onUnhandled = (reason) => unhandled.push(reason);
+
+  beforeEach(() => {
+    unhandled = [];
+    process.on('unhandledRejection', onUnhandled);
+    vi.spyOn(aws, 'S3').mockImplementation(function() {
+      return { getObject: (_params, cb) => setImmediate(() => cb(new Error('NoSuchKey'))) };
+    });
+  });
+  afterEach(() => {
+    process.off('unhandledRejection', onUnhandled);
+    vi.restoreAllMocks();
+  });
+
+  it('archives the rest, skips the asset, and rejects nothing', async () => {
+    const a = fakeArchive();
+    const withAsset = Object.assign({}, trinket, {
+      assets: [{ name: 'gone.png', url: 'https://assets.example/userassets/gone.png' }],
+    });
+    const result = await addTrinketToArchive(a, withAsset);
+    expect(result.shortCode).toBe('abc123');
+    await new Promise((r) => setImmediate(r));     // let any stray rejection surface
+    expect(a.names).toContain('python3/My_Sim_abc123/metadata.json');
+    expect(a.names.some((n) => n.endsWith('assets/gone.png'))).toBe(false);
+    expect(unhandled).toEqual([]);
+  });
+});
