@@ -55,7 +55,7 @@ RUN curl -L --silent -o public/components/src-min-noconflict/theme-github.js \
 # to a new runtime: set RSWVPRUNNER_RELEASE and the *_SHA256 values from that
 # release's SHA256SUMS asset. Local dev: scripts/setup-glowscript.sh does this
 # same fetch, parsing these ARGs so the pins cannot drift.
-ARG RSWVPRUNNER_RELEASE=v3.2.4-rc3
+ARG RSWVPRUNNER_RELEASE=v3.2.4
 ARG GLOW_SHA256=1587799056b9d5aa5a854ec653653e0c0b6c11ab708a9783e3bffc126104f5ca
 ARG RSCOMPILER_SHA256=ac91f82f060bce5f9d1cfbe586a9e0ae7d7f9cb8c0685fd63c047aea76956c6c
 ARG RSRUN_SHA256=2735844b615f87b4147e9cb2b90bf8a7a15da208fc8876eae469fc98861e429d
