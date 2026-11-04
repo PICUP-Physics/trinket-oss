@@ -50,7 +50,7 @@
     "mongoose": "^6.0.0",
     "mongoose-schema-extend": "~0.2.2",
     "node-cryptojs-aes": "^0.4.0",
-    "nodemailer": "^2.5.0",
+    "nodemailer": "^10.2.1",
     "numeral": "^1.5.3",
     "nunjucks": "^3.2.0",
     "optimist": "~0.6.0",
