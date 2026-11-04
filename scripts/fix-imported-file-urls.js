@@ -39,7 +39,6 @@ process.env.NODE_CONFIG = process.env.NODE_CONFIG ||
   JSON.stringify({ db: { backend: 'firestore', firestore: { projectId: projectId } } });
 
 var crypto   = require('crypto');
-var request  = require('request');
 var config   = require('config');
 var FileUtil = require('../lib/util/file');
 
@@ -66,13 +65,26 @@ function collectPaths(content) {
   return paths;
 }
 
+// GET a URL as a Buffer, node-callback style: cb(err, { statusCode, headers }, body).
+// The callback runs outside the promise chain, so a throw in it isn't swallowed.
+function getBuffer(url, cb) {
+  fetch(url)
+    .then(function(res) {
+      return res.arrayBuffer().then(function(data) {
+        var resp = { statusCode: res.status, headers: { 'content-type': res.headers.get('content-type') } };
+        setImmediate(cb, null, resp, Buffer.from(data));
+      });
+    })
+    .catch(function(err) { setImmediate(cb, err); });
+}
+
 function rehostAsset(relativePath) {
   var sourceUrl = SOURCE + relativePath;
   var filename  = relativePath.split('/').pop();
   var ext       = filename.includes('.') ? filename.split('.').pop().toLowerCase() : '';
 
   return new Promise(function(resolve) {
-    request({ url: sourceUrl, encoding: null }, function(err, resp, body) {
+    getBuffer(sourceUrl, function(err, resp, body) {
       if (err || !body || resp.statusCode !== 200) {
         console.warn('  ! fetch failed:', sourceUrl, err || resp.statusCode);
         return resolve(sourceUrl); // fall back to absolute trinket.io URL
