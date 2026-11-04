@@ -160,6 +160,31 @@ describe('Course export markdown engine selection', () => {
       expect(manifestEntry).toBeTruthy();
       const manifest = JSON.parse(archive.readAsText(manifestEntry));
       expect(manifest.globalSettings.markdownEngine).toBe('modern');
+
+      // The handler builds the archive under /tmp/<owner> and removes that
+      // directory before replying, so nothing is left behind on the server.
+      expect(fs.existsSync('/tmp/' + defaults.user.username), 'build dir removed').toBe(false);
+    });
+
+    it('a failed cleanup of the build dir is logged, and the download still goes out', async () => {
+      await flow.switchUser('user');
+      await flow.createCourse({ name: 'Cleanup Failure Download Test', markdownEngine: 'modern' });
+      expect(flow.wasOk).toBe(true);
+      const course = flow.lastResponse.body.course;
+
+      const realRm = fs.rm;
+      vi.spyOn(fs, 'rm').mockImplementation((p, opts, cb) =>
+        realRm(p, opts, () => cb(Object.assign(new Error('simulated cleanup failure'), { code: 'EBUSY' }))));
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        await flow.downloadCourse(
+          '/' + defaults.user.username + '/courses/' + course.slug + '/download.zip?format=html'
+        );
+        expect(flow.lastResponse.statusCode).toBe(200);
+        expect(warn.mock.calls.flat().join(' ')).toContain('simulated cleanup failure');
+      } finally {
+        vi.restoreAllMocks();
+      }
     });
 
     it('legacy-engine course: downloaded HTML has the raw script ESCAPED', async () => {
