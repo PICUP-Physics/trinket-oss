@@ -26,23 +26,27 @@
       scope.searchTrinkets = function(val) {
         scope.loadingTrinkets   = true;
         scope.searchInputActive = true;
+        scope.lastTerm          = val;
 
-        return trinketsApi.search(val).then(function(results) {
-          var trinkets = [];
+        return trinketsApi.search(val).then(function(body) {
           scope.loadingTrinkets = false;
-
-          angular.forEach(results, function(trinket) {
-            if (!trinket.name) {
-              trinket.name = 'Untitled';
-            }
-            trinkets.push(trinket);
-          });
-
-          return trinkets;
+          return window.trinketSearchResults.rows(body, { seeAll : !!scope.seeAll });
         });
       }
 
+      // The footer row (#344) is informational, or "See all" when the parent
+      // passed see-all; it is never a trinket to select.
       scope.onSelectResult = function(item) {
+        if (item && item.__footer) {
+          var term = scope.lastTerm;
+          scope.trinketSearchValue = "";
+          if (item.seeAllText && scope.seeAll) {
+            scope.searchInputOpen   = false;
+            scope.searchInputActive = false;
+            scope.seeAll(term);
+          }
+          return;
+        }
         scope.trinketSearchValue = "";
         scope.onSelect(item);
       }
@@ -71,6 +75,7 @@
           , inputId         : '@'
           , searchLabelId   : '@'
           , noLabel         : '='
+          , seeAll          : '=?'
         }
     };
   }]);

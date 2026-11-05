@@ -10,8 +10,12 @@
   <input type="text" id="{{ inputId }}" ng-model="trinketSearchValue" placeholder="{{ placeholderText }}"
          typeahead="trinkets for trinkets in searchTrinkets($viewValue)"
          typeahead-loading="loadingTrinkets" typeahead-template-url="searchResultsTemplate.html"
-         typeahead-on-select="onSelectResult($item)" typeahead-wait-ms="400" />
+         typeahead-on-select="onSelectResult($item)" typeahead-wait-ms="400" typeahead-min-length="2" />
 </div>
 <script type="text/ng-template" id="searchResultsTemplate.html">
-  <a class="trinket-list-with-lang lang-{{ match.model.lang }}" bind-html-unsafe="match.model.name | typeaheadHighlight:query"></a>
+  <a ng-if="!match.model.__footer" class="trinket-list-with-lang lang-{{ match.model.lang }}" bind-html-unsafe="match.model.name | typeaheadHighlight:query"></a>
+  <a ng-if="match.model.__footer" class="trinket-search-footer">
+    <span class="subheader">{{ match.model.text }}</span>
+    <strong ng-if="match.model.seeAllText"> · {{ match.model.seeAllText }}</strong>
+  </a>
 </script>
