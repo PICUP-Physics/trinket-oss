@@ -409,29 +409,30 @@ The GlowScript embed loads `glow.3.2.3.min.js` (and `RScompiler` / `RSrun`) from
 `public/components/vpython-glowscript/package/`. These files come from the
 `rsWVPRunner` build, pinned as version `3.2.3` in `lib/views/embed/glowscript-config.html`.
 
-### After rebuilding rsWVPRunner (`do_build.sh`)
+### Moving to a new rsWVPRunner release
 
-**Local dev** — copy the new files into the running container without a full rebuild:
+Trinket takes these files from a pinned GitHub release of
+[vpython/rsWVPRunner](https://github.com/vpython/rsWVPRunner/releases), not from
+the `gs://rswvprunner` bucket. Running `do_build.sh` in rsWVPRunner deploys
+webvpython.org and has no effect on trinket.
 
-```bash
-npm run setup-vendor
-```
+1. In `Dockerfile`, set `RSWVPRUNNER_RELEASE` to the new tag and copy
+   `GLOW_SHA256`, `RSCOMPILER_SHA256` and `RSRUN_SHA256` from that release's
+   `SHA256SUMS` asset.
+2. **Local dev:** copy the new files into the running container without a full
+   rebuild:
 
-Then reload your browser. The script reads `GLOWSCRIPT_PACKAGE_BUILD` from the
-Dockerfile and copies from the local `rsWVPRunner/package/` tree (or falls back
-to GCS if that repo isn't present).
+   ```bash
+   npm run setup-vendor
+   ```
 
-**Deploy** — bump the cache-buster in `Dockerfile` so Cloud Build fetches the
-new files from GCS instead of reusing its cached layer:
-
-```diff
--ARG GLOWSCRIPT_PACKAGE_BUILD=2026-06-12a
-+ARG GLOWSCRIPT_PACKAGE_BUILD=<today's date or build tag>
-```
-
-Then deploy normally. The `RUN curl` step in the Dockerfile fetches the three
-runtime files from `gs://rswvprunner/package/` and bakes them into the image.
-No extra steps needed at deploy time.
+   Then reload your browser. The script reads the release tag and pins from the
+   Dockerfile and checks each file's sha256. If a sibling
+   `../webvpython/rsWVPRunner/package/` checkout exists, its files are used
+   instead, unchecked, for testing local runner builds.
+3. **Deploy** normally. The `RUN curl` step in the Dockerfile fetches the three
+   runtime files from the release, checks them against the pins, and bakes them
+   into the image. A changed tag also busts Cloud Build's cached layer.
 
 ---
 

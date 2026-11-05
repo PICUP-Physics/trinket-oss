@@ -8,21 +8,20 @@
 // tree, so nothing here would notice if it were dropped. It was dropped once,
 // in the first draft of that move.
 const config = require('config');
-const AWS    = require('../../../config/aws');
 const s3     = require('../../../lib/util/storage-backend-s3');
 
-// With no credentials aws-sdk's getSignedUrl returns a BARE endpoint —
-// https://s3.amazonaws.com/ — no matter what bucket or key you pass. That is
-// exactly what UIndy hit, and why the redirect landed on the AWS marketing
-// page rather than 404ing on a missing object. Give the SDK credentials here so
-// these tests exercise real URL construction.
-AWS.config.update({
-  accessKeyId: 'AKIATESTTESTTESTTEST',
-  secretAccessKey: 'test-secret-not-a-real-credential',
-  region: 'us-east-1',
-});
-
+// Signing needs credentials (the v2 SDK, without them, returned a BARE
+// https://s3.amazonaws.com/ — exactly what UIndy hit, and why the redirect
+// landed on the AWS marketing page rather than 404ing on a missing object).
+// Give the client fake ones so these tests exercise real URL construction.
 describe('the S3 backend signs download URLs', () => {
+  let savedAws;
+  beforeAll(() => {
+    savedAws = { keyId: config.aws.keyId, key: config.aws.key, region: config.aws.region };
+    Object.assign(config.aws, { keyId: 'AKIATESTTESTTESTTEST', key: 'test-secret-not-a-real-credential', region: 'us-east-1' });
+  });
+  afterAll(() => { Object.assign(config.aws, savedAws); });
+
   const realHost = process.env.S3_PUBLIC_HOST;
   const realEndpoint = config.aws && config.aws.publicEndpoint;
 
@@ -43,12 +42,31 @@ describe('the S3 backend signs download URLs', () => {
     expect(url).toContain('exports/a/b.zip');
   });
 
-  it('honours S3_PUBLIC_HOST when there is no publicEndpoint', async () => {
-    config.aws.publicEndpoint = undefined;
-    process.env.S3_PUBLIC_HOST = 'files.example.org';
-    const url = await s3.signDownloadUrl('some-bucket', 'exports/a/b.zip', 3600);
-    expect(url, 'the legacy SigV2 host swap must survive the move')
-      .toMatch(/^https?:\/\/files\.example\.org\//);
+  // The v2 code swapped the exact S3_PUBLIC_HOST into the finished URL, so the
+  // browser saw that host and the URL's path unchanged. v3 must sign for the
+  // same URL, in either addressing style.
+  describe('honours S3_PUBLIC_HOST when there is no publicEndpoint', () => {
+    let savedPathStyle;
+    beforeEach(() => {
+      savedPathStyle = config.aws.s3ForcePathStyle;
+      config.aws.publicEndpoint = undefined;
+      process.env.S3_PUBLIC_HOST = 'files.example.org';
+    });
+    afterEach(() => { config.aws.s3ForcePathStyle = savedPathStyle; });
+
+    it('virtual-hosted: the exact host, with the key as the path', async () => {
+      config.aws.s3ForcePathStyle = false;
+      const url = new URL(await s3.signDownloadUrl('some-bucket', 'exports/a/b.zip', 3600));
+      expect(url.host, 'S3_PUBLIC_HOST must survive the move, unprefixed').toBe('files.example.org');
+      expect(url.pathname).toBe('/exports/a/b.zip');
+    });
+
+    it('path-style: the exact host, with the bucket in the path', async () => {
+      config.aws.s3ForcePathStyle = true;
+      const url = new URL(await s3.signDownloadUrl('some-bucket', 'exports/a/b.zip', 3600));
+      expect(url.host).toBe('files.example.org');
+      expect(url.pathname).toBe('/some-bucket/exports/a/b.zip');
+    });
   });
 
   it('leaves the host alone when publicEndpoint is set (SigV4 signs the host)', async () => {

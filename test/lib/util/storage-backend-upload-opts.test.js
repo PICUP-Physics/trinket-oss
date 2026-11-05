@@ -14,25 +14,26 @@ const s3Backend = require('../../../lib/util/storage-backend-s3');
 const gcsBackend = require('../../../lib/util/storage-backend-gcs');
 
 describe('storage backend upload(opts) contract', () => {
-  it('s3: still accepts a callback in the opts position (existing callers)', () => {
-    const aws = require('aws-sdk');
-    const spy = vi.spyOn(aws, 'S3').mockImplementation(() => ({
-      putObject: (params, cb) => cb(null, { ok: true, params })
-    }));
-    let called = false;
-    s3Backend.upload('b', 'k', Buffer.from('x'), 'text/plain', () => { called = true; });
-    expect(called).toBe(true);
+  // A fake S3 client: send() receives the SDK v3 command, whose input is the
+  // PutObject params.
+  const aws = require('../../../config/aws');
+  const fakeClient = (onSend) => vi.spyOn(aws, 's3Client').mockImplementation(() => ({
+    send: (command) => Promise.resolve(onSend(command.input))
+  }));
+
+  it('s3: still accepts a callback in the opts position (existing callers)', async () => {
+    const spy = fakeClient(() => ({}));
+    const err = await new Promise((resolve) =>
+      s3Backend.upload('b', 'k', Buffer.from('x'), 'text/plain', resolve));
+    expect(err).toBe(null);
     spy.mockRestore();
   });
 
-  it('s3: passes contentDisposition through as ContentDisposition', () => {
-    const aws = require('aws-sdk');
+  it('s3: passes contentDisposition through as ContentDisposition', async () => {
     let seen = null;
-    const spy = vi.spyOn(aws, 'S3').mockImplementation(() => ({
-      putObject: (params, cb) => { seen = params; cb(null, {}); }
-    }));
-    s3Backend.upload('b', 'k', Buffer.from('x'), 'application/zip',
-      { contentDisposition: 'attachment; filename="student-work.zip"' }, () => {});
+    const spy = fakeClient((params) => { seen = params; return {}; });
+    await new Promise((resolve) => s3Backend.upload('b', 'k', Buffer.from('x'), 'application/zip',
+      { contentDisposition: 'attachment; filename="student-work.zip"' }, resolve));
     expect(seen.ContentDisposition).toBe('attachment; filename="student-work.zip"');
     expect(seen.ContentType).toBe('application/zip');
     spy.mockRestore();
