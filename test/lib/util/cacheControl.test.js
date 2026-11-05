@@ -86,6 +86,33 @@ describe('cacheControl.headersFor', () => {
 });
 
 
+// A prefix token the server did not issue names some OTHER build's assets.
+// Seen live (2026-11-04): a no-traffic candidate's pages asked the public host
+// for /cache-prefix-<new hash>/...; the public host still routed to the old
+// revision, which served its own RScompiler under the new URL, and the CDN kept
+// those old bytes for a year. Serving such a request is fine; caching it is not.
+describe('a prefix token this server did not issue', () => {
+  const OWN = ['a1b2c3d', '0b62c432ed51'];
+  const ccOwn = (path, status = 200) =>
+    cacheControl.headersFor(path, status, APP, OWN)['Cache-Control'];
+
+  it('is served no-store, so no cache keeps another build\'s bytes', () => {
+    expect(ccOwn('/cache-prefix-8d7dd5222535/components/vpython-glowscript/package/RScompiler.3.2.3.min.js'))
+      .toContain('no-store');
+  });
+
+  it('still caches the deploy token and the components token immutably', () => {
+    expect(ccOwn('/cache-prefix-a1b2c3d/css/base.css')).toBe('public, max-age=31536000, immutable');
+    expect(ccOwn('/cache-prefix-0b62c432ed51/components/glowscript/lib/jquery/2.0/jquery.min.js'))
+      .toBe('public, max-age=31536000, immutable');
+  });
+
+  it('does not match a token by prefix — a1b2c3d is not a1b2c3de', () => {
+    expect(ccOwn('/cache-prefix-a1b2c3de/css/base.css')).toContain('no-store');
+    expect(ccOwn('/cache-prefix-a1b2c3/css/base.css')).toContain('no-store');
+  });
+});
+
 describe('staticMaxAge validation', () => {
   const APP = { cachePrefix: 'cache-prefix-', cache: { enabled: true, staticMaxAge: 60 } };
 
