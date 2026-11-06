@@ -31,6 +31,13 @@
     return new Array(n + 1).join(' ');
   }
 
+  // The indent size from opts, as a number. Settings saved through a form can
+  // arrive as the string "4" (#367), and "4" + 1 is "41".
+  function indentUnit(opts) {
+    var n = parseInt(opts && opts.tabSize, 10);
+    return n > 0 ? n : 2;
+  }
+
   // How many leading characters one outdent removes from `text`: a single tab,
   // or up to `unit` spaces. (Enter keeps tabs, so tab-indented code happens.)
   function outdentWidth(text, unit) {
@@ -43,7 +50,7 @@
   // shallower after return/pass/break/continue/raise. Returns the edit that
   // replaces the selection.
   function enter(value, selStart, selEnd, opts) {
-    var unit = (opts && opts.tabSize) || 2
+    var unit = indentUnit(opts)
       , start = lineStart(value, selStart)
       , before = value.slice(start, selStart)
       , indent = /^[ \t]*/.exec(before)[0]
@@ -69,7 +76,7 @@
   // word used to be replaced by spaces); the edit then replaces those whole
   // lines, and `select` says what to re-select afterwards.
   function tab(value, selStart, selEnd, opts) {
-    var unit = (opts && opts.tabSize) || 2
+    var unit = indentUnit(opts)
       , outdent = !!(opts && opts.shift)
       , selected = value.slice(selStart, selEnd)
       , multi = selected.indexOf('\n') >= 0;

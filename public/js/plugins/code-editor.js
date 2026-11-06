@@ -160,6 +160,15 @@
     $(window).on('resize', redraw);
 
     return {
+      // The trinket menu's Indentation setting (#367); the keydown handler
+      // reads opts.tabSize on every key.
+      actuallySetIndent : function(indent) {
+        opts.tabSize = indent;
+      },
+      // The plain editor never wraps: wrapped lines would no longer match the
+      // line numbers.
+      actuallySetWrap : function(wrap) {
+      },
       registerPlugin : function(plugin, codeEditor) {
       },
       destroy : function() {
@@ -2523,14 +2532,15 @@
     activeTab: function() {
       return this._getCurrentVisibleTab();
     },
+    // Image and binary files have no text editor to set.
     setWrap: function(wrap) {
       for (var i = 0; i < this._files.length; i++) {
-        this._files[i].editor.actuallySetWrap(wrap);
+        if (this._files[i].editor.actuallySetWrap) this._files[i].editor.actuallySetWrap(wrap);
       };
     },
     setIndent: function(current){
       for (var i = 0; i < this._files.length; i++) {
-        this._files[i].editor.actuallySetIndent(current);
+        if (this._files[i].editor.actuallySetIndent) this._files[i].editor.actuallySetIndent(current);
       };
     }
   };

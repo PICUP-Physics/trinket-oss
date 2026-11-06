@@ -45,6 +45,21 @@ describe('Enter', () => {
     expect(P.enter(v, v.length, v.length, { lang: 'python3', tabSize: 2 }).text).toBe('\n  ');
   });
 
+  // #367: Firestore deploys stored the setting as the form string "4", and
+  // "4" + 1 built an indent of "41".
+  it('takes an indent size given as a string', () => {
+    const v = 'if x:';
+    expect(P.enter(v, v.length, v.length, { lang: 'python3', tabSize: '4' }).text).toBe('\n    ');
+    expect(P.tab('', 0, 0, { tabSize: '4' }).text).toBe('    ');
+  });
+
+  it('falls back to 2 for an indent size that is not a positive number', () => {
+    const v = 'if x:';
+    for (const size of ['', 'abc', 0, -3, null]) {
+      expect(P.enter(v, v.length, v.length, { lang: 'python3', tabSize: size }).text, String(size)).toBe('\n  ');
+    }
+  });
+
   it('does not add a level after ":" in languages without colon blocks', () => {
     const v = '  a {color: red;}\n  b:';
     expect(P.enter(v, v.length, v.length, { lang: 'html', tabSize: 2 }).text).toBe('\n  ');
