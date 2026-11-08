@@ -35,6 +35,11 @@ const STATE = process.env.SMOKE_STORAGE_STATE;
 const fixtures = require('../fixtures');
 const { signIn } = require('../deploy-auth');
 
+// Wait between export polls. Keep it under 5 s: Apache's default
+// KeepAliveTimeout is 5 s, and a request sent on a kept-alive socket just as
+// the proxy closes it fails as "socket hang up" without reaching the app.
+const POLL_MS = 3000;
+
 test.describe('instructor journey', () => {
   test.skip(!STATE && !(EMAIL && PASSWORD),
     'set SMOKE_EMAIL+SMOKE_PASSWORD, or SMOKE_STORAGE_STATE from save-session.js');
@@ -96,7 +101,7 @@ test.describe('instructor journey', () => {
     // untouched. Retry once so a cold start is not reported as a broken deploy;
     // a persistent 5xx is still recorded below.
     if (start.status === 502 || start.status === 503) {
-      await new Promise((r) => setTimeout(r, 5000));
+      await new Promise((r) => setTimeout(r, POLL_MS));
       start = await api('POST', `/api/courses/${courseId}/exports/submissions`);
     }
     // A deploy with no export worker refuses immediately and says why — that is
@@ -123,8 +128,8 @@ test.describe('instructor journey', () => {
 
     const exportId = start.body.data.exportId;
     let status = 'pending';
-    for (let i = 0; i < 12 && status !== 'completed' && status !== 'failed'; i++) {
-      await new Promise((r) => setTimeout(r, 5000));
+    for (let i = 0; i < 20 && status !== 'completed' && status !== 'failed'; i++) {
+      await new Promise((r) => setTimeout(r, POLL_MS));
       const poll = await api('GET', `/api/exports/${exportId}`);
       expect(poll.status, 'export status must never 500 (#178)').toBe(200);
       status = (poll.body.data || {}).status;
