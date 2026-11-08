@@ -921,7 +921,8 @@ module.exports = [
           sort   : Joi.string().optional(),
           offset : Joi.string().optional(),
           user   : Joi.string().optional(),
-          folder : Joi.string().optional()
+          folder : Joi.string().optional(),
+          q      : Joi.string().allow('').optional()
         }
       }
     },
