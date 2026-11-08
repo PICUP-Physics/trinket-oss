@@ -57,11 +57,15 @@ test.describe('exam mode', () => {
     const reread = await api('GET', `/api/trinkets/${examId}`);
     expect(JSON.stringify(reread.body), 'plainEditor must persist').toContain('"plainEditor":true');
 
-    // A fresh context: no session, no user settings — a student in SEB.
-    const anon = await browser.newContext({ baseURL });
+    // A fresh context: no session, no user settings — a student in SEB. The
+    // empty storageState matters: inside a test, browser.newContext() inherits
+    // test.use() options, so a SMOKE_STORAGE_STATE run would sign this in too.
+    const anon = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] } });
     const viewer = await anon.newPage();
     try {
       await viewer.goto(`/embed/glowscript/${examId}`);
+      // Only a signed-out visitor gets the guest Log In form.
+      await expect(viewer.locator('#accountForm'), 'the viewer is signed out').toHaveCount(1, { timeout: 20000 });
       expect(await editorKind(viewer, marker), 'exam mode').toEqual({ ace: 0, plain: true });
 
       await viewer.goto(`/embed/glowscript/${examId}?runMode=calculator`);
