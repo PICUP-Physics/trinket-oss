@@ -18,8 +18,10 @@ const config = require('config');
 // An asset that actually EXISTS in the checked-in public/ tree. A missing file
 // 404s, and the touch happens in onPreHandler either way -- so a bad fixture
 // makes this pass without ever exercising a cacheable response. Asserting 200
-// and the immutable header keeps that honest.
-const ASSET = '/cache-prefix-abc1234/css/embed/foundation.css';
+// and the immutable header keeps that honest. The token must be this build's
+// own: any other is served no-store (see cache-prefix-own-token.test.js).
+const ASSET = '/' + config.app.cachePrefix + require('../../../lib/util/assetVersion').token()
+  + '/css/embed/foundation.css';
 
 let prevCache;
 beforeEach(() => {

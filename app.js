@@ -70,6 +70,10 @@ const path           = require('path');
 // static assets are allowed to differ, and only when a deploy opts in via
 // app.cache.enabled.
 const cacheControl = require('./lib/util/cacheControl');
+// The prefix tokens this build issues; any other token is cached nowhere.
+// Both are memoized in assetVersion, so this costs nothing per response.
+const assetVersion = require('./lib/util/assetVersion');
+const ownAssetTokens = () => [assetVersion.token(), assetVersion.componentsToken()];
 
 // Main async initialization
 const init = async () => {
@@ -326,7 +330,7 @@ const init = async () => {
         }
       }
 
-      const boomHeaders = cacheControl.headersFor(request.path, statusCode, config.app);
+      const boomHeaders = cacheControl.headersFor(request.path, statusCode, config.app, ownAssetTokens());
       Object.keys(boomHeaders).forEach((name) => {
         response.output.headers[name] = boomHeaders[name];
       });
@@ -340,7 +344,7 @@ const init = async () => {
       }
     }
     else if (response.header) {
-      const headers = cacheControl.headersFor(request.path, response.statusCode, config.app);
+      const headers = cacheControl.headersFor(request.path, response.statusCode, config.app, ownAssetTokens());
       Object.keys(headers).forEach((name) => {
         response.header(name, headers[name]);
       });
