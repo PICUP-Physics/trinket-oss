@@ -1,6 +1,6 @@
 (function(angular, module) {
 
-function TrinketService(Restangular) {
+function TrinketService(Restangular, $http) {
   var _all = Restangular.all('trinkets');
 
   var augmentTrinket = function augmentTrinket(trinket) {
@@ -54,8 +54,18 @@ function TrinketService(Restangular) {
     return _all.one(id).takeSnapshot();
   }
 
+  // $http, not Restangular: the apps' response interceptors keep only
+  // response.data, which would drop `total`.
   this.search = function(q) {
-    return _all.customGETLIST("search", { q : q });
+    return $http.get('/api/trinkets/search', { params : { q : q } })
+      .then(function(res) {
+        var body = res.data || {};
+        // Restangularized so the folder view's addToFolder exists on a result.
+        body.data = (body.data || []).map(function(t) {
+          return Restangular.restangularizeElement(null, t, 'trinkets');
+        });
+        return body;
+      });
   }
 
   this.updateSlug = function(id, slug) {
@@ -91,6 +101,6 @@ function TrinketService(Restangular) {
   }
 }
 
-module.service('trinketsApi', ['Restangular', TrinketService]);
+module.service('trinketsApi', ['Restangular', '$http', TrinketService]);
 
 })(window.angular, window.angular.module('trinket.components.trinkets'));
