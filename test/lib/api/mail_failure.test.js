@@ -72,6 +72,31 @@ describe('A failed mail send is logged and never an unhandled rejection', () => 
       expect(failureLines()[0]).toContain('responseCode=421');
     });
 
+    it('answers a failed key store and sends nothing, with no unhandled rejection (#343)', async () => {
+      vi.spyOn(Store, 'set').mockRejectedValue(new Error('redis down'));
+      const request = fakeRequest({ email: defaults.user.email });
+      users.sendPassReset(request, vi.fn());
+      await vi.waitFor(() => expect(request.fail).toHaveBeenCalled());
+      await settle();
+
+      expect(request.fail.mock.calls[0][0].message).toMatch(/password reset/i);
+      expect(request.success).not.toHaveBeenCalled();
+      expect(mailer.send).not.toHaveBeenCalled();
+      expect(unhandled).toEqual([]);
+    });
+
+    it('answers a failed key expiry the same way (#343)', async () => {
+      vi.spyOn(Store, 'expire').mockRejectedValue(new Error('redis down'));
+      const request = fakeRequest({ email: defaults.user.email });
+      users.sendPassReset(request, vi.fn());
+      await vi.waitFor(() => expect(request.fail).toHaveBeenCalled());
+      await settle();
+
+      expect(request.success).not.toHaveBeenCalled();
+      expect(mailer.send).not.toHaveBeenCalled();
+      expect(unhandled).toEqual([]);
+    });
+
     it('logs a template-render failure too, without attempting a send', async () => {
       nunjucks.render.mockRejectedValue(new Error('template not found: emails/passwordReset'));
       const request = fakeRequest({ email: defaults.user.email });
@@ -101,6 +126,19 @@ describe('A failed mail send is logged and never an unhandled rejection', () => 
       expect(failureLines()[0]).toContain('to=old@example.com');
     });
 
+    it('answers a failed key store and sends nothing, with no unhandled rejection (#343)', async () => {
+      vi.spyOn(Store, 'set').mockRejectedValue(new Error('redis down'));
+      const request = fakeRequest({});
+      users.sendEmailVerification(request, vi.fn());
+      await vi.waitFor(() => expect(request.fail).toHaveBeenCalled());
+      await settle();
+
+      expect(request.fail.mock.calls[0][0].message).toMatch(/verification email/i);
+      expect(request.success).not.toHaveBeenCalled();
+      expect(mailer.send).not.toHaveBeenCalled();
+      expect(unhandled).toEqual([]);
+    });
+
     it('logs a template-render failure too, without attempting a send', async () => {
       nunjucks.render.mockRejectedValue(new Error('template not found: emails/verifyEmail'));
       const request = fakeRequest({});
@@ -115,11 +153,14 @@ describe('A failed mail send is logged and never an unhandled rejection', () => 
     });
   });
 
-  // This goes through resendEmailChange, not sendEmailChange, although both end in
-  // send_email_confirmation: sendEmailChange never completes (it passes a callback to
-  // Store.set, which ignores it, so it neither answers nor sends). That is pre-existing
-  // and out of scope here; resendEmailChange is the live path to the same mail.
+  // resendEmailChange is the only route to the change-email confirmation mail.
+  // sendEmailChange was removed (#340): it passed a callback to Store.set, which
+  // ignores it, so it could neither answer nor send, and no route reached it.
   describe('email change confirmation (users.resendEmailChange)', () => {
+    it('no longer has an unreachable sendEmailChange handler (#340)', () => {
+      expect(users.sendEmailChange).toBeUndefined();
+    });
+
     it('logs the failed send to the NEW address', async () => {
       await Store.set(
         Store.user.change_email_key('u1'),
@@ -159,6 +200,18 @@ describe('A failed mail send is logged and never an unhandled rejection', () => 
       expect(failureLines()[0]).toContain('to=admin@example.com');
     });
 
+    it('builds the alert text from the log, with no leading "undefined" (#342)', async () => {
+      config.app.adminEmail = 'admin@example.com';
+      const request = fakeRequest({ log: alertLog });
+      admin.ohnoes(request, vi.fn());
+      await settle();
+
+      const options = mailer.send.mock.calls[0][2];
+      expect(options.text).not.toMatch(/undefined/);
+      expect(options.text.trim().startsWith('time')).toBe(true);
+      expect(options.text).toContain('path\t\t/p');
+    });
+
     it('does nothing when no admin address is configured (the shipped default)', async () => {
       config.app.adminEmail = '';
       const request = fakeRequest({ log: alertLog });
@@ -173,28 +226,71 @@ describe('A failed mail send is logged and never an unhandled rejection', () => 
   });
 
   describe('trinket share by email (trinket.email)', () => {
-    it('logs a failed send and responds exactly as before', async () => {
-      const trinketCtl     = require('../../../lib/controllers/trinket');
-      const globalNunjucks = require('nunjucks');   // trinket.js renders with the global (synchronous) nunjucks
-      vi.spyOn(globalNunjucks, 'render').mockReturnValue('<html>share</html>');
+    const trinketCtl     = require('../../../lib/controllers/trinket');
+    const TrinketModel   = require('../../../lib/models/trinket');
+    const globalNunjucks = require('nunjucks');   // trinket.js renders with the global (synchronous) nunjucks
 
+    function shareRequest() {
       const request = fakeRequest({ email: 'friend@example.com', name: 'Todd' });
       request.pre   = { trinket: { id: 't1', lang: 'python', shortCode: 'abc123', snapshot: '' } };
+      return request;
+    }
+
+    beforeEach(() => {
+      vi.spyOn(globalNunjucks, 'render').mockReturnValue('<html>share</html>');
+    });
+
+    // #341: the final catch used to call a bare reply(), which this app's reply shim
+    // never settles (it resolves only on a redirect, code, header, view or an error
+    // object), so the share dialog waited forever. A vi.fn() reply hides that, which is
+    // why the old assertion on reply() passed: assert on what answers the request.
+    it('answers a failed send with request.fail, logs it, and never calls a bare reply()', async () => {
+      const request = shareRequest();
       const reply   = vi.fn();
 
       trinketCtl.email(request, reply);
-      await vi.waitFor(() => expect(reply).toHaveBeenCalled(), { timeout: 5000 });
+      await vi.waitFor(() => expect(request.fail).toHaveBeenCalled(), { timeout: 5000 });
       await settle();
 
-      // behaviour unchanged: the existing .catch still calls reply() once, with no arguments
-      expect(reply).toHaveBeenCalledTimes(1);
-      expect(reply).toHaveBeenCalledWith();
+      expect(request.fail).toHaveBeenCalledTimes(1);
+      expect(request.fail.mock.calls[0][0].message).toMatch(/could not send/i);
       expect(request.success).not.toHaveBeenCalled();
+      expect(reply).not.toHaveBeenCalled();
 
       expect(unhandled).toEqual([]);
       expect(failureLines()).toHaveLength(1);
       expect(failureLines()[0]).toContain('type=trinket-share');
       expect(failureLines()[0]).toContain('to=friend@example.com');
+    });
+
+    it('still answers 403 when the share limit is exceeded', async () => {
+      mailer.send.mockResolvedValue({});
+      vi.spyOn(TrinketModel, 'findByIdAndUpdateMetrics').mockRejectedValue('threshold exceeded');
+      const request = shareRequest();
+      const reply   = vi.fn();
+
+      trinketCtl.email(request, reply);
+      await vi.waitFor(() => expect(reply).toHaveBeenCalled(), { timeout: 5000 });
+
+      expect(reply).toHaveBeenCalledTimes(1);
+      expect(reply.mock.calls[0][0].isBoom).toBe(true);
+      expect(reply.mock.calls[0][0].output.statusCode).toBe(403);
+      expect(request.fail).not.toHaveBeenCalled();
+      expect(request.success).not.toHaveBeenCalled();
+    });
+
+    it('does not tell the sender it failed when the email went out and only the share count failed', async () => {
+      mailer.send.mockResolvedValue({});
+      vi.spyOn(TrinketModel, 'findByIdAndUpdateMetrics').mockRejectedValue(new Error('metrics store down'));
+      const request = shareRequest();
+      const reply   = vi.fn();
+
+      trinketCtl.email(request, reply);
+      await vi.waitFor(() => expect(request.success).toHaveBeenCalled(), { timeout: 5000 });
+
+      expect(request.fail).not.toHaveBeenCalled();
+      expect(reply).not.toHaveBeenCalled();
+      expect(failureLines()).toEqual([]);
     });
   });
 
